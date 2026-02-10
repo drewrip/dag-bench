@@ -1,2 +1,4 @@
 logs/
 data/
+dbt_bench/target/
+dbt_bench/logs/
