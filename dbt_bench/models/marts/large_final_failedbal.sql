@@ -6,6 +6,8 @@ WITH
       SUM(c_acctbal)
     FROM
       {{ ref("large_mid_customerloc") }}
+    WHERE
+      o_orderstatus = 'F'
     GROUP BY
       r_regionkey
   )

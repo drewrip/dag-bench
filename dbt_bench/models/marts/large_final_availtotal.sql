@@ -1,11 +1,10 @@
 SELECT
-  s_suppkey,
-  ANY_VALUE (s_name),
+  ps_suppkey,
   AVG(l_extendedprice)
 FROM
   {{ ref("large_mid_availqty") }} aq,
   {{ ref("large_mid_customerloc") }} cl
 WHERE
-  aq.ps_suppkey = cl.s_suppkey
+  aq.l_orderkey = cl.o_orderkey
 GROUP BY
-  s_suppkey
+  ps_suppkey

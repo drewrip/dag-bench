@@ -3,9 +3,11 @@ WITH
     SELECT
       r_regionkey,
       ANY_VALUE (r_name),
-      SUM(s_acctbal)
+      SUM(c_acctbal)
     FROM
       {{ ref("large_mid_customerloc") }}
+    WHERE
+      o_orderstatus = 'P'
     GROUP BY
       r_regionkey
   )
