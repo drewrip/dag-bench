@@ -1,6 +1,27 @@
+WITH
+  partinfo AS (
+    SELECT
+      *
+    FROM
+      {{ ref("large_mid_partinfo") }}
+  ),
+  partinfo_spec AS (
+    SELECT
+      *
+    FROM
+      {{ ref("large_mid_partinfo") }}
+    WHERE
+      p_type LIKE '%COPPER%'
+  )
 SELECT
-  *
+  *,
+  (
+    (
+      SELECT
+        AVG(p_retailprice) AS avg_price
+      FROM
+        partinfo_spec
+    ) > p_retailprice
+  ) AS is_copper
 FROM
-  {{ ref("large_mid_partinfo") }}
-WHERE
-  p_type LIKE '%COPPER%'
+  partinfo

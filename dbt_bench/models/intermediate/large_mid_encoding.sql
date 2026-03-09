@@ -18,57 +18,16 @@ WITH
       {{ ref("large_mid_brass") }}
   )
 SELECT
-  *,
-  (
-    CASE
-      WHEN steel_price.avg_price < p_retailprice THEN 1
-      ELSE 0
-    END
-  ) AS steel_status,
-  (
-    CASE
-      WHEN copper_price.avg_price < p_retailprice THEN 1
-      ELSE 0
-    END
-  ) AS copper_status,
-  (
-    CASE
-      WHEN brass_price.avg_price < p_retailprice THEN 1
-      ELSE 0
-    END
-  ) AS brass_status
+  steel.ps_partkey AS ps_partkey,
+  steel.ps_suppkey AS ps_suppkey,
+  steel.p_retailprice AS p_retailprice,
+  steel.p_container AS p_container,
+  steel.is_steel AS is_steel,
+  copper.is_copper AS is_copper,
+  brass.is_brass AS is_brass
 FROM
-  (
-    SELECT
-      *
-    FROM
-      steel
-    UNION
-    SELECT
-      *
-    FROM
-      copper
-    UNION
-    SELECT
-      *
-    FROM
-      brass
-  ) kt,
-  (
-    SELECT
-      AVG(p_retailprice) AS avg_price
-    FROM
-      steel
-  ) steel_price,
-  (
-    SELECT
-      AVG(p_retailprice) AS avg_price
-    FROM
-      copper
-  ) copper_price,
-  (
-    SELECT
-      AVG(p_retailprice) AS avg_price
-    FROM
-      brass
-  ) brass_price
+  steel
+  JOIN copper ON steel.ps_partkey = copper.ps_partkey
+  AND steel.ps_suppkey = copper.ps_suppkey
+  JOIN brass ON steel.ps_partkey = brass.ps_partkey
+  AND steel.ps_suppkey = brass.ps_suppkey
