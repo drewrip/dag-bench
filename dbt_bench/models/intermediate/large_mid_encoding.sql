@@ -43,12 +43,12 @@ FROM
       *
     FROM
       steel
-    UNION ALL
+    UNION
     SELECT
       *
     FROM
       copper
-    UNION ALL
+    UNION
     SELECT
       *
     FROM
