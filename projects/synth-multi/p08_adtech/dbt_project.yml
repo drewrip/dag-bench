@@ -1,0 +1,19 @@
+name: 'p08_adtech'
+version: '1.0.0'
+config-version: 2
+profile: 'p08_adtech'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+models:
+  p08_adtech:
+    layer_1:
+      +materialized: view
+    layer_2:
+      +materialized: view
+    layer_3:
+      +materialized: view
+    layer_4:
+      +materialized: view
+    layer_5:
+      +materialized: table

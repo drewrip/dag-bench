@@ -1,0 +1,9 @@
+version: 2
+sources:
+  - name: src
+    schema: main
+    tables:
+      - name: accounts
+      - name: merchants
+      - name: transactions
+      - name: alerts

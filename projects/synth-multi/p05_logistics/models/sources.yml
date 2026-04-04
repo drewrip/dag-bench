@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: sc
+    schema: main
+    tables:
+      - name: suppliers
+      - name: warehouses
+      - name: shipments
+      - name: inventory
+      - name: purchase_orders

@@ -1,0 +1,113 @@
+import duckdb, random, sys, os
+from datetime import datetime, timedelta, date
+
+sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+NAC, NSB, NEV, NFU, NST = (
+    max(a, int(b * sf))
+    for a, b in [(10, 500), (10, 700), (100, 50000), (20, 5000), (10, 2000)]
+)
+os.makedirs("data", exist_ok=True)
+con = duckdb.connect("data/warehouse.duckdb")
+con.execute("""
+DROP TABLE IF EXISTS support_tickets; DROP TABLE IF EXISTS feature_usage;
+DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS subscriptions; DROP TABLE IF EXISTS accounts;
+CREATE TABLE accounts(account_id INTEGER PRIMARY KEY,name VARCHAR,industry VARCHAR,
+  country VARCHAR,arr DECIMAL(12,2),created_date DATE,csm_id INTEGER,health_score TINYINT);
+CREATE TABLE subscriptions(sub_id INTEGER PRIMARY KEY,account_id INTEGER,plan VARCHAR,
+  seats INTEGER,mrr DECIMAL(10,2),start_date DATE,end_date DATE,is_active BOOLEAN);
+CREATE TABLE events(event_id BIGINT PRIMARY KEY,account_id INTEGER,user_id INTEGER,
+  event_type VARCHAR,event_ts TIMESTAMP,session_id VARCHAR,platform VARCHAR);
+CREATE TABLE feature_usage(fu_id INTEGER PRIMARY KEY,account_id INTEGER,feature_name VARCHAR,
+  usage_date DATE,usage_count INTEGER);
+CREATE TABLE support_tickets(ticket_id INTEGER PRIMARY KEY,account_id INTEGER,
+  created_ts TIMESTAMP,resolved_ts TIMESTAMP,priority VARCHAR,category VARCHAR,
+  csat_score TINYINT,is_resolved BOOLEAN);
+""")
+base = date(2022, 1, 1)
+bts = datetime(2022, 1, 1)
+industries = ["fintech", "healthtech", "edtech", "ecommerce", "manufacturing"]
+plans = ["starter", "growth", "enterprise", "enterprise_plus"]
+etypes = ["login", "page_view", "feature_click", "export", "api_call"]
+features = ["dashboard", "reports", "api", "integrations", "automations", "analytics"]
+priorities = ["low", "medium", "high", "critical"]
+tcats = ["billing", "technical", "feature_request", "onboarding", "other"]
+con.executemany(
+    "INSERT INTO accounts VALUES(?,?,?,?,?,?,?,?)",
+    [
+        (
+            i,
+            f"Account {i}",
+            random.choice(industries),
+            random.choice(["US", "UK", "DE", "FR", "CA"]),
+            round(random.uniform(5000, 500000), 2),
+            base + timedelta(days=random.randint(0, 700)),
+            random.randint(1, 20),
+            random.randint(1, 100),
+        )
+        for i in range(1, NAC + 1)
+    ],
+)
+con.executemany(
+    "INSERT INTO subscriptions VALUES(?,?,?,?,?,?,?,?)",
+    [
+        (
+            i,
+            random.randint(1, NAC),
+            random.choice(plans),
+            random.randint(1, 200),
+            round(random.uniform(99, 9999), 2),
+            sd := base + timedelta(days=random.randint(0, 600)),
+            sd + timedelta(days=365),
+            random.random() > 0.1,
+        )
+        for i in range(1, NSB + 1)
+    ],
+)
+con.executemany(
+    "INSERT INTO events VALUES(?,?,?,?,?,?,?)",
+    [
+        (
+            i,
+            random.randint(1, NAC),
+            random.randint(1, NAC * 5),
+            random.choice(etypes),
+            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
+            f"sess_{random.randint(1, NAC * 20)}",
+            random.choice(["web", "mobile", "api"]),
+        )
+        for i in range(1, NEV + 1)
+    ],
+)
+con.executemany(
+    "INSERT INTO feature_usage VALUES(?,?,?,?,?)",
+    [
+        (
+            i,
+            random.randint(1, NAC),
+            random.choice(features),
+            base + timedelta(days=random.randint(0, 700)),
+            random.randint(1, 1000),
+        )
+        for i in range(1, NFU + 1)
+    ],
+)
+con.executemany(
+    "INSERT INTO support_tickets VALUES(?,?,?,?,?,?,?,?)",
+    [
+        (
+            i,
+            random.randint(1, NAC),
+            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
+            bts + timedelta(seconds=random.randint(0, 700 * 86400))
+            if random.random() > 0.2
+            else None,
+            random.choice(priorities),
+            random.choice(tcats),
+            random.randint(1, 5) if random.random() > 0.3 else None,
+            random.random() > 0.2,
+        )
+        for i in range(1, NST + 1)
+    ],
+)
+con.close()
+print(f"p06 done accounts={NAC} events={NEV}")

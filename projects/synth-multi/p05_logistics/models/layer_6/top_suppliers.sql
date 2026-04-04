@@ -1,0 +1,3 @@
+select *,
+    row_number() over (partition by category order by score desc) as rank_in_cat
+from {{ ref('supplier_scorecard') }}

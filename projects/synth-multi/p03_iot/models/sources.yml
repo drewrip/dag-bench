@@ -1,0 +1,9 @@
+version: 2
+sources:
+  - name: iot
+    schema: main
+    tables:
+      - name: sites
+      - name: devices
+      - name: readings
+      - name: maintenance_logs

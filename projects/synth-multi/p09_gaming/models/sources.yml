@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: game
+    schema: main
+    tables:
+      - name: players
+      - name: sessions
+      - name: events
+      - name: purchases
+      - name: levels

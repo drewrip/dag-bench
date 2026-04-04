@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: hr
+    schema: main
+    tables:
+      - name: departments
+      - name: employees
+      - name: salaries
+      - name: performance_reviews
+      - name: leave_requests

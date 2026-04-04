@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: hc
+    schema: main
+    tables:
+      - name: patients
+      - name: providers
+      - name: claims
+      - name: claim_lines
+      - name: diagnoses

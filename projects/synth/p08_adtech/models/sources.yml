@@ -1,0 +1,9 @@
+version: 2
+sources:
+  - name: ads
+    schema: main
+    tables:
+      - name: campaigns
+      - name: impressions
+      - name: clicks
+      - name: conversions

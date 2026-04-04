@@ -1,0 +1,9 @@
+version: 2
+sources:
+  - name: grid
+    schema: main
+    tables:
+      - name: substations
+      - name: meters
+      - name: consumption_readings
+      - name: outage_events

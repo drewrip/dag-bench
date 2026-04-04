@@ -1,0 +1,10 @@
+version: 2
+sources:
+  - name: saas
+    schema: main
+    tables:
+      - name: accounts
+      - name: subscriptions
+      - name: events
+      - name: feature_usage
+      - name: support_tickets

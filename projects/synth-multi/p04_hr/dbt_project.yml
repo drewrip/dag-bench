@@ -1,0 +1,23 @@
+name: 'p04_hr'
+version: '1.0.0'
+config-version: 2
+profile: 'p04_hr'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+models:
+  p04_hr:
+    layer_1:
+      +materialized: view
+    layer_2:
+      +materialized: view
+    layer_3:
+      +materialized: view
+    layer_4:
+      +materialized: view
+    layer_5:
+      +materialized: view
+    layer_6:
+      +materialized: view
+    layer_7:
+      +materialized: table
