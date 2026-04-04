@@ -16,5 +16,4 @@ GROUP BY dt.d_year,
 ORDER BY sum(ss_ext_sales_price) DESC,dt.d_year,
                                       {{ source('tpcds', 'item') }}.i_category_id,
                                       {{ source('tpcds', 'item') }}.i_category
-LIMIT 100 ;
-
+LIMIT 100

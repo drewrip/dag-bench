@@ -11,5 +11,4 @@ WHERE ss_sold_time_sk = {{ source('tpcds', 'time_dim') }}.t_time_sk
   AND {{ source('tpcds', 'household_demographics') }}.hd_dep_count = 7
   AND {{ source('tpcds', 'store') }}.s_store_name = 'ese'
 ORDER BY count(*)
-LIMIT 100;
-
+LIMIT 100

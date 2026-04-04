@@ -76,4 +76,4 @@ FROM
    WHERE {{ source('tpcds', 'date_dim') }}.d_week_seq = wswscs.d_week_seq
      AND d_year = 2001+1) z
 WHERE d_week_seq1 = d_week_seq2-53
-ORDER BY d_week_seq1 NULLS FIRST;
+ORDER BY d_week_seq1 NULLS FIRST

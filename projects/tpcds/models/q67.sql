@@ -41,4 +41,4 @@ ORDER BY i_category NULLS FIRST,
          s_store_id NULLS FIRST,
          sumsales NULLS FIRST,
          rk NULLS FIRST
-LIMIT 100;
+LIMIT 100

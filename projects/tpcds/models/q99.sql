@@ -41,5 +41,4 @@ GROUP BY w_substr ,
 ORDER BY w_substr  NULLS FIRST,
          sm_type  NULLS FIRST,
         cc_name_lower NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

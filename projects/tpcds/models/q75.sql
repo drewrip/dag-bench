@@ -72,5 +72,4 @@ WHERE curr_yr.i_brand_id=prev_yr.i_brand_id
   AND CAST(curr_yr.sales_cnt AS DECIMAL(17,2))/CAST(prev_yr.sales_cnt AS DECIMAL(17,2))<0.9
 ORDER BY sales_cnt_diff,
          sales_amt_diff
-LIMIT 100;
-
+LIMIT 100

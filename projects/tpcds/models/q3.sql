@@ -15,5 +15,4 @@ GROUP BY dt.d_year,
 ORDER BY dt.d_year,
          sum_agg DESC,
          brand_id
-LIMIT 100;
-
+LIMIT 100

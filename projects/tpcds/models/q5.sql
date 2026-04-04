@@ -109,4 +109,4 @@ GROUP BY ROLLUP (channel,
                  id)
 ORDER BY channel NULLS FIRST,
          id NULLS FIRST
-LIMIT 100;
+LIMIT 100

@@ -15,4 +15,4 @@ ORDER BY qoh NULLS FIRST,
          i_brand NULLS FIRST,
          i_class NULLS FIRST,
          i_category NULLS FIRST
-LIMIT 100;
+LIMIT 100

@@ -26,28 +26,27 @@ SELECT *
 FROM
   (SELECT item_sk,
           d_date,
-          {{ source('tpcds', 'web_sales') }},
-          {{ source('tpcds', 'store_sales') }},
-          max({{ source('tpcds', 'web_sales') }}) OVER (PARTITION BY item_sk
+          web_sales,
+          store_sales,
+          max(web_sales) OVER (PARTITION BY item_sk
                                ORDER BY d_date ROWS BETWEEN unbounded preceding AND CURRENT ROW) web_cumulative,
-                              max({{ source('tpcds', 'store_sales') }}) OVER (PARTITION BY item_sk
+                              max(store_sales) OVER (PARTITION BY item_sk
                                                      ORDER BY d_date ROWS BETWEEN unbounded preceding AND CURRENT ROW) store_cumulative
    FROM
      (SELECT CASE
                  WHEN web.item_sk IS NOT NULL THEN web.item_sk
-                 ELSE {{ source('tpcds', 'store') }}.item_sk
+                 ELSE store.item_sk
              END item_sk,
              CASE
                  WHEN web.d_date IS NOT NULL THEN web.d_date
-                 ELSE {{ source('tpcds', 'store') }}.d_date
+                 ELSE store.d_date
              END d_date,
-             web.cume_sales {{ source('tpcds', 'web_sales') }},
-             {{ source('tpcds', 'store') }}.cume_sales {{ source('tpcds', 'store_sales') }}
+             web.cume_sales web_sales,
+             store.cume_sales store_sales
       FROM web_v1 web
-      FULL OUTER JOIN store_v1 {{ source('tpcds', 'store') }} ON (web.item_sk = {{ source('tpcds', 'store') }}.item_sk
-                                         AND web.d_date = {{ source('tpcds', 'store') }}.d_date))x)y
+      FULL OUTER JOIN store_v1 store ON (web.item_sk = store.item_sk
+                                         AND web.d_date = store.d_date))x)y
 WHERE web_cumulative > store_cumulative
 ORDER BY item_sk NULLS FIRST,
          d_date NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

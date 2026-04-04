@@ -21,5 +21,4 @@ WHERE d_date BETWEEN '2002-02-01' AND cast('2002-04-02' AS date)
      FROM {{ source('tpcds', 'catalog_returns') }} cr1
      WHERE cs1.cs_order_number = cr1.cr_order_number)
 ORDER BY count(DISTINCT cs_order_number)
-LIMIT 100;
-
+LIMIT 100

@@ -47,5 +47,4 @@ ORDER BY s_store_name,
          thu_sales,
          fri_sales,
          sat_sales
-LIMIT 100;
-
+LIMIT 100

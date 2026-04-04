@@ -61,5 +61,4 @@ WHERE t_s_secyear.customer_id = t_s_firstyear.customer_id
                 ELSE NULL
             END
 ORDER BY 1 NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

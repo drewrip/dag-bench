@@ -22,5 +22,4 @@ WHERE d_date BETWEEN '1999-02-01' AND cast('1999-04-02' AS date)
      FROM {{ source('tpcds', 'web_returns') }} wr1
      WHERE ws1.ws_order_number = wr1.wr_order_number)
 ORDER BY count(DISTINCT ws_order_number)
-LIMIT 100;
-
+LIMIT 100

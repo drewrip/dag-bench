@@ -62,5 +62,4 @@ ORDER BY cd_gender,
          cd_dep_count,
          cd_dep_employed_count,
          cd_dep_college_count
-LIMIT 100;
-
+LIMIT 100

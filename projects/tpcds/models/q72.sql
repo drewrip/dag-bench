@@ -35,5 +35,4 @@ ORDER BY total_cnt DESC NULLS FIRST,
          i_item_desc NULLS FIRST,
          w_warehouse_name NULLS FIRST,
          d1.d_week_seq NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

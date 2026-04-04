@@ -15,4 +15,4 @@ WHERE ca_city = 'Edgewood'
   AND hd_demo_sk = c_current_hdemo_sk
   AND sr_cdemo_sk = cd_demo_sk
 ORDER BY c_customer_id NULLS FIRST
-LIMIT 100;
+LIMIT 100

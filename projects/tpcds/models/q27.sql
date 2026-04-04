@@ -57,4 +57,4 @@ FROM
    FROM results ) foo
 ORDER BY i_item_id NULLS FIRST,
          s_state NULLS FIRST
-LIMIT 100;
+LIMIT 100

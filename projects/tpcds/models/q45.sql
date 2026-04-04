@@ -38,5 +38,4 @@ GROUP BY ca_zip,
          ca_city
 ORDER BY ca_zip,
          ca_city
-LIMIT 100;
-
+LIMIT 100

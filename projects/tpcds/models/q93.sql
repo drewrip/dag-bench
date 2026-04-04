@@ -16,5 +16,4 @@ FROM
 GROUP BY ss_customer_sk
 ORDER BY sumsales NULLS FIRST,
          ss_customer_sk NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

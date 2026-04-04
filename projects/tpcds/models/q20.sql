@@ -25,5 +25,4 @@ ORDER BY i_category NULLS FIRST,
          i_item_id NULLS FIRST,
          i_item_desc NULLS FIRST,
          revenueratio NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

@@ -19,4 +19,4 @@ ORDER BY lochierarchy DESC NULLS FIRST,
              WHEN grouping(i_category)+grouping(i_class) = 0 THEN i_category
          END NULLS FIRST,
          rank_within_parent NULLS FIRST
-LIMIT 100;
+LIMIT 100

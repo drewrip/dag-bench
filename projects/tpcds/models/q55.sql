@@ -13,5 +13,4 @@ GROUP BY i_brand,
          i_brand_id
 ORDER BY ext_price DESC,
          i_brand_id
-LIMIT 100 ;
-
+LIMIT 100

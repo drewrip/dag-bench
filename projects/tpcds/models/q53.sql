@@ -44,5 +44,4 @@ WHERE CASE
 ORDER BY avg_quarterly_sales,
          sum_sales,
          i_manufact_id
-LIMIT 100;
-
+LIMIT 100

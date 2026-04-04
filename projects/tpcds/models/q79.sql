@@ -35,4 +35,4 @@ ORDER BY c_last_name  NULLS FIRST,
          SUBSTRING(s_city,1,30)  NULLS FIRST,
          profit NULLS FIRST,
          ss_ticket_number
-LIMIT 100;
+LIMIT 100

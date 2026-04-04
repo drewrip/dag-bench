@@ -121,5 +121,4 @@ ORDER BY cs1.product_name,
          cs1.store_name,
          cs2.cnt,
          cs1.s1,
-         cs2.s1;
-
+         cs2.s1

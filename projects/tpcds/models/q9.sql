@@ -65,5 +65,4 @@ SELECT CASE
                    WHERE ss_quantity BETWEEN 81 AND 100)
        END bucket5
 FROM {{ source('tpcds', 'reason') }}
-WHERE r_reason_sk = 1 ;
-
+WHERE r_reason_sk = 1

@@ -55,5 +55,4 @@ ORDER BY inv1.w_warehouse_sk NULLS FIRST,
          inv1.cov NULLS FIRST,
          inv2.d_moy NULLS FIRST,
          inv2.mean NULLS FIRST,
-         inv2.cov NULLS FIRST;
-
+         inv2.cov NULLS FIRST

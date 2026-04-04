@@ -17,4 +17,4 @@ clean-targets:
 
 models:
   tpcds:
-    +materialized: view
+    +materialized: table

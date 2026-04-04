@@ -48,5 +48,4 @@ ORDER BY cd_gender,
          cd_education_status,
          cd_purchase_estimate,
          cd_credit_rating
-LIMIT 100;
-
+LIMIT 100

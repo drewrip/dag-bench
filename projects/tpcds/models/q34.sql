@@ -37,5 +37,4 @@ ORDER BY c_last_name NULLS FIRST,
          c_first_name NULLS FIRST,
          c_salutation NULLS FIRST,
          c_preferred_cust_flag DESC NULLS FIRST,
-         ss_ticket_number NULLS FIRST;
-
+         ss_ticket_number NULLS FIRST

@@ -81,4 +81,4 @@ FROM
 ORDER BY c_last_name NULLS FIRST,
          c_first_name NULLS FIRST,
          sales NULLS FIRST
-LIMIT 100;
+LIMIT 100

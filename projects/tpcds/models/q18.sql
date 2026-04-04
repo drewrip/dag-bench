@@ -46,4 +46,4 @@ ORDER BY ca_country NULLS FIRST,
     ca_state NULLS FIRST,
     ca_county NULLS FIRST,
     i_item_id NULLS FIRST
-LIMIT 100;
+LIMIT 100

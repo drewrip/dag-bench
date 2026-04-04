@@ -70,5 +70,4 @@ FROM
 GROUP BY i_item_id
 ORDER BY total_sales  NULLS FIRST,
          i_item_id NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

@@ -23,4 +23,4 @@ ORDER BY i_category  NULLS FIRST,
          i_class  NULLS FIRST,
          i_item_id  NULLS FIRST,
          i_item_desc  NULLS FIRST,
-         revenueratio NULLS FIRST;
+         revenueratio NULLS FIRST

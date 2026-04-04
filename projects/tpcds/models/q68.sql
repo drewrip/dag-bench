@@ -41,5 +41,4 @@ WHERE ss_customer_sk = c_customer_sk
   AND current_addr.ca_city <> bought_city
 ORDER BY c_last_name NULLS FIRST,
          ss_ticket_number NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

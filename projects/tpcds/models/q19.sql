@@ -27,5 +27,4 @@ ORDER BY ext_price DESC,
          i_brand_id,
          i_manufact_id,
          i_manufact
-LIMIT 100 ;
-
+LIMIT 100

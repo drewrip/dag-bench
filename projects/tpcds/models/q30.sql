@@ -46,5 +46,4 @@ ORDER BY c_customer_id NULLS FIRST,
          c_email_address NULLS FIRST,
          c_last_review_date_sk NULLS FIRST,
          ctr_total_return NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

@@ -20,5 +20,4 @@ GROUP BY i_item_id,
          i_item_desc,
          i_current_price
 ORDER BY i_item_id
-LIMIT 100;
-
+LIMIT 100

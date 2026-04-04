@@ -2,7 +2,7 @@ WITH ss AS
   (SELECT ca_county,
           d_qoy,
           d_year,
-          sum(ss_ext_sales_price) AS {{ source('tpcds', 'store_sales') }}
+          sum(ss_ext_sales_price) AS store_sales
    FROM {{ source('tpcds', 'store_sales') }},
         {{ source('tpcds', 'date_dim') }},
         {{ source('tpcds', 'customer_address') }}
@@ -15,7 +15,7 @@ WITH ss AS
   (SELECT ca_county,
           d_qoy,
           d_year,
-          sum(ws_ext_sales_price) AS {{ source('tpcds', 'web_sales') }}
+          sum(ws_ext_sales_price) AS web_sales
    FROM {{ source('tpcds', 'web_sales') }},
         {{ source('tpcds', 'date_dim') }},
         {{ source('tpcds', 'customer_address') }}
@@ -26,10 +26,10 @@ WITH ss AS
             d_year)
 SELECT ss1.ca_county ,
        ss1.d_year ,
-       (ws2.{{ source('tpcds', 'web_sales') }}*1.0000)/ws1.{{ source('tpcds', 'web_sales') }} web_q1_q2_increase ,
-       (ss2.{{ source('tpcds', 'store_sales') }}*1.0000)/ss1.{{ source('tpcds', 'store_sales') }} store_q1_q2_increase ,
-       (ws3.{{ source('tpcds', 'web_sales') }}*1.0000)/ws2.{{ source('tpcds', 'web_sales') }} web_q2_q3_increase ,
-       (ss3.{{ source('tpcds', 'store_sales') }}*1.0000)/ss2.{{ source('tpcds', 'store_sales') }} store_q2_q3_increase
+       (ws2.web_sales*1.0000)/ws1.web_sales web_q1_q2_increase ,
+       (ss2.store_sales*1.0000)/ss1.store_sales store_q1_q2_increase ,
+       (ws3.web_sales*1.0000)/ws2.web_sales web_q2_q3_increase ,
+       (ss3.store_sales*1.0000)/ss2.store_sales store_q2_q3_increase
 FROM ss ss1 ,
      ss ss2 ,
      ss ss3 ,
@@ -54,18 +54,17 @@ WHERE ss1.d_qoy = 1
   AND ws3.d_qoy = 3
   AND ws3.d_year = 2000
   AND CASE
-          WHEN ws1.{{ source('tpcds', 'web_sales') }} > 0 THEN (ws2.{{ source('tpcds', 'web_sales') }}*1.0000)/ws1.{{ source('tpcds', 'web_sales') }}
+          WHEN ws1.web_sales > 0 THEN (ws2.web_sales*1.0000)/ws1.web_sales
           ELSE NULL
       END > CASE
-                WHEN ss1.{{ source('tpcds', 'store_sales') }} > 0 THEN (ss2.{{ source('tpcds', 'store_sales') }}*1.0000)/ss1.{{ source('tpcds', 'store_sales') }}
+                WHEN ss1.store_sales > 0 THEN (ss2.store_sales*1.0000)/ss1.store_sales
                 ELSE NULL
             END
   AND CASE
-          WHEN ws2.{{ source('tpcds', 'web_sales') }} > 0 THEN (ws3.{{ source('tpcds', 'web_sales') }}*1.0000)/ws2.{{ source('tpcds', 'web_sales') }}
+          WHEN ws2.web_sales > 0 THEN (ws3.web_sales*1.0000)/ws2.web_sales
           ELSE NULL
       END > CASE
-                WHEN ss2.{{ source('tpcds', 'store_sales') }} > 0 THEN (ss3.{{ source('tpcds', 'store_sales') }}*1.0000)/ss2.{{ source('tpcds', 'store_sales') }}
+                WHEN ss2.store_sales > 0 THEN (ss3.store_sales*1.0000)/ss2.store_sales
                 ELSE NULL
             END
-ORDER BY ss1.ca_county;
-
+ORDER BY ss1.ca_county

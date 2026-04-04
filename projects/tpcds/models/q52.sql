@@ -16,5 +16,4 @@ GROUP BY dt.d_year,
 ORDER BY dt.d_year,
          ext_price DESC,
          brand_id
-LIMIT 100 ;
-
+LIMIT 100

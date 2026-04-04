@@ -52,5 +52,4 @@ ORDER BY channel NULLS FIRST,
          d_year NULLS FIRST,
          d_qoy NULLS FIRST,
          i_category NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

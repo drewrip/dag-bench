@@ -13,5 +13,4 @@ WHERE i_manufact_id = 977
      WHERE cs_item_sk = i_item_sk
        AND d_date BETWEEN '2000-01-27' AND cast('2000-04-26' AS date)
        AND d_date_sk = cs_sold_date_sk )
-LIMIT 100;
-
+LIMIT 100

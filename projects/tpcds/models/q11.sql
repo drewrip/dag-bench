@@ -77,5 +77,4 @@ ORDER BY t_s_secyear.customer_id NULLS FIRST,
          t_s_secyear.customer_first_name NULLS FIRST,
          t_s_secyear.customer_last_name NULLS FIRST,
          t_s_secyear.customer_preferred_cust_flag NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

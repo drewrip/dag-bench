@@ -22,5 +22,4 @@ GROUP BY w_state,
          i_item_id
 ORDER BY w_state,
          i_item_id
-LIMIT 100;
-
+LIMIT 100

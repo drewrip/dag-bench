@@ -52,5 +52,4 @@ ORDER BY c_customer_id,
          ca_gmt_offset ,
          ca_location_type,
          ctr_total_return
-LIMIT 100;
-
+LIMIT 100

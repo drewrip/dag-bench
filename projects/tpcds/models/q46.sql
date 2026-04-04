@@ -44,5 +44,4 @@ ORDER BY c_last_name NULLS FIRST,
          ca_city NULLS FIRST,
          bought_city NULLS FIRST,
          ss_ticket_number NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

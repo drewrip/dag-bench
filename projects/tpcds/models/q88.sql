@@ -135,5 +135,4 @@ FROM
               AND {{ source('tpcds', 'household_demographics') }}.hd_vehicle_count<=2+2)
           OR ({{ source('tpcds', 'household_demographics') }}.hd_dep_count = 0
               AND {{ source('tpcds', 'household_demographics') }}.hd_vehicle_count<=0+2))
-     AND {{ source('tpcds', 'store') }}.s_store_name = 'ese') s8 ;
-
+     AND {{ source('tpcds', 'store') }}.s_store_name = 'ese') s8

@@ -39,5 +39,4 @@ WHERE s_store_sk = ss_store_sk
                                                        OR (ss_addr_sk = ca_address_sk
                                                            AND ca_country = 'United States'
                                                            AND ca_state IN ('VA', 'TX', 'MS')
-                                                           AND ss_net_profit BETWEEN 50 AND 250)) ;
-
+                                                           AND ss_net_profit BETWEEN 50 AND 250))

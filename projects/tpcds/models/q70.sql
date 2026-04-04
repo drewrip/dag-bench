@@ -33,4 +33,4 @@ ORDER BY lochierarchy DESC ,
              WHEN grouping(s_state)+grouping(s_county) = 0 THEN s_state
          END ,
          rank_within_parent
-LIMIT 100;
+LIMIT 100

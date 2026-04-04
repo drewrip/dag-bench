@@ -1,17 +1,17 @@
 
 SELECT channel,
-       {{ source('tpcds', 'item') }},
+       item,
        return_ratio,
        return_rank,
        currency_rank
 FROM
   (SELECT 'web' AS channel,
-          web.{{ source('tpcds', 'item') }},
+          web.item,
           web.return_ratio,
           web.return_rank,
           web.currency_rank
    FROM
-     (SELECT {{ source('tpcds', 'item') }},
+     (SELECT item,
              return_ratio,
              currency_ratio,
              rank() OVER (
@@ -19,7 +19,7 @@ FROM
                          rank() OVER (
                                       ORDER BY currency_ratio) AS currency_rank
       FROM
-        (SELECT ws.ws_item_sk AS {{ source('tpcds', 'item') }},
+        (SELECT ws.ws_item_sk AS item,
                 (cast(sum(coalesce(wr.wr_return_quantity,0)) AS decimal(15,4))/ cast(sum(coalesce(ws.ws_quantity,0)) AS decimal(15,4))) AS return_ratio,
                 (cast(sum(coalesce(wr.wr_return_amt,0)) AS decimal(15,4))/ cast(sum(coalesce(ws.ws_net_paid,0)) AS decimal(15,4))) AS currency_ratio
          FROM {{ source('tpcds', 'web_sales') }} ws
@@ -36,12 +36,12 @@ FROM
    WHERE (web.return_rank <= 10
           OR web.currency_rank <= 10)
    UNION SELECT 'catalog' AS channel,
-                catalog.{{ source('tpcds', 'item') }},
+                catalog.item,
                 catalog.return_ratio,
                 catalog.return_rank,
                 catalog.currency_rank
    FROM
-     (SELECT {{ source('tpcds', 'item') }},
+     (SELECT item,
              return_ratio,
              currency_ratio,
              rank() OVER (
@@ -49,7 +49,7 @@ FROM
                          rank() OVER (
                                       ORDER BY currency_ratio) AS currency_rank
       FROM
-        (SELECT cs.cs_item_sk AS {{ source('tpcds', 'item') }},
+        (SELECT cs.cs_item_sk AS item,
                 (cast(sum(coalesce(cr.cr_return_quantity,0)) AS decimal(15,4))/ cast(sum(coalesce(cs.cs_quantity,0)) AS decimal(15,4))) AS return_ratio,
                 (cast(sum(coalesce(cr.cr_return_amount,0)) AS decimal(15,4))/ cast(sum(coalesce(cs.cs_net_paid,0)) AS decimal(15,4))) AS currency_ratio
          FROM {{ source('tpcds', 'catalog_sales') }} cs
@@ -65,13 +65,13 @@ FROM
          GROUP BY cs.cs_item_sk) in_cat) CATALOG
    WHERE (catalog.return_rank <= 10
           OR catalog.currency_rank <=10)
-   UNION SELECT '{{ source('tpcds', 'store') }}' AS channel,
-                {{ source('tpcds', 'store') }}.{{ source('tpcds', 'item') }},
-                {{ source('tpcds', 'store') }}.return_ratio,
-                {{ source('tpcds', 'store') }}.return_rank,
-                {{ source('tpcds', 'store') }}.currency_rank
+   UNION SELECT 'store' AS channel,
+                store.item,
+                store.return_ratio,
+                store.return_rank,
+                store.currency_rank
    FROM
-     (SELECT {{ source('tpcds', 'item') }},
+     (SELECT item,
              return_ratio,
              currency_ratio,
              rank() OVER (
@@ -79,7 +79,7 @@ FROM
                          rank() OVER (
                                       ORDER BY currency_ratio) AS currency_rank
       FROM
-        (SELECT sts.ss_item_sk AS {{ source('tpcds', 'item') }},
+        (SELECT sts.ss_item_sk AS item,
                 (cast(sum(coalesce(sr.sr_return_quantity,0)) AS decimal(15,4))/cast(sum(coalesce(sts.ss_quantity,0)) AS decimal(15,4))) AS return_ratio,
                 (cast(sum(coalesce(sr.sr_return_amt,0)) AS decimal(15,4))/cast(sum(coalesce(sts.ss_net_paid,0)) AS decimal(15,4))) AS currency_ratio
          FROM {{ source('tpcds', 'store_sales') }} sts
@@ -92,12 +92,11 @@ FROM
            AND ss_sold_date_sk = d_date_sk
            AND d_year = 2001
            AND d_moy = 12
-         GROUP BY sts.ss_item_sk) in_store) {{ source('tpcds', 'store') }}
-   WHERE ({{ source('tpcds', 'store') }}.return_rank <= 10
-          OR {{ source('tpcds', 'store') }}.currency_rank <= 10) ) sq1
+         GROUP BY sts.ss_item_sk) in_store) store
+   WHERE (store.return_rank <= 10
+          OR store.currency_rank <= 10) ) sq1
 ORDER BY 1 NULLS FIRST,
          4 NULLS FIRST,
          5 NULLS FIRST,
          2 NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

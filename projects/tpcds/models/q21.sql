@@ -27,5 +27,4 @@ WHERE (CASE
        END) BETWEEN 2.000/3.000 AND 3.000/2.000
 ORDER BY w_warehouse_name NULLS FIRST,
          i_item_id NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

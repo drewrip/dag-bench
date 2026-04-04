@@ -22,5 +22,4 @@ GROUP BY a.ca_state
 HAVING count(*) >= 10
 ORDER BY cnt NULLS FIRST,
          a.ca_state NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

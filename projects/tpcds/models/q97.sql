@@ -31,5 +31,4 @@ SELECT sum(CASE
 FROM ssci
 FULL OUTER JOIN csci ON (ssci.customer_sk=csci.customer_sk
                          AND ssci.item_sk = csci.item_sk)
-LIMIT 100;
-
+LIMIT 100

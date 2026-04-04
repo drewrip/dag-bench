@@ -64,5 +64,4 @@ ORDER BY s_store_name,
          s_county,
          s_state,
          s_zip
-LIMIT 100;
-
+LIMIT 100

@@ -14,5 +14,4 @@ WHERE i_manufact_id = 350
        AND d_date BETWEEN '2000-01-27' AND cast('2000-04-26' AS date)
        AND d_date_sk = ws_sold_date_sk )
 ORDER BY sum(ws_ext_discount_amt)
-LIMIT 100;
-
+LIMIT 100

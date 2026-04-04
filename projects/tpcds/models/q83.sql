@@ -67,5 +67,4 @@ WHERE sr_items.item_id=cr_items.item_id
   AND sr_items.item_id=wr_items.item_id
 ORDER BY sr_items.item_id NULLS FIRST,
          sr_item_qty NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

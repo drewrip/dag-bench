@@ -1,4 +1,4 @@
-SELECT cc_call_center_id {{ source('tpcds', 'call_center') }},
+SELECT cc_call_center_id Call_Center,
        cc_name Call_Center_Name,
        cc_manager Manager,
        sum(cr_net_loss) Returns_Loss
@@ -27,5 +27,4 @@ GROUP BY cc_call_center_id,
          cc_manager,
          cd_marital_status,
          cd_education_status
-ORDER BY sum(cr_net_loss) DESC;
-
+ORDER BY sum(cr_net_loss) DESC

@@ -28,5 +28,4 @@ WHERE d_date BETWEEN '1999-02-01' AND cast('1999-04-02' AS date)
           ws_wh
      WHERE wr_order_number = ws_wh.ws_order_number)
 ORDER BY count(DISTINCT ws_order_number)
-LIMIT 100;
-
+LIMIT 100

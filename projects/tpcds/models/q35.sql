@@ -57,5 +57,4 @@ ORDER BY ca_state NULLS FIRST,
          cd_dep_count NULLS FIRST,
          cd_dep_employed_count NULLS FIRST,
          cd_dep_college_count NULLS FIRST
-LIMIT 100;
-
+LIMIT 100

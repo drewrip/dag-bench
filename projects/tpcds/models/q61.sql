@@ -43,5 +43,4 @@ FROM
      AND d_moy = 11) all_sales
 ORDER BY promotions,
          total
-LIMIT 100;
-
+LIMIT 100
