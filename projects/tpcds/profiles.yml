@@ -1,0 +1,7 @@
+tpcds:
+  outputs:
+    dev:
+      type: duckdb
+      path: tpcds.duckdb
+      threads: 4
+  target: dev

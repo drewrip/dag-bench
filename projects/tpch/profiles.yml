@@ -1,0 +1,7 @@
+tpch:
+  outputs:
+    dev:
+      type: duckdb
+      path: tpch.duckdb
+      threads: 4
+  target: dev
