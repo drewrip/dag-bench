@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: tpcdi
+    database: tpcdi
+    schema: main
+    tables:
+      - name: raw_batchdate
+      - name: raw_date
+      - name: raw_time
+      - name: raw_finwire
+      - name: raw_industry
+      - name: raw_prospect
+      - name: raw_statustype
+      - name: raw_taxrate
+      - name: raw_tradetype
+      - name: raw_hr
+      - name: raw_account
+      - name: raw_customer
+      - name: raw_trade
+      - name: raw_tradehistory
+      - name: raw_cashtransaction
+      - name: raw_holdinghistory
+      - name: raw_dailymarket
+      - name: raw_watchhistory
+      - name: customermgmt_clean

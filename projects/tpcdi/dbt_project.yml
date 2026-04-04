@@ -1,0 +1,25 @@
+name: 'tpcdi'
+version: '1.0.0'
+config-version: 2
+
+profile: 'tpcdi'
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  tpcdi:
+    base:
+      +materialized: table
+    silver:
+      +materialized: table
+    incremental:
+      +materialized: table
