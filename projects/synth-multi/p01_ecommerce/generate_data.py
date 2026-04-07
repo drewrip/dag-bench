@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -8,6 +8,20 @@ NC, NCT, NP, NO, NI, NR = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS reviews; DROP TABLE IF EXISTS order_items;
 DROP TABLE IF EXISTS orders; DROP TABLE IF EXISTS products;
@@ -25,6 +39,7 @@ CREATE TABLE order_items(item_id INTEGER PRIMARY KEY,order_id INTEGER,product_id
 CREATE TABLE reviews(review_id INTEGER PRIMARY KEY,product_id INTEGER,customer_id INTEGER,
   rating TINYINT,review_date DATE,helpful_votes INTEGER);
 """)
+con.execute("BEGIN")
 base = date(2018, 1, 1)
 cn = ["US", "GB", "DE", "FR", "CA", "AU", "JP", "BR", "IN", "MX"]
 st = ["completed", "pending", "shipped", "cancelled", "refunded"]
@@ -51,14 +66,14 @@ cats = [
     "Tools",
     "Baby",
 ]
-con.executemany(
+batched_insert(
     "INSERT INTO categories VALUES(?,?,?,?)",
     [
         (i, cats[(i - 1) % len(cats)], random.randint(1, i - 1) if i > 4 else None, i)
         for i in range(1, NCT + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO customers VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -73,7 +88,7 @@ con.executemany(
         for i in range(1, NC + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO products VALUES(?,?,?,?,?,?,?,?,?)",
     [
         (
@@ -90,7 +105,7 @@ con.executemany(
         for i in range(1, NP + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO orders VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -105,7 +120,7 @@ con.executemany(
         for i in range(1, NO + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO order_items VALUES(?,?,?,?,?)",
     [
         (
@@ -118,7 +133,7 @@ con.executemany(
         for i in range(1, NI + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO reviews VALUES(?,?,?,?,?,?)",
     [
         (
@@ -132,5 +147,6 @@ con.executemany(
         for i in range(1, NR + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p01 done sf={sf} customers={NC} orders={NO} items={NI}")

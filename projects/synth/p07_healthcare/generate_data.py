@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -10,6 +10,20 @@ NDX = max(10, int(100 * sf))
 
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS diagnoses; DROP TABLE IF EXISTS claim_lines;
 DROP TABLE IF EXISTS claims; DROP TABLE IF EXISTS providers;
@@ -28,6 +42,7 @@ CREATE TABLE claim_lines(line_id INTEGER PRIMARY KEY, claim_id INTEGER,
 CREATE TABLE diagnoses(diag_id INTEGER PRIMARY KEY, claim_id INTEGER,
     icd_code VARCHAR, is_primary BOOLEAN, chronic_flag BOOLEAN);
 """)
+con.execute("BEGIN")
 
 base = date(2020, 1, 1)
 genders = ["M", "F", "U"]
@@ -49,7 +64,7 @@ cpt_codes = [f"CPT{i:05d}" for i in range(1, 51)]
 icd_codes = [f"ICD{i:04d}" for i in range(1, 101)]
 states = ["CA", "TX", "NY", "FL", "IL", "WA", "OH", "GA"]
 
-con.executemany(
+batched_insert(
     "INSERT INTO patients VALUES(?,?,?,?,?,?)",
     [
         (
@@ -63,7 +78,7 @@ con.executemany(
         for i in range(1, NPA + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO providers VALUES(?,?,?,?,?,?)",
     [
         (
@@ -96,8 +111,8 @@ for i in range(1, NCL + 1):
             random.choice(denial_reasons),
         )
     )
-con.executemany("INSERT INTO claims VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
-con.executemany(
+batched_insert("INSERT INTO claims VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
+batched_insert(
     "INSERT INTO claim_lines VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -112,7 +127,7 @@ con.executemany(
         for i in range(1, NCLL + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO diagnoses VALUES(?,?,?,?,?)",
     [
         (
@@ -125,5 +140,6 @@ con.executemany(
         for i in range(1, NDX + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p07 done: patients={NPA} claims={NCL} lines={NCLL}")

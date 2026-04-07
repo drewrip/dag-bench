@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -8,6 +8,20 @@ ND, NE, NS, NPR, NLR = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS leave_requests; DROP TABLE IF EXISTS performance_reviews;
 DROP TABLE IF EXISTS salaries; DROP TABLE IF EXISTS employees; DROP TABLE IF EXISTS departments;
@@ -23,6 +37,7 @@ CREATE TABLE performance_reviews(review_id INTEGER PRIMARY KEY,emp_id INTEGER,
 CREATE TABLE leave_requests(leave_id INTEGER PRIMARY KEY,emp_id INTEGER,
   leave_type VARCHAR,start_date DATE,end_date DATE,approved BOOLEAN);
 """)
+con.execute("BEGIN")
 base = date(2015, 1, 1)
 divs = ["Engineering", "Sales", "Operations", "Finance", "Marketing", "HR"]
 locs = ["NYC", "London", "Berlin", "Tokyo", "Sydney", "Toronto"]
@@ -30,7 +45,7 @@ titles = ["Engineer", "Manager", "Director", "Analyst", "Specialist", "Lead", "V
 etypes = ["full_time", "part_time", "contractor"]
 ltypes = ["annual", "sick", "parental", "unpaid", "bereavement"]
 cats = ["technical", "leadership", "communication", "teamwork", "delivery"]
-con.executemany(
+batched_insert(
     "INSERT INTO departments VALUES(?,?,?,?,?,?)",
     [
         (
@@ -45,7 +60,7 @@ con.executemany(
     ],
 )
 mgrs = list(range(1, max(2, NE // 10) + 1))
-con.executemany(
+batched_insert(
     "INSERT INTO employees VALUES(?,?,?,?,?,?,?,?,?,?)",
     [
         (
@@ -63,7 +78,7 @@ con.executemany(
         for i in range(1, NE + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO salaries VALUES(?,?,?,?,?,?)",
     [
         (
@@ -77,7 +92,7 @@ con.executemany(
         for i in range(1, NS + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO performance_reviews VALUES(?,?,?,?,?,?)",
     [
         (
@@ -91,7 +106,7 @@ con.executemany(
         for i in range(1, NPR + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO leave_requests VALUES(?,?,?,?,?,?)",
     [
         (
@@ -105,5 +120,6 @@ con.executemany(
         for i in range(1, NLR + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p04 done depts={ND} emps={NE}")

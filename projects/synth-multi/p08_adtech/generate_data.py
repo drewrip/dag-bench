@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -7,6 +7,20 @@ NCA, NIMP, NCL, NCV = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS conversions; DROP TABLE IF EXISTS clicks;
 DROP TABLE IF EXISTS impressions; DROP TABLE IF EXISTS campaigns;
@@ -20,6 +34,7 @@ CREATE TABLE clicks(click_id BIGINT PRIMARY KEY,imp_id BIGINT,campaign_id INTEGE
 CREATE TABLE conversions(conv_id INTEGER PRIMARY KEY,click_id BIGINT,campaign_id INTEGER,
   user_id BIGINT,conv_ts TIMESTAMP,conv_type VARCHAR,revenue DECIMAL(10,2));
 """)
+con.execute("BEGIN")
 bts = datetime(2023, 1, 1)
 base = date(2023, 1, 1)
 chans = ["search", "social", "display", "video", "email", "affiliate"]
@@ -28,7 +43,7 @@ devs = ["desktop", "mobile", "tablet", "ctv"]
 geos = ["US", "UK", "CA", "DE", "FR", "AU", "JP", "BR"]
 places = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
 ctypes = ["purchase", "lead", "signup", "download", "call"]
-con.executemany(
+batched_insert(
     "INSERT INTO campaigns VALUES(?,?,?,?,?,?,?,?,?)",
     [
         (
@@ -59,7 +74,7 @@ for i in range(1, NIMP + 1):
             round(random.uniform(0.0001, 0.05), 6),
         )
     )
-con.executemany("INSERT INTO impressions VALUES(?,?,?,?,?,?,?,?)", imp_rows)
+batched_insert("INSERT INTO impressions VALUES(?,?,?,?,?,?,?,?)", imp_rows)
 click_rows = []
 for i in range(1, NCL + 1):
     ir = imp_rows[random.randint(0, len(imp_rows) - 1)]
@@ -73,8 +88,8 @@ for i in range(1, NCL + 1):
             ir[4],
         )
     )
-con.executemany("INSERT INTO clicks VALUES(?,?,?,?,?,?)", click_rows)
-con.executemany(
+batched_insert("INSERT INTO clicks VALUES(?,?,?,?,?,?)", click_rows)
+batched_insert(
     "INSERT INTO conversions VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -89,5 +104,6 @@ con.executemany(
         for i in range(1, NCV + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")

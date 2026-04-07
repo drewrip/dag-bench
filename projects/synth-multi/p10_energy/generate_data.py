@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -7,6 +7,20 @@ NSB, NMT, NCR, NOE = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS outage_events; DROP TABLE IF EXISTS consumption_readings;
 DROP TABLE IF EXISTS meters; DROP TABLE IF EXISTS substations;
@@ -20,6 +34,7 @@ CREATE TABLE consumption_readings(reading_id BIGINT PRIMARY KEY,meter_id INTEGER
 CREATE TABLE outage_events(outage_id INTEGER PRIMARY KEY,sub_id INTEGER,start_ts TIMESTAMP,
   end_ts TIMESTAMP,cause VARCHAR,affected_meters INTEGER,severity VARCHAR);
 """)
+con.execute("BEGIN")
 bts = datetime(2023, 1, 1)
 base = date(2023, 1, 1)
 regions = ["NORTH", "SOUTH", "EAST", "WEST", "CENTRAL"]
@@ -27,7 +42,7 @@ mtypes = ["residential", "commercial", "industrial", "municipal"]
 tariffs = ["standard", "time_of_use", "demand", "green", "low_income"]
 causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
 sevs = ["minor", "moderate", "major", "critical"]
-con.executemany(
+batched_insert(
     "INSERT INTO substations VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -42,7 +57,7 @@ con.executemany(
         for i in range(1, NSB + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO meters VALUES(?,?,?,?,?,?,?,?)",
     [
         (
@@ -71,8 +86,8 @@ for i in range(1, NCR + 1):
             random.random() < 0.02,
         )
     )
-con.executemany("INSERT INTO consumption_readings VALUES(?,?,?,?,?,?,?)", rows)
-con.executemany(
+batched_insert("INSERT INTO consumption_readings VALUES(?,?,?,?,?,?,?)", rows)
+batched_insert(
     "INSERT INTO outage_events VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -87,5 +102,6 @@ con.executemany(
         for i in range(1, NOE + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p10 done substations={NSB} meters={NMT} readings={NCR}")

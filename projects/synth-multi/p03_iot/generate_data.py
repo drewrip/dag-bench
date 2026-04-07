@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -7,6 +7,20 @@ NS, ND, NR, NML = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS maintenance_logs; DROP TABLE IF EXISTS readings;
 DROP TABLE IF EXISTS devices; DROP TABLE IF EXISTS sites;
@@ -20,11 +34,12 @@ CREATE TABLE readings(reading_id BIGINT PRIMARY KEY,device_id INTEGER,ts TIMESTA
 CREATE TABLE maintenance_logs(log_id INTEGER PRIMARY KEY,device_id INTEGER,
   log_ts TIMESTAMP,action VARCHAR,technician VARCHAR);
 """)
+con.execute("BEGIN")
 base = datetime(2023, 1, 1)
 regions = ["NA", "EU", "APAC", "LATAM"]
 dtypes = ["temperature", "humidity", "pressure", "multi", "air_quality"]
 actions = ["calibrate", "replace_battery", "firmware_update", "repair", "inspect"]
-con.executemany(
+batched_insert(
     "INSERT INTO sites VALUES(?,?,?,?,?,?)",
     [
         (
@@ -38,7 +53,7 @@ con.executemany(
         for i in range(1, NS + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO devices VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -68,8 +83,8 @@ for i in range(1, NR + 1):
             random.random() < 0.02,
         )
     )
-con.executemany("INSERT INTO readings VALUES(?,?,?,?,?,?,?,?,?)", rows)
-con.executemany(
+batched_insert("INSERT INTO readings VALUES(?,?,?,?,?,?,?,?,?)", rows)
+batched_insert(
     "INSERT INTO maintenance_logs VALUES(?,?,?,?,?)",
     [
         (
@@ -82,5 +97,6 @@ con.executemany(
         for i in range(1, NML + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p03 done sites={NS} devices={ND} readings={NR}")

@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -8,6 +8,20 @@ NSUP, NWH, NSH, NIN, NPO = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS purchase_orders; DROP TABLE IF EXISTS inventory;
 DROP TABLE IF EXISTS shipments; DROP TABLE IF EXISTS warehouses; DROP TABLE IF EXISTS suppliers;
@@ -24,13 +38,14 @@ CREATE TABLE purchase_orders(po_id INTEGER PRIMARY KEY,supplier_id INTEGER,sku V
   ordered_qty INTEGER,unit_price DECIMAL(10,2),order_date DATE,expected_date DATE,
   received_qty INTEGER,status VARCHAR);
 """)
+con.execute("BEGIN")
 base = date(2021, 1, 1)
 cats = ["raw_materials", "components", "packaging", "finished_goods", "consumables"]
 regions = ["NA", "EU", "APAC", "ME", "SA"]
 statuses = ["delivered", "in_transit", "delayed", "cancelled", "lost"]
 pos = ["open", "partial", "complete", "cancelled"]
 skus = [f"SKU-{i:05d}" for i in range(1, 51)]
-con.executemany(
+batched_insert(
     "INSERT INTO suppliers VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -45,7 +60,7 @@ con.executemany(
         for i in range(1, NSUP + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO warehouses VALUES(?,?,?,?,?,?)",
     [
         (
@@ -59,7 +74,7 @@ con.executemany(
         for i in range(1, NWH + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO shipments VALUES(?,?,?,?,?,?,?,?,?,?)",
     [
         (
@@ -77,7 +92,7 @@ con.executemany(
         for i in range(1, NSH + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO inventory VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -92,7 +107,7 @@ con.executemany(
         for i in range(1, NIN + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO purchase_orders VALUES(?,?,?,?,?,?,?,?,?)",
     [
         (
@@ -109,5 +124,6 @@ con.executemany(
         for i in range(1, NPO + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p05 done suppliers={NSUP} shipments={NSH}")

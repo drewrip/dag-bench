@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -10,6 +10,20 @@ NLV = max(10, int(50 * sf))
 
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS events;
 DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS levels;
@@ -30,6 +44,7 @@ CREATE TABLE purchases(purchase_id INTEGER PRIMARY KEY, player_id INTEGER,
     purchase_ts TIMESTAMP, item_type VARCHAR, item_name VARCHAR,
     price_usd DECIMAL(8,2), currency VARCHAR, is_refunded BOOLEAN);
 """)
+con.execute("BEGIN")
 
 bts = datetime(2023, 1, 1)
 countries = ["US", "CN", "DE", "JP", "BR", "KR", "RU", "GB", "CA", "FR"]
@@ -50,7 +65,7 @@ etypes = [
 itypes = ["coin_pack", "skin", "level_skip", "power_up", "subscription", "loot_box"]
 currencies = ["USD", "EUR", "GBP", "JPY", "BRL"]
 
-con.executemany(
+batched_insert(
     "INSERT INTO players VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -65,7 +80,7 @@ con.executemany(
         for i in range(1, NPL + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO levels VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -97,7 +112,7 @@ for i in range(1, NSS + 1):
             random.randint(0, 1000),
         )
     )
-con.executemany("INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)", sess_rows)
+batched_insert("INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)", sess_rows)
 
 ev_rows = []
 for i in range(1, NEV + 1):
@@ -115,9 +130,9 @@ for i in range(1, NEV + 1):
             f"meta_{i}",
         )
     )
-con.executemany("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)", ev_rows)
+batched_insert("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)", ev_rows)
 
-con.executemany(
+batched_insert(
     "INSERT INTO purchases VALUES(?,?,?,?,?,?,?,?)",
     [
         (
@@ -133,5 +148,6 @@ con.executemany(
         for i in range(1, NPU + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p09 done: players={NPL} sessions={NSS} events={NEV} purchases={NPU}")

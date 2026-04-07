@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -8,6 +8,20 @@ NAC, NSB, NEV, NFU, NST = (
 )
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS support_tickets; DROP TABLE IF EXISTS feature_usage;
 DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS subscriptions; DROP TABLE IF EXISTS accounts;
@@ -23,6 +37,7 @@ CREATE TABLE support_tickets(ticket_id INTEGER PRIMARY KEY,account_id INTEGER,
   created_ts TIMESTAMP,resolved_ts TIMESTAMP,priority VARCHAR,category VARCHAR,
   csat_score TINYINT,is_resolved BOOLEAN);
 """)
+con.execute("BEGIN")
 base = date(2022, 1, 1)
 bts = datetime(2022, 1, 1)
 industries = ["fintech", "healthtech", "edtech", "ecommerce", "manufacturing"]
@@ -31,7 +46,7 @@ etypes = ["login", "page_view", "feature_click", "export", "api_call"]
 features = ["dashboard", "reports", "api", "integrations", "automations", "analytics"]
 priorities = ["low", "medium", "high", "critical"]
 tcats = ["billing", "technical", "feature_request", "onboarding", "other"]
-con.executemany(
+batched_insert(
     "INSERT INTO accounts VALUES(?,?,?,?,?,?,?,?)",
     [
         (
@@ -47,7 +62,7 @@ con.executemany(
         for i in range(1, NAC + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO subscriptions VALUES(?,?,?,?,?,?,?,?)",
     [
         (
@@ -63,7 +78,7 @@ con.executemany(
         for i in range(1, NSB + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO events VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -78,7 +93,7 @@ con.executemany(
         for i in range(1, NEV + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO feature_usage VALUES(?,?,?,?,?)",
     [
         (
@@ -91,7 +106,7 @@ con.executemany(
         for i in range(1, NFU + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO support_tickets VALUES(?,?,?,?,?,?,?,?)",
     [
         (
@@ -109,5 +124,6 @@ con.executemany(
         for i in range(1, NST + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p06 done accounts={NAC} events={NEV}")

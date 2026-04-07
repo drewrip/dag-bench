@@ -1,4 +1,4 @@
-import duckdb, random, sys, os
+import csv, duckdb, random, sys, os, tempfile
 from datetime import datetime, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -9,6 +9,20 @@ NAL = max(5, int(500 * sf))
 
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
+
+def batched_insert(sql, rows):
+    rows = list(rows)
+    if not rows:
+        return
+    table_name = sql.split()[2]
+    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
+        csv.writer(tmp).writerows(rows)
+        temp_path = tmp.name
+    try:
+        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
+    finally:
+        os.unlink(temp_path)
+
 con.execute("""
 DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS merchants; DROP TABLE IF EXISTS accounts;
@@ -26,6 +40,7 @@ CREATE TABLE alerts(alert_id INTEGER PRIMARY KEY, txn_id INTEGER,
     alert_type VARCHAR, severity VARCHAR, created_ts TIMESTAMP,
     resolved BOOLEAN, resolution VARCHAR);
 """)
+con.execute("BEGIN")
 
 from datetime import date
 
@@ -40,7 +55,7 @@ atypes2 = ["velocity", "geo_anomaly", "amount_spike", "card_not_present", "ident
 sevs = ["info", "warning", "critical"]
 ress = ["confirmed_fraud", "false_positive", "under_review"]
 
-con.executemany(
+batched_insert(
     "INSERT INTO accounts VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -55,7 +70,7 @@ con.executemany(
         for i in range(1, NA + 1)
     ],
 )
-con.executemany(
+batched_insert(
     "INSERT INTO merchants VALUES(?,?,?,?,?,?)",
     [
         (
@@ -88,10 +103,10 @@ for i in range(1, NT + 1):
             random.choice(rcodes),
         )
     )
-con.executemany("INSERT INTO transactions VALUES(?,?,?,?,?,?,?,?,?,?)", txns)
+batched_insert("INSERT INTO transactions VALUES(?,?,?,?,?,?,?,?,?,?)", txns)
 
 flagged_ids = [t[0] for t in txns if t[8]][:NAL]
-con.executemany(
+batched_insert(
     "INSERT INTO alerts VALUES(?,?,?,?,?,?,?)",
     [
         (
@@ -106,5 +121,6 @@ con.executemany(
         for i in range(1, NAL + 1)
     ],
 )
+con.commit()
 con.close()
 print(f"p02 done: accounts={NA} txns={NT} alerts={NAL}")

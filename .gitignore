@@ -2,3 +2,4 @@ logs/
 data/
 target/
 **/.user.yml
+__pycache__/
