@@ -1,8 +1,3 @@
-{{
-  config(
-    materialized = "table"
-  )
-}}
 select
   sk_dateid,
   datevalue,

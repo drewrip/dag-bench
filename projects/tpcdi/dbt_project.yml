@@ -17,9 +17,15 @@ clean-targets:
 
 models:
   tpcdi:
-    base:
-      +materialized: table
-    silver:
-      +materialized: table
+    +materialized: view
     incremental:
-      +materialized: table
+      FactHoldings:
+        +materialized: table
+      FactMarketHistroy:
+        +materialized: table
+      FactCashBalances:
+        +materialized: table
+      FactWatches:
+        +materialized: table
+      Prospect:
+        +materialized: table

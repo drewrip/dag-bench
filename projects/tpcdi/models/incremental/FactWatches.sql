@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 WITH Watches AS (
   SELECT 
     customerid,

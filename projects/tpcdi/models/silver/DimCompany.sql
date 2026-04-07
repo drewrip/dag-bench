@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 WITH cmp AS (
   SELECT
     recdate,

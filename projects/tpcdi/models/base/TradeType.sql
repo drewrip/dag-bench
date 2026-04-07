@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 select
   tt_id,
   tt_name,

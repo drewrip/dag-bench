@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table',
-    )
-}}
 SELECT 
     dc.sk_companyid, 
     CAST(SUBSTR(value, 1, 4) AS INT) AS fi_year,

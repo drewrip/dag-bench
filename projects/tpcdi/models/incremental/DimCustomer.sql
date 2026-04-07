@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 WITH customer_incremental as (
   select
     *

@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 SELECT
   sk_brokerid,
   sk_brokerid as brokerid,

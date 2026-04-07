@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 WITH companyfinancials AS (
   SELECT
     f.sk_companyid,

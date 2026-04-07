@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table'
-    )
-}}
 with dailytotals as (
     SELECT
         accountid,

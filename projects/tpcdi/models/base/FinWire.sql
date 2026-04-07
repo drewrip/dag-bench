@@ -1,8 +1,3 @@
-{{
-  config(
-    materialized = "table"
-  )
-}}
 select
     CASE 
       WHEN SUBSTRING(line, 16, 3) = 'FIN' THEN

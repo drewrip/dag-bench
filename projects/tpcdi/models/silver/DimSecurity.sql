@@ -1,8 +1,3 @@
-{{
-    config(
-        materialized = 'table',
-    )
-}}
 WITH SEC AS (
   SELECT
     recdate AS effectivedate,
