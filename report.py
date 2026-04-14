@@ -93,45 +93,36 @@ def analyze_project(project):
     types = [d['type'] for n, d in G.nodes(data=True)]
     type_counts = pd.Series(types).value_counts().to_dict()
     
-    # Visualization (simple DAG plot) - includes sources
-    img_base64 = ""
-    if G.number_of_nodes() > 0:
-        plt.figure(figsize=(10, 6))
-        # Use a spring layout as a fallback, but try to arrange by layers if possible
-        try:
-            # Simple layering approach for visualization
-            layers = {}
-            for node in nx.topological_sort(G):
-                level = 0
-                for pred in G.predecessors(node):
-                    level = max(level, layers[pred] + 1)
-                layers[node] = level
-            
-            # Reposition nodes using layers for x-coordinate
-            pos = {}
-            layer_counts = {}
-            for node, layer in layers.items():
-                layer_counts[layer] = layer_counts.get(layer, 0) + 1
-                pos[node] = (layer, -layer_counts[layer]) # Y is negative to grow downwards
-                
-            node_colors = ['orange' if G.nodes[n]['type'] == 'source' else 'skyblue' for n in G.nodes]
-            nx.draw(G, pos, with_labels=False, node_size=30, node_color=node_colors, 
-                    edge_color='gray', arrowsize=10, alpha=0.6, width=0.5)
-        except:
-            # Fallback to spring layout
-            pos = nx.spring_layout(G, k=0.5, iterations=50)
-            node_colors = ['orange' if G.nodes[n]['type'] == 'source' else 'skyblue' for n in G.nodes]
-            nx.draw(G, pos, with_labels=False, node_size=30, node_color=node_colors, 
-                    edge_color='gray', arrowsize=10, alpha=0.6, width=0.5)
-            
-        plt.title(f"Topology of {project['name']}")
+    # Prepare data for interactive visualization
+    viz_nodes = []
+    viz_edges = []
+    
+    # Simple layering for initial position
+    try:
+        layers = {}
+        for node in nx.topological_sort(G):
+            level = 0
+            for pred in G.predecessors(node):
+                level = max(level, layers[pred] + 1)
+            layers[node] = level
+    except:
+        layers = {n: 0 for n in G.nodes}
+
+    for n, d in G.nodes(data=True):
+        color = '#ff9800' if d['type'] == 'source' else '#2196f3'
+        viz_nodes.append({
+            'id': n,
+            'label': d['name'],
+            'title': f"Type: {d['type']}<br>ID: {n}",
+            'color': color,
+            'level': layers.get(n, 0)
+        })
         
-        tmpfile = BytesIO()
-        plt.savefig(tmpfile, format='png', bbox_inches='tight', dpi=100)
-        img_base64 = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
-        plt.close()
+    for u, v in G.edges():
+        viz_edges.append({'from': u, 'to': v})
 
     return {
+        'id': project['path'].replace('/', '_').replace('.', '_'),
         'name': project['name'],
         'path': project['path'],
         'num_nodes': num_nodes,
@@ -139,7 +130,8 @@ def analyze_project(project):
         'avg_out_degree': round(avg_out_degree, 3),
         'depth': depth,
         'type_counts': type_counts,
-        'img_base64': img_base64
+        'viz_nodes': viz_nodes,
+        'viz_edges': viz_edges
     }
 
 HTML_TEMPLATE = """
@@ -149,6 +141,7 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>dbt Projects Topology Report</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f4f7f6; }
         header { background-color: #2c3e50; color: white; padding: 20px; border-radius: 8px; margin-bottom: 30px; text-align: center; }
@@ -164,8 +157,7 @@ HTML_TEMPLATE = """
         .stat-item { background: #ecf0f1; padding: 15px; border-radius: 6px; text-align: center; }
         .stat-value { font-size: 1.5em; font-weight: bold; color: #2c3e50; display: block; }
         .stat-label { font-size: 0.8em; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
-        .visualization { text-align: center; margin-top: 20px; }
-        .visualization img { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
+        .visualization { height: 500px; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px; background: #fff; }
         .type-tag { display: inline-block; background: #3498db; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; margin-right: 5px; margin-bottom: 5px; }
         footer { text-align: center; margin-top: 50px; color: #7f8c8d; font-size: 0.8em; }
     </style>
@@ -237,12 +229,37 @@ HTML_TEMPLATE = """
                 {% endfor %}
             </div>
 
-            {% if p.img_base64 %}
-            <div class="visualization">
-                <h4>DAG Topology</h4>
-                <img src="data:image/png;base64,{{ p.img_base64 }}" alt="Topology Graph for {{ p.name }}">
-            </div>
-            {% endif %}
+            <div id="viz_{{ p.id }}" class="visualization"></div>
+            <script type="text/javascript">
+                (function() {
+                    const nodes = new vis.DataSet({{ p.viz_nodes | tojson }});
+                    const edges = new vis.DataSet({{ p.viz_edges | tojson }});
+                    const container = document.getElementById('viz_{{ p.id }}');
+                    const data = { nodes: nodes, edges: edges };
+                    const options = {
+                        layout: {
+                            hierarchical: {
+                                direction: 'LR',
+                                sortMethod: 'directed',
+                                levelSeparation: 150,
+                                nodeSpacing: 100
+                            }
+                        },
+                        edges: {
+                            arrows: { to: { enabled: true, scaleFactor: 1, type: 'arrow' } },
+                            color: '#848484',
+                            width: 0.5
+                        },
+                        nodes: {
+                            shape: 'dot',
+                            size: 10,
+                            font: { size: 12, color: '#333' }
+                        },
+                        physics: false
+                    };
+                    new vis.Network(container, data, options);
+                })();
+            </script>
         </div>
         {% endfor %}
     </section>
