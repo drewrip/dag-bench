@@ -1,4 +1,4 @@
 SELECT
   * EXCLUDE (c_comment)
 FROM
-  customer
+  {{ source('tpch', 'customer') }}

@@ -1,4 +1,4 @@
 SELECT
   * EXCLUDE (l_shipmode)
 FROM
-  lineitem
+    {{ source('tpch', 'lineitem') }}

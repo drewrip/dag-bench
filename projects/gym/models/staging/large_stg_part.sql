@@ -1,4 +1,4 @@
 SELECT
   * EXCLUDE (p_comment)
 FROM
-  part
+   {{ source('tpch', 'part') }}

@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: tpcds
-    schema: main
+    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
     tables:
       - name: call_center
       - name: catalog_page

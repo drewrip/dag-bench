@@ -1,7 +1,16 @@
 p01_ecommerce:
-  target: dev
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
   outputs:
     dev:
       type: duckdb
       path: "data/warehouse.duckdb"
+      threads: 4
+    postgres:
+      type: postgres
+      host: 0.0.0.0
+      user: runner
+      password: password
+      port: 5432
+      dbname: benchmark
+      schema: synth_multi_p01_ecommerce
       threads: 4

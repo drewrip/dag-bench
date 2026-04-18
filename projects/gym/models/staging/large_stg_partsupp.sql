@@ -1,4 +1,4 @@
 SELECT
   * EXCLUDE (ps_comment)
 FROM
-  partsupp
+   {{ source('tpch', 'partsupp') }}

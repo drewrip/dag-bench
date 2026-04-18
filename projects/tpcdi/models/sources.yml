@@ -2,8 +2,7 @@ version: 2
 
 sources:
   - name: tpcdi
-    database: tpcdi
-    schema: main
+    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
     tables:
       - name: raw_batchdate
       - name: raw_date
