@@ -121,6 +121,17 @@ def analyze_project(project):
     for u, v in G.edges():
         viz_edges.append({'from': u, 'to': v})
 
+    # Count source nodes (source type in visualization graph)
+    source_nodes = [n for n, d in G.nodes(data=True) if d['type'] == 'source']
+    source_node_count = len(source_nodes)
+    
+    # Count sink nodes (nodes with no outgoing edges in METRIC_RESOURCES subgraph)
+    sink_nodes = []
+    for node in G_metrics.nodes():
+        if G_metrics.out_degree(node) == 0:
+            sink_nodes.append(node)
+    sink_node_count = len(sink_nodes)
+    
     return {
         'id': project['path'].replace('/', '_').replace('.', '_'),
         'name': project['name'],
@@ -129,6 +140,8 @@ def analyze_project(project):
         'num_edges': num_edges,
         'avg_out_degree': round(avg_out_degree, 3),
         'depth': depth,
+        'source_node_count': source_node_count,
+        'sink_node_count': sink_node_count,
         'type_counts': type_counts,
         'viz_nodes': viz_nodes,
         'viz_edges': viz_edges
@@ -178,6 +191,8 @@ HTML_TEMPLATE = """
                     <th>Edges</th>
                     <th>Depth</th>
                     <th>Avg Out-Degree</th>
+                    <th>Source Nodes</th>
+                    <th>Sink Nodes</th>
                 </tr>
             </thead>
             <tbody>
@@ -188,6 +203,8 @@ HTML_TEMPLATE = """
                     <td>{{ p.num_edges }}</td>
                     <td>{{ p.depth }}</td>
                     <td>{{ p.avg_out_degree }}</td>
+                    <td>{{ p.source_node_count }}</td>
+                    <td>{{ p.sink_node_count }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -219,6 +236,14 @@ HTML_TEMPLATE = """
                 <div class="stat-item">
                     <span class="stat-value">{{ p.avg_out_degree }}</span>
                     <span class="stat-label">Avg Out-Degree</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ p.source_node_count }}</span>
+                    <span class="stat-label">Source Nodes</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value">{{ p.sink_node_count }}</span>
+                    <span class="stat-label">Sink Nodes</span>
                 </div>
             </div>
 
