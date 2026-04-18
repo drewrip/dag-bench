@@ -1,7 +1,7 @@
 version: 2
 sources:
   - name: hc
-    schema: main
+    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
     tables:
       - name: patients
       - name: providers

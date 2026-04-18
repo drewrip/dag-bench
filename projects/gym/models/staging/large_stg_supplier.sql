@@ -1,4 +1,4 @@
 SELECT
   * EXCLUDE (s_comment)
 FROM
-  supplier
+   {{ source('tpch', 'supplier') }}

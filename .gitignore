@@ -3,3 +3,5 @@ data/
 target/
 **/.user.yml
 __pycache__/
+*.duckdb
+*.duckdb.wal

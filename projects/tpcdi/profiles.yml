@@ -4,4 +4,13 @@ tpcdi:
       type: duckdb
       path: tpcdi.duckdb
       threads: 4
-  target: dev
+    postgres:
+      type: postgres
+      host: 0.0.0.0
+      user: runner
+      password: password
+      port: 5432
+      dbname: benchmark
+      schema: tpcdi
+      threads: 4
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
