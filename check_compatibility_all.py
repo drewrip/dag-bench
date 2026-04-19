@@ -61,20 +61,27 @@ def run_command(cmd: list[str], cwd: Path | None = None, timeout: int = 300) -> 
 
 
 def find_dbt_projects(projects_root: Path, exclude_names: list[str] | None = None) -> list[Path]:
-    """Find all dbt_project.yml files recursively, excluding _shared and excluded names."""
+    """Find all dbt_project.yml files recursively, excluding _shared and package dirs."""
     if exclude_names is None:
         exclude_names = []
 
     found = []
     for p in sorted(projects_root.glob("**/dbt_project.yml")):
         parent = p.parent
+        
+        # Skip any path containing 'dbt_utils' or 'dbt_packages'
+        # These are installed dbt_package code, not actual dbt projects to test
+        full_path_str = str(parent)
+        if "dbt_utils" in full_path_str.lower() or "dbt_packages" in full_path_str.lower():
+            continue
+        
+        # Skip _shared directory
         if "_shared" in parent.parts:
             continue
         
         # Check if project name matches any exclusion pattern
         include = True
         for exclude_name in exclude_names:
-            # Match against directory name (lowercase) or path (lowercase)
             dir_name = parent.name.lower()
             path_lower = str(parent).lower()
             if exclude_name.lower() in dir_name or exclude_name.lower() in path_lower:
@@ -119,7 +126,15 @@ def test_project(project_dir: Path) -> Result:
         print("  [2/3] No load_postgres.py found, skipping")
 
     # 3. Run dbt with postgres target
-    print("  [3/3] Running dbt --target=postgres...")
+    print("  [3/3] Running dbt deps --target postgres...")
+    success, output = run_command(["dbt", "deps", "--target", "postgres"], cwd=project_dir)
+    if not success:
+        error_text = f"[DBT Failed] {output}" if output else "[DBT Failed]"
+        print(f"  FAIL: deps failed for {project_dir}")
+        _log_error_to_file(project_dir, error_text)
+        return Result(project_dir, Status.DBT_FAILED, output)
+
+    print("  [4/4] Running dbt --target=postgres...")
     success, output = run_command(["dbt", "run", "--target", "postgres"], cwd=project_dir)
     if success:
         print(f"  PASS: {project_dir}")
