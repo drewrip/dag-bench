@@ -1,4 +1,4 @@
-name: 'dbt_bench'
+name: 'gym'
 version: '1.0.0'
 
 profile: 'gym'
