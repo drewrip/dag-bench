@@ -1,4 +1,4 @@
-select sr.region, sum(sr.period_kwh) as total_kwh, round(avg(sr.avg_pf),4) as avg_pf,
+select sr.region, sum(sr.period_kwh) as total_kwh, round(CAST(avg(sr.avg_pf) AS NUMERIC),4) as avg_pf,
     sum(sr.outages) as total_outages, sum(sr.total_cml) as total_cml,
     rm.monthly_kwh as latest_month_kwh
 from {{ ref('substation_reliability') }} sr
