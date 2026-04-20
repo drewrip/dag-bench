@@ -18,12 +18,12 @@ WITH
       {{ ref("large_mid_case") }}
   )
 SELECT
-  SUM(box.is_steel) AS steel_cnt,
-  SUM(box.is_copper) AS copper_cnt,
-  SUM(box.is_brass) AS brass_cnt,
-  SUM(is_box) AS box_cnt,
-  SUM(is_drum) AS drum_cnt,
-  SUM(is_case) AS case_cnt
+  SUM(CAST(box.is_steel AS INT)) AS steel_cnt,
+  SUM(CAST(box.is_copper AS INT)) AS copper_cnt,
+  SUM(CAST(box.is_brass AS INT)) AS brass_cnt,
+  SUM(CAST(is_box AS INT)) AS box_cnt,
+  SUM(CAST(is_drum AS INT)) AS drum_cnt,
+  SUM(CAST(is_case AS INT)) AS case_cnt
 FROM
   box
   JOIN drum ON box.ps_partkey = drum.ps_partkey

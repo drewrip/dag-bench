@@ -6,3 +6,4 @@ __pycache__/
 *.duckdb
 *.duckdb.wal
 errors/
+dbt_packages/
