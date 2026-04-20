@@ -1,6 +1,6 @@
 select sr.region,
     sum(sr.period_kwh)         as total_kwh,
-    round(avg(sr.avg_pf),4)    as avg_power_factor,
+    round(CAST(avg(sr.avg_pf) AS NUMERIC),4)    as avg_power_factor,
     sum(sr.outage_count)       as total_outages,
     sum(sr.total_cml)          as total_cml,
     avg(sr.availability_pct)   as avg_availability_pct,

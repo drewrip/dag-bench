@@ -3,8 +3,8 @@ select s.sub_id, s.sub_name, s.region, s.capacity_mw,
     avg(sdl.avg_power_factor)                 as avg_pf,
     coalesce(oi.outage_count,0)               as outage_count,
     coalesce(oi.total_cml,0)                  as total_cml,
-    round(100 - coalesce(oi.total_cml,0)
-          /(nullif(sdl_days.days,0)*60*24) * 100, 4) as availability_pct
+    round(CAST((100 - coalesce(oi.total_cml,0)
+          /(nullif(sdl_days.days,0)*60*24) * 100) AS NUMERIC), 4) as availability_pct
 from {{ ref('stg_substations') }} s
 left join {{ ref('substation_daily_load') }} sdl using (sub_id)
 left join (

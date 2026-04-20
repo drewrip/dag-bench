@@ -1,4 +1,4 @@
-select merchant_id, merchant_name, t.merchant_category, t.risk_tier,
+select merchant_id, merchant_name, t.merchant_category, t.account_country, t.risk_tier,
     count(*)                                         as total_txns,
     sum(t.amount)                                      as total_volume,
     count(*) filter (where is_flagged)               as flagged_txns,
@@ -9,4 +9,4 @@ select merchant_id, merchant_name, t.merchant_category, t.risk_tier,
     max(t.amount)                                      as max_txn_amount
 from {{ ref('txn_enriched') }} t
 left join {{ ref('alert_txn_join') }} a using (txn_id)
-group by merchant_id, merchant_name, t.merchant_category, t.risk_tier
+group by merchant_id, merchant_name, t.merchant_category, t.account_country, t.risk_tier
