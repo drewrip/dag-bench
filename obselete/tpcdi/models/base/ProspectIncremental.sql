@@ -42,10 +42,13 @@ p AS (
 )
 SELECT * FROM (
   SELECT
-    * EXCLUDE(batchid),
-    max(batchid) recordbatchid,
-    min(batchid) batchid
+    {{ dbt_utils.star(from=source("tpcdi", "raw_prospect"), except=["batchid"]) }},
+    marketingnameplate,
+    max(batchid) AS recordbatchid,
+    min(batchid) AS batchid
   FROM p
-  GROUP BY ALL
+  GROUP BY
+    {{ dbt_utils.star(from=source("tpcdi", "raw_prospect"), except=["batchid"]) }},
+    marketingnameplate
 )
 WHERE recordbatchid = 3

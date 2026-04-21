@@ -8,10 +8,15 @@ WITH cust AS (
   FROM {{ref("DimCustomer")}}
   WHERE iscurrent
 )
-SELECT 
+SELECT
   p.agencyid,
+  {% if target.type == "duckdb" %}
   CAST(strftime(recdate.batchdate, '%Y%m%d') AS BIGINT) AS sk_recorddateid,
   CAST(strftime(origdate.batchdate, '%Y%m%d') AS BIGINT) AS sk_updatedateid,
+  {% else %}
+  CAST(TO_CHAR(recdate.batchdate, 'YYYYMMDD') AS BIGINT) AS sk_recorddateid,
+  CAST(TO_CHAR(origdate.batchdate, 'YYYYMMDD') AS BIGINT) AS sk_updatedateid,
+  {% endif %}
   p.batchid,
   CASE WHEN c.lastname IS NOT NULL THEN TRUE ELSE FALSE END AS iscustomer,
   p.lastname,

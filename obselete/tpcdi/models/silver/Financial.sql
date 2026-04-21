@@ -2,7 +2,11 @@ SELECT
     dc.sk_companyid, 
     CAST(SUBSTR(value, 1, 4) AS INT) AS fi_year,
     CAST(SUBSTR(value, 5, 1) AS INT) AS fi_qtr,
+    {% if target.type == "duckdb" %}
     strptime(SUBSTR(value, 6, 8), '%Y%m%d')::DATE AS fi_qtr_start_date,
+    {% else %}
+    TO_DATE(SUBSTR(value, 6, 8), 'YYYYMMDD')::DATE AS fi_qtr_start_date,
+    {% endif %}
     CAST(SUBSTR(value, 22, 17) AS FLOAT) AS fi_revenue,
     CAST(SUBSTR(value, 39, 17) AS FLOAT) AS fi_net_earn,
     CAST(SUBSTR(value, 56, 12) AS FLOAT) AS fi_basic_eps,
@@ -24,7 +28,11 @@ SELECT
     dc.sk_companyid,
     CAST(SUBSTR(value, 1, 4) AS INT) AS fi_year,
     CAST(SUBSTR(value, 5, 1) AS INT) AS fi_qtr,
+    {% if target.type == "duckdb" %}
     strptime(SUBSTR(value, 6, 8), '%Y%m%d')::DATE AS fi_qtr_start_date,
+    {% else %}
+    TO_DATE(SUBSTR(value, 6, 8), 'YYYYMMDD')::DATE AS fi_qtr_start_date,
+    {% endif %}
     CAST(SUBSTR(value, 22, 17) AS FLOAT) AS fi_revenue,
     CAST(SUBSTR(value, 39, 17) AS FLOAT) AS fi_net_earn,
     CAST(SUBSTR(value, 56, 12) AS FLOAT) AS fi_basic_eps,
@@ -38,6 +46,6 @@ SELECT
 FROM {{ ref('FinWire') }} f
 JOIN {{ ref('DimCompany') }} dc
 ON rectype = 'FIN_COMPANYID'
-  AND TRY_CAST(TRIM(SUBSTR(value, 169, 60)) AS BIGINT) = dc.companyid
+  AND {{ dbt.safe_cast("TRIM(SUBSTR(value, 169, 60))", api.Column.translate_type("BIGINT")) }} = dc.companyid
   AND f.recdate >= dc.effectivedate
   AND f.recdate < dc.enddate

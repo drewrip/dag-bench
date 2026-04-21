@@ -1,7 +1,7 @@
 WITH Watches AS (
-  SELECT 
+  SELECT
     customerid,
-    symbol,        
+    symbol,
     MIN(w_dts)::DATE AS dateplaced,
     MAX(CASE WHEN w_action = 'CNCL' THEN w_dts ELSE NULL END)::DATE AS dateremoved,
     MIN(batchid) AS batchid
@@ -12,8 +12,13 @@ WITH Watches AS (
 SELECT
   c.sk_customerid,
   s.sk_securityid,
+  {% if target.type == "duckdb" %}
   CAST(strftime(wh.dateplaced, '%Y%m%d') AS BIGINT) AS sk_dateid_dateplaced,
   CAST(strftime(wh.dateremoved, '%Y%m%d') AS BIGINT) AS sk_dateid_dateremoved,
+  {% else %}
+  CAST(TO_CHAR(wh.dateplaced, 'YYYYMMDD') AS BIGINT) AS sk_dateid_dateplaced,
+  CAST(TO_CHAR(wh.dateremoved, 'YYYYMMDD') AS BIGINT) AS sk_dateid_dateremoved,
+  {% endif %}
   wh.batchid
 FROM Watches wh
 JOIN {{ ref('DimSecurity') }} s
