@@ -233,7 +233,7 @@ def load_project_sources_to_postgres(project_dir: Path, duckdb_path: str) -> Non
 
     ensure_database(pg_config)
     run_psql(pg_config, f"create schema if not exists {quote_ident(schema)};")
-    run_psql_file(pg_config, repo_root / "projects" / "_shared" / "bootstrap_postgres.sql")
+    run_psql_file(pg_config, repo_root / "utils" / "bootstrap_postgres.sql")
 
     source_tables = read_source_tables(sources_path)
     loaded_tables: list[str] = []

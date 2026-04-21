@@ -10,7 +10,7 @@ def main() -> None:
         root = root.parent
     sys.path.insert(0, str(root))
 
-    from projects._shared.postgres_bench_utils import load_project_sources_to_postgres
+    from utils.postgres_bench_utils import load_project_sources_to_postgres
 
     load_project_sources_to_postgres(current, "tpch.duckdb")
 

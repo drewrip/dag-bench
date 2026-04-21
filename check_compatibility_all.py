@@ -61,7 +61,7 @@ def run_command(cmd: list[str], cwd: Path | None = None, timeout: int = 300) -> 
 
 
 def find_dbt_projects(projects_root: Path, exclude_names: list[str] | None = None) -> list[Path]:
-    """Find all dbt_project.yml files recursively, excluding _shared and package dirs."""
+    """Find all dbt_project.yml files recursively, excluding package dirs."""
     if exclude_names is None:
         exclude_names = []
 
@@ -74,11 +74,7 @@ def find_dbt_projects(projects_root: Path, exclude_names: list[str] | None = Non
         full_path_str = str(parent)
         if "dbt_utils" in full_path_str.lower() or "dbt_packages" in full_path_str.lower():
             continue
-        
-        # Skip _shared directory
-        if "_shared" in parent.parts:
-            continue
-        
+
         # Check if project name matches any exclusion pattern
         include = True
         for exclude_name in exclude_names:
