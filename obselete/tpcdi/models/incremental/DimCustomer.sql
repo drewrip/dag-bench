@@ -30,8 +30,8 @@ Customers AS (
       nat_tx_id,
       1 AS batchid,
       update_ts
-    FROM {{ source('tpcdi', 'customermgmt_clean') }}
-    WHERE ActionType IN ('NEW', 'INACT', 'UPDCUST')
+    FROM {{ source('tpcdi', 'customermgmt_clean') }} cm
+    WHERE cm."ActionType" IN ('NEW', 'INACT', 'UPDCUST')
     UNION ALL
     SELECT
         customerid,
@@ -92,6 +92,8 @@ Customers AS (
       ON c.batchid = bd.batchid
 ),
 CustomerFinal AS (
+    {# Postgres doesn't support `IGNORE NULLS` so, for Postgres, just remove this for convenience #}
+    {% if target.type == "duckdb" %}
     SELECT
       customerid,
       COALESCE(
@@ -100,8 +102,7 @@ CustomerFinal AS (
       ) AS taxid,
       status,
       COALESCE(
-        lastname,
-        LAST_VALUE(lastname IGNORE NULLS) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+        lastname, LAST_VALUE(lastname IGNORE NULLS) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
       ) AS lastname,
       COALESCE(
         firstname,
@@ -183,9 +184,106 @@ CustomerFinal AS (
       ) AS enddate,
       batchid
     FROM Customers
+  {% else %}
+    SELECT
+      customerid,
+      COALESCE(
+        taxid,
+        LAST_VALUE(taxid ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS taxid,
+      status,
+      COALESCE(
+        lastname,
+        LAST_VALUE(lastname ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS lastname,
+      COALESCE(
+        firstname,
+        LAST_VALUE(firstname ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS firstname,
+      COALESCE(
+        middleinitial,
+        LAST_VALUE(middleinitial ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS middleinitial,
+      COALESCE(
+        gender,
+        LAST_VALUE(gender ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS gender,
+      COALESCE(
+        tier,
+        LAST_VALUE(tier ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS tier,
+      COALESCE(
+        dob,
+        LAST_VALUE(dob ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS dob,
+      COALESCE(
+        addressline1,
+        LAST_VALUE(addressline1 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS addressline1,
+      COALESCE(
+        addressline2,
+        LAST_VALUE(addressline2 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS addressline2,
+      COALESCE(
+        postalcode,
+        LAST_VALUE(postalcode ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS postalcode,
+      COALESCE(
+        city,
+        LAST_VALUE(city ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS city,
+      COALESCE(
+        stateprov,
+        LAST_VALUE(stateprov ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS stateprov,
+      COALESCE(
+        country,
+        LAST_VALUE(country ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS country,
+      COALESCE(
+        phone1,
+        LAST_VALUE(phone1 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS phone1,
+      COALESCE(
+        phone2,
+        LAST_VALUE(phone2 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS phone2,
+      COALESCE(
+        phone3,
+        LAST_VALUE(phone3 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS phone3,
+      COALESCE(
+        email1,
+        LAST_VALUE(email1 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS email1,
+      COALESCE(
+        email2,
+        LAST_VALUE(email2 ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS email2,
+      COALESCE(
+        lcl_tx_id,
+        LAST_VALUE(lcl_tx_id ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS lcl_tx_id,
+      COALESCE(
+        nat_tx_id,
+        LAST_VALUE(nat_tx_id ) OVER (PARTITION BY customerid ORDER BY update_ts ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      ) AS nat_tx_id,
+      LEAD(update_ts) OVER (PARTITION BY customerid ORDER BY update_ts) IS NULL AS iscurrent,
+      DATE(update_ts) AS effectivedate,
+      COALESCE(
+        LEAD(DATE(update_ts)) OVER (PARTITION BY customerid ORDER BY update_ts),
+        DATE('9999-12-31')
+      ) AS enddate,
+      batchid
+    FROM Customers
+  {% endif %}
 )
 SELECT
+  {% if target.type == "duckdb" %}
   strftime(c.effectivedate, '%Y%m%d') || c.customerid::VARCHAR AS sk_customerid,
+  {% else %}
+  TO_CHAR(c.effectivedate, 'YYYYMMDD') || c.customerid::VARCHAR AS sk_customerid,
+  {% endif %}
   c.customerid,
   c.taxid,
   c.status,

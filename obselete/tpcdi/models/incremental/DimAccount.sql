@@ -15,7 +15,7 @@ Account AS (
     update_ts,
     1 AS batchid
   FROM {{ source('tpcdi', 'customermgmt_clean') }} c
-  WHERE ActionType NOT IN ('UPDCUST', 'INACT')
+  WHERE c."ActionType" NOT IN ('UPDCUST', 'INACT')
   UNION ALL
   SELECT
     accountid,
@@ -42,10 +42,18 @@ AccountFinal AS (
   SELECT
     accountid,
     customerid,
+    {# Removing IGNORE NULLS for Postgres because it doesn't implement that standard #}
+    {% if target.type == "duckdb" %}
     COALESCE(accountdesc, LAST_VALUE(accountdesc IGNORE NULLS) OVER (PARTITION BY accountid ORDER BY update_ts)) AS accountdesc,
     COALESCE(taxstatus, LAST_VALUE(taxstatus IGNORE NULLS) OVER (PARTITION BY accountid ORDER BY update_ts )) AS taxstatus,
     COALESCE(brokerid, LAST_VALUE(brokerid IGNORE NULLS) OVER (PARTITION BY accountid ORDER BY update_ts )) AS brokerid,
     COALESCE(status, LAST_VALUE(status IGNORE NULLS) OVER (PARTITION BY accountid ORDER BY update_ts )) AS status,
+    {% else %}
+    COALESCE(accountdesc, LAST_VALUE(accountdesc ) OVER (PARTITION BY accountid ORDER BY update_ts)) AS accountdesc,
+    COALESCE(taxstatus, LAST_VALUE(taxstatus ) OVER (PARTITION BY accountid ORDER BY update_ts )) AS taxstatus,
+    COALESCE(brokerid, LAST_VALUE(brokerid ) OVER (PARTITION BY accountid ORDER BY update_ts )) AS brokerid,
+    COALESCE(status, LAST_VALUE(status ) OVER (PARTITION BY accountid ORDER BY update_ts )) AS status,
+    {% endif %}
     DATE(update_ts) AS effectivedate,
     COALESCE(
       LEAD(DATE(update_ts)) OVER (PARTITION BY accountid ORDER BY update_ts),
@@ -80,7 +88,11 @@ AccountCustomerUpdates AS (
   WHERE a.effectivedate < a.enddate 
 )
 SELECT
+  {% if target.type == "duckdb" %}
   CAST(strftime(a.effectivedate, '%Y%m%d') || a.accountid::VARCHAR AS BIGINT) AS sk_accountid,
+  {% else %}
+  CAST(TO_CHAR(a.effectivedate, 'YYYYMMDD') || a.accountid::VARCHAR AS BIGINT) AS sk_accountid,
+  {% endif %}
   a.accountid,
   b.sk_brokerid,
   a.sk_customerid,

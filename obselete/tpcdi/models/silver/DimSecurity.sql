@@ -7,8 +7,13 @@ WITH SEC AS (
     TRIM(SUBSTRING(value, 26, 70)) AS Name,
     TRIM(SUBSTRING(value, 96, 6)) AS exchangeid,
     CAST(SUBSTRING(value, 102, 13) AS BIGINT) AS sharesoutstanding,
+    {% if target.type == "duckdb" %}
     strptime(SUBSTRING(value, 115, 8), '%Y%m%d')::DATE AS firsttrade,
     strptime(SUBSTRING(value, 123, 8), '%Y%m%d')::DATE AS firsttradeonexchange,
+    {% else %}
+    TO_DATE(SUBSTRING(value, 115, 8), '%Y%m%d')::DATE AS firsttrade,
+    TO_DATE(SUBSTRING(value, 123, 8), '%Y%m%d')::DATE AS firsttradeonexchange,
+    {% endif %}
     CAST(SUBSTRING(value, 131, 12) AS FLOAT) AS Dividend,
     TRIM(SUBSTRING(value, 143, 60)) AS conameorcik
   FROM {{ ref('FinWire') }}
@@ -30,9 +35,17 @@ dc AS (
   FROM {{ ref('DimCompany') }}
 ),
 SEC_prep AS (
-  SELECT 
-    SEC.* EXCLUDE (Status, conameorcik),
-    COALESCE(CAST(TRY_CAST(conameorcik AS BIGINT) AS VARCHAR), conameorcik) AS conameorcik,
+  SELECT
+    effectivedate,
+    symbol,
+    issue,
+    name,
+    exchangeid,
+    sharesoutstanding,
+    firsttrade,
+    firsttradeonexchange,
+    dividend,
+    COALESCE(CAST(({{ dbt.safe_cast("conameorcik", api.Column.translate_type("BIGINT")) }}) AS VARCHAR), conameorcik) AS conameorcik,
     CASE
       WHEN Status = 'ACTV' THEN 'Active'
       WHEN Status = 'CMPT' THEN 'Completed'
@@ -61,8 +74,8 @@ SEC_final AS (
     SEC.firsttrade,
     SEC.firsttradeonexchange,
     SEC.Dividend,
-    IF(SEC.effectivedate < dc.effectivedate, dc.effectivedate, SEC.effectivedate) AS effectivedate,
-    IF(SEC.enddate > dc.enddate, dc.enddate, SEC.enddate) AS enddate,
+    CASE WHEN SEC.effectivedate < dc.effectivedate THEN dc.effectivedate ELSE SEC.effectivedate END AS effectivedate,
+    CASE WHEN SEC.enddate > dc.enddate THEN dc.enddate ELSE SEC.enddate END AS enddate,
     dc.sk_companyid
   FROM SEC_prep SEC
   JOIN dc 

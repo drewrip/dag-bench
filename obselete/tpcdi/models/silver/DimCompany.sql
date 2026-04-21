@@ -6,7 +6,7 @@ WITH cmp AS (
     TRIM(SUBSTR(value, 71, 4)) AS Status,
     TRIM(SUBSTR(value, 75, 2)) AS IndustryID,
     TRIM(SUBSTR(value, 77, 4)) AS SPrating,
-    TRY_CAST(NULLIF(TRIM(SUBSTR(value, 81, 8)), '') AS DATE) AS FoundingDate, 
+    {{ dbt.safe_cast("NULLIF(TRIM(SUBSTR(value, 81, 8)), '')", api.Column.translate_type("DATE")) }} AS FoundingDate, 
     TRIM(SUBSTR(value, 89, 80)) AS AddrLine1,
     TRIM(SUBSTR(value, 169, 80)) AS AddrLine2,
     TRIM(SUBSTR(value, 249, 12)) AS PostalCode,
@@ -60,8 +60,12 @@ cmp_transformed AS (
   JOIN {{ ref('Industry') }} ind
     ON cmp.IndustryID = ind.in_id
 )
-SELECT 
+SELECT
+  {% if target.type == "duckdb" %}
   CAST(strftime(effectivedate, '%Y%m%d') || CAST(companyid AS VARCHAR) AS BIGINT) AS sk_companyid,
+  {% else %}
+  CAST(TO_CHAR(effectivedate, 'YYYYMMDD') || CAST(companyid AS VARCHAR) AS BIGINT) AS sk_companyid,
+  {% endif %}
   companyid, 
   status, 
   name, 
