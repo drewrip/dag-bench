@@ -2,7 +2,7 @@ tpch:
   outputs:
     dev:
       type: duckdb
-      path: tpch.duckdb
+      path: data/tpch.duckdb
       threads: 4
     postgres:
       type: postgres

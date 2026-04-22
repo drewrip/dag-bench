@@ -1,11 +1,20 @@
 import duckdb
 import argparse
 import sys
+import os
 
 def generate_tpcds(sf, db_path):
     """
     Generate TPC-DS data into a DuckDB file.
     """
+    db_dir = os.path.dirname(db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
+    if os.path.exists(db_path):
+        print(f"Removing existing {db_path}...")
+        os.remove(db_path)
+    
     print(f"Connecting to {db_path}...")
     con = duckdb.connect(db_path)
     
@@ -28,7 +37,7 @@ def generate_tpcds(sf, db_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate TPC-DS data for DuckDB")
     parser.add_argument("sf", type=float, help="Scale factor (SF=1 is ~1GB)")
-    parser.add_argument("--path", type=str, default="tpcds.duckdb", help="Path to the DuckDB file")
+    parser.add_argument("--path", type=str, default="data/tpcds.duckdb", help="Path to the DuckDB file")
     
     args = parser.parse_args()
     

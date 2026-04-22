@@ -16,7 +16,7 @@ clean-targets:
   - "dbt_packages"
 
 models:
-  dbt_bench:
+  gym:
     staging:
       +materialized: view
     intermediate:
