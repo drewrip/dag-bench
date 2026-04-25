@@ -42,13 +42,7 @@ def main():
 
         print(f"\n--- Preparing project: {project_path} ---")
 
-        # 1. dbt compile
-        dbt_cmd = ["dbt", "compile"]
-        if args.db == "postgres":
-            dbt_cmd.extend(["--target", "postgres"])
-        run_command(dbt_cmd, abs_project_path)
-
-        # 2. python3 generate_data.py <sf>
+        # 1. python3 generate_data.py <sf>
         if not args.skip_data_gen:
             # Check if the script exists in the project directory.
             gen_script = "generate_data.py"
@@ -73,7 +67,16 @@ def main():
         else:
             print(f"Skipping data generation for {project_path} as requested.")
 
-        # 3. python3 load_postgres.py (if db == postgres)
+        # 2. dbt deps
+        run_command(["dbt", "deps"], abs_project_path)
+
+        # 3. dbt compile
+        dbt_cmd = ["dbt", "compile"]
+        if args.db == "postgres":
+            dbt_cmd.extend(["--target", "postgres"])
+        run_command(dbt_cmd, abs_project_path)
+
+        # 4. python3 load_postgres.py (if db == postgres)
         if args.db == "postgres":
             load_script = "load_postgres.py"
             load_script_path = os.path.join(abs_project_path, load_script)
