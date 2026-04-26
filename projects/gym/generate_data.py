@@ -1,11 +1,17 @@
 import duckdb
 import sys
+import os
 
 def generate_data(scale_factor):
-    con = duckdb.connect('tpch.duckdb')
+    os.makedirs('data', exist_ok=True)
+    db_file = os.path.join('data', 'tpch.duckdb')
+    if os.path.exists(db_file):
+        print(f"Removing existing {db_file}...")
+        os.remove(db_file)
+    con = duckdb.connect(db_file)
     con.execute("INSTALL tpch; LOAD tpch;")
     con.execute(f"CALL dbgen(sf={scale_factor});")
-    print(f"TPC-H data generated in tpch.duckdb with SF={scale_factor}")
+    print(f"TPC-H data generated in {db_file} with SF={scale_factor}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

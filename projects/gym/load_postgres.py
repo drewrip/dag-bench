@@ -12,7 +12,7 @@ def main() -> None:
 
     from utils.postgres_bench_utils import load_project_sources_to_postgres
 
-    load_project_sources_to_postgres(current, "tpch.duckdb")
+    load_project_sources_to_postgres(current, "data/tpch.duckdb")
 
 
 if __name__ == "__main__":
