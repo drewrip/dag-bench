@@ -4,7 +4,7 @@ p03_iot:
     dev:
       type: duckdb
       path: "data/warehouse.duckdb"
-      threads: 4
+      threads: 16
     postgres:
       type: postgres
       host: 0.0.0.0
@@ -13,4 +13,4 @@ p03_iot:
       port: 5432
       dbname: benchmark
       schema: synth_multi_p03_iot
-      threads: 4
+      threads: 16

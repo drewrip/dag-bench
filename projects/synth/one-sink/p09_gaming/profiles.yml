@@ -4,7 +4,7 @@ p09_gaming:
     dev:
       type: duckdb
       path: "data/warehouse.duckdb"
-      threads: 4
+      threads: 16
     postgres:
       type: postgres
       host: 0.0.0.0
@@ -13,4 +13,4 @@ p09_gaming:
       port: 5432
       dbname: benchmark
       schema: synth_one_p09_gaming
-      threads: 4
+      threads: 16

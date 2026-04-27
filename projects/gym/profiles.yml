@@ -3,7 +3,7 @@ gym:
     dev:
       type: duckdb
       path: tpch.duckdb
-      threads: 4
+      threads: 16
     postgres:
       type: postgres
       host: 0.0.0.0
@@ -12,5 +12,5 @@ gym:
       port: 5432
       dbname: benchmark
       schema: tpch
-      threads: 4
+      threads: 16
   target: "{{ env_var('DBT_TARGET', 'dev') }}"

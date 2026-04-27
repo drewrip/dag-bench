@@ -4,7 +4,7 @@ p02_fraud:
     dev:
       type: duckdb
       path: "data/warehouse.duckdb"
-      threads: 4
+      threads: 16
     postgres:
       type: postgres
       host: 0.0.0.0
@@ -13,4 +13,4 @@ p02_fraud:
       port: 5432
       dbname: benchmark
       schema: synth_multi_p02_fraud
-      threads: 4
+      threads: 16

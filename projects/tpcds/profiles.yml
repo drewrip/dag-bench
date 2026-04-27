@@ -3,7 +3,7 @@ tpcds:
     dev:
       type: duckdb
       path: data/tpcds.duckdb
-      threads: 4
+      threads: 16
     postgres:
       type: postgres
       host: 0.0.0.0
@@ -12,5 +12,5 @@ tpcds:
       port: 5432
       dbname: benchmark
       schema: tpcds
-      threads: 4
+      threads: 16
   target: "{{ env_var('DBT_TARGET', 'dev') }}"
