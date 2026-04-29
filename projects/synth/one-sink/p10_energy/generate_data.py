@@ -65,11 +65,12 @@ def generate_outages_chunk(start, end, NSB, causes, severities, bts):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 10
-    NSB = max(5, int(50 * sf))
-    NMT = max(20, int(1000 * sf))
-    NCR = max(200, int(500000 * sf))
-    NOE = max(5, int(200 * sf))
+    sf_adj = sf * 10.0
+    NSB = max(5, int(50 * sf_adj))
+    NMT = max(20, int(1000 * sf_adj))
+    NCR = max(200, int(500000 * sf_adj))
+    NOE = max(5, int(200 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

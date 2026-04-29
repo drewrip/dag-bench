@@ -18,6 +18,7 @@ def generate_suppliers_chunk(start, end, cats):
         for i in range(start, end)
     ]
 
+
 def generate_warehouses_chunk(start, end, regions):
     return [
         (
@@ -30,6 +31,7 @@ def generate_warehouses_chunk(start, end, regions):
         )
         for i in range(start, end)
     ]
+
 
 def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
     return [
@@ -48,6 +50,7 @@ def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
         for i in range(start, end)
     ]
 
+
 def generate_inventory_chunk(start, end, NWH, skus, base):
     return [
         (
@@ -61,6 +64,7 @@ def generate_inventory_chunk(start, end, NWH, skus, base):
         )
         for i in range(start, end)
     ]
+
 
 def generate_purchase_orders_chunk(start, end, NSUP, skus, base, pos):
     return [
@@ -81,9 +85,9 @@ def generate_purchase_orders_chunk(start, end, NSUP, skus, base, pos):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 100
+    sf_adj = sf * 1
     NSUP, NWH, NSH, NIN, NPO = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(5, 100), (3, 20), (20, 5000), (10, 1000), (10, 2000)]
     )
     os.makedirs("data", exist_ok=True)
@@ -113,26 +117,87 @@ def main():
     skus = [f"SKU-{i:05d}" for i in range(1, 51)]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "suppliers", ['supplier_id', 'name', 'country', 'reliability_score', 'lead_time_days', 'category', 'is_preferred'], 
-                       run_parallel(executor, generate_suppliers_chunk, NSUP, cats))
-        
-        batched_insert(con, "warehouses", ['wh_id', 'name', 'country', 'region', 'capacity_m3', 'is_active'],
-                       run_parallel(executor, generate_warehouses_chunk, NWH, regions))
-        
-        batched_insert(con, "shipments", ['shipment_id', 'supplier_id', 'wh_id', 'sku', 'quantity', 'unit_cost', 'shipped_date', 'received_date', 'status', 'freight_cost'],
-                       run_parallel(executor, generate_shipments_chunk, NSH, NSUP, NWH, skus, base, statuses))
-        
-        batched_insert(con, "inventory", ['inv_id', 'wh_id', 'sku', 'qty_on_hand', 'qty_reserved', 'reorder_point', 'snapshot_date'],
-                       run_parallel(executor, generate_inventory_chunk, NIN, NWH, skus, base))
-        
-        batched_insert(con, "purchase_orders", ['po_id', 'supplier_id', 'sku', 'ordered_qty', 'unit_price', 'order_date', 'expected_date', 'received_qty', 'status'],
-                       run_parallel(executor, generate_purchase_orders_chunk, NPO, NSUP, skus, base, pos))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "suppliers",
+            [
+                "supplier_id",
+                "name",
+                "country",
+                "reliability_score",
+                "lead_time_days",
+                "category",
+                "is_preferred",
+            ],
+            run_parallel(executor, generate_suppliers_chunk, NSUP, cats),
+        )
+
+        batched_insert(
+            con,
+            "warehouses",
+            ["wh_id", "name", "country", "region", "capacity_m3", "is_active"],
+            run_parallel(executor, generate_warehouses_chunk, NWH, regions),
+        )
+
+        batched_insert(
+            con,
+            "shipments",
+            [
+                "shipment_id",
+                "supplier_id",
+                "wh_id",
+                "sku",
+                "quantity",
+                "unit_cost",
+                "shipped_date",
+                "received_date",
+                "status",
+                "freight_cost",
+            ],
+            run_parallel(
+                executor, generate_shipments_chunk, NSH, NSUP, NWH, skus, base, statuses
+            ),
+        )
+
+        batched_insert(
+            con,
+            "inventory",
+            [
+                "inv_id",
+                "wh_id",
+                "sku",
+                "qty_on_hand",
+                "qty_reserved",
+                "reorder_point",
+                "snapshot_date",
+            ],
+            run_parallel(executor, generate_inventory_chunk, NIN, NWH, skus, base),
+        )
+
+        batched_insert(
+            con,
+            "purchase_orders",
+            [
+                "po_id",
+                "supplier_id",
+                "sku",
+                "ordered_qty",
+                "unit_price",
+                "order_date",
+                "expected_date",
+                "received_qty",
+                "status",
+            ],
+            run_parallel(
+                executor, generate_purchase_orders_chunk, NPO, NSUP, skus, base, pos
+            ),
+        )
 
     con.close()
     print(f"p05 done suppliers={NSUP} shipments={NSH}")
+
 
 if __name__ == "__main__":
     main()

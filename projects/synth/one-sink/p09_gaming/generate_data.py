@@ -84,12 +84,13 @@ def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 10
-    NPL = max(20, int(2000 * sf))
-    NSS = max(50, int(10000 * sf))
-    NEV = max(200, int(80000 * sf))
-    NPU = max(10, int(3000 * sf))
-    NLV = max(10, int(50 * sf))
+    sf_adj = sf * 10.0
+    NPL = max(20, int(2000 * sf_adj))
+    NSS = max(50, int(10000 * sf_adj))
+    NEV = max(200, int(80000 * sf_adj))
+    NPU = max(10, int(3000 * sf_adj))
+    NLV = max(10, int(50 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

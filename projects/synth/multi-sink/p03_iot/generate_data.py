@@ -62,10 +62,11 @@ def generate_maintenance_logs_chunk(start, end, ND, base, actions):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 10
+    sf_adj = sf * 10.0
     NS, ND, NR, NML = (
-        max(a, int(b * sf)) for a, b in [(3, 30), (10, 150), (100, 200000), (5, 500)]
+        max(a, int(b * sf_adj)) for a, b in [(3, 30), (10, 150), (100, 200000), (5, 500)]
     )
+
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
 

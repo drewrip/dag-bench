@@ -18,6 +18,7 @@ def generate_players_chunk(start, end, countries, platforms, bts, age_groups):
         for i in range(start, end)
     ]
 
+
 def generate_levels_chunk(start, end, worlds, diffs):
     return [
         (
@@ -30,6 +31,7 @@ def generate_levels_chunk(start, end, worlds, diffs):
         )
         for i in range(start, end)
     ]
+
 
 def generate_sessions_chunk(start, end, NPL, bts, platforms):
     return [
@@ -44,6 +46,7 @@ def generate_sessions_chunk(start, end, NPL, bts, platforms):
         )
         for i in range(start, end)
     ]
+
 
 def generate_events_chunk(start, end, sess, etypes, NLV):
     rows = []
@@ -62,6 +65,7 @@ def generate_events_chunk(start, end, sess, etypes, NLV):
         )
     return rows
 
+
 def generate_purchases_chunk(start, end, NPL, bts, itypes):
     return [
         (
@@ -79,8 +83,9 @@ def generate_purchases_chunk(start, end, NPL, bts, itypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    sf_adj = sf * 1
     NPL, NSS, NEV, NPU, NLV = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(20, 2000), (50, 10000), (200, 80000), (10, 3000), (10, 50)]
     )
     os.makedirs("data", exist_ok=True)
@@ -110,26 +115,94 @@ def main():
     itypes = ["coin_pack", "skin", "level_skip", "power_up", "subscription"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "players", ['player_id', 'username', 'country', 'platform', 'created_ts', 'age_group', 'is_paid_user'], 
-                       run_parallel(executor, generate_players_chunk, NPL, countries, platforms, bts, age_groups))
-        
-        batched_insert(con, "levels", ['level_id', 'level_name', 'world', 'difficulty', 'par_time_sec', 'reward_coins'],
-                       run_parallel(executor, generate_levels_chunk, NLV, worlds, diffs))
-        
-        sess = run_parallel(executor, generate_sessions_chunk, NSS, NPL, bts, platforms)
-        batched_insert(con, "sessions", ['session_id', 'player_id', 'session_start', 'session_end', 'platform', 'version', 'coins_earned'], sess)
-        
-        batched_insert(con, "events", ['event_id', 'session_id', 'player_id', 'event_type', 'event_ts', 'level_id', 'value'],
-                       run_parallel(executor, generate_events_chunk, NEV, sess, etypes, NLV))
-        
-        batched_insert(con, "purchases", ['purchase_id', 'player_id', 'purchase_ts', 'item_type', 'item_name', 'price_usd', 'is_refunded'],
-                       run_parallel(executor, generate_purchases_chunk, NPU, NPL, bts, itypes))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "players",
+            [
+                "player_id",
+                "username",
+                "country",
+                "platform",
+                "created_ts",
+                "age_group",
+                "is_paid_user",
+            ],
+            run_parallel(
+                executor,
+                generate_players_chunk,
+                NPL,
+                countries,
+                platforms,
+                bts,
+                age_groups,
+            ),
+        )
+
+        batched_insert(
+            con,
+            "levels",
+            [
+                "level_id",
+                "level_name",
+                "world",
+                "difficulty",
+                "par_time_sec",
+                "reward_coins",
+            ],
+            run_parallel(executor, generate_levels_chunk, NLV, worlds, diffs),
+        )
+
+        sess = run_parallel(executor, generate_sessions_chunk, NSS, NPL, bts, platforms)
+        batched_insert(
+            con,
+            "sessions",
+            [
+                "session_id",
+                "player_id",
+                "session_start",
+                "session_end",
+                "platform",
+                "version",
+                "coins_earned",
+            ],
+            sess,
+        )
+
+        batched_insert(
+            con,
+            "events",
+            [
+                "event_id",
+                "session_id",
+                "player_id",
+                "event_type",
+                "event_ts",
+                "level_id",
+                "value",
+            ],
+            run_parallel(executor, generate_events_chunk, NEV, sess, etypes, NLV),
+        )
+
+        batched_insert(
+            con,
+            "purchases",
+            [
+                "purchase_id",
+                "player_id",
+                "purchase_ts",
+                "item_type",
+                "item_name",
+                "price_usd",
+                "is_refunded",
+            ],
+            run_parallel(executor, generate_purchases_chunk, NPU, NPL, bts, itypes),
+        )
 
     con.close()
     print(f"p09 done players={NPL} sessions={NSS} events={NEV}")
+
 
 if __name__ == "__main__":
     main()

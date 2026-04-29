@@ -17,6 +17,7 @@ def generate_patients_chunk(start, end, plans, states, base):
         for i in range(start, end)
     ]
 
+
 def generate_providers_chunk(start, end, specs, states):
     return [
         (
@@ -29,6 +30,7 @@ def generate_providers_chunk(start, end, specs, states):
         )
         for i in range(start, end)
     ]
+
 
 def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstats, dreasons):
     rows = []
@@ -52,6 +54,7 @@ def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstats, dreasons):
         )
     return rows
 
+
 def generate_claim_lines_chunk(start, end, NCL, cpts):
     return [
         (
@@ -65,6 +68,7 @@ def generate_claim_lines_chunk(start, end, NCL, cpts):
         )
         for i in range(start, end)
     ]
+
 
 def generate_diagnoses_chunk(start, end, NCL, icds):
     return [
@@ -81,9 +85,9 @@ def generate_diagnoses_chunk(start, end, NCL, icds):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 100
+    sf_adj = sf * 1
     NPA, NPR, NCL, NCLL, NDX = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(20, 1000), (10, 200), (30, 3000), (50, 9000), (10, 100)]
     )
     os.makedirs("data", exist_ok=True)
@@ -122,26 +126,75 @@ def main():
     states = ["CA", "TX", "NY", "FL", "IL", "WA"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "patients", ['patient_id', 'dob', 'gender', 'zip_code', 'plan_type', 'state'], 
-                       run_parallel(executor, generate_patients_chunk, NPA, plans, states, base))
-        
-        batched_insert(con, "providers", ['provider_id', 'name', 'specialty', 'state', 'is_in_network', 'npi'],
-                       run_parallel(executor, generate_providers_chunk, NPR, specs, states))
-        
-        batched_insert(con, "claims", ['claim_id', 'patient_id', 'provider_id', 'service_date', 'claim_type', 'total_billed', 'total_allowed', 'total_paid', 'status', 'denial_reason'],
-                       run_parallel(executor, generate_claims_chunk, NCL, NPA, NPR, base, ctypes, cstats, dreasons))
-        
-        batched_insert(con, "claim_lines", ['line_id', 'claim_id', 'cpt_code', 'quantity', 'unit_cost', 'allowed_amount', 'paid_amount'],
-                       run_parallel(executor, generate_claim_lines_chunk, NCLL, NCL, cpts))
-        
-        batched_insert(con, "diagnoses", ['diag_id', 'claim_id', 'icd_code', 'is_primary', 'chronic_flag'],
-                       run_parallel(executor, generate_diagnoses_chunk, NDX, NCL, icds))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "patients",
+            ["patient_id", "dob", "gender", "zip_code", "plan_type", "state"],
+            run_parallel(executor, generate_patients_chunk, NPA, plans, states, base),
+        )
+
+        batched_insert(
+            con,
+            "providers",
+            ["provider_id", "name", "specialty", "state", "is_in_network", "npi"],
+            run_parallel(executor, generate_providers_chunk, NPR, specs, states),
+        )
+
+        batched_insert(
+            con,
+            "claims",
+            [
+                "claim_id",
+                "patient_id",
+                "provider_id",
+                "service_date",
+                "claim_type",
+                "total_billed",
+                "total_allowed",
+                "total_paid",
+                "status",
+                "denial_reason",
+            ],
+            run_parallel(
+                executor,
+                generate_claims_chunk,
+                NCL,
+                NPA,
+                NPR,
+                base,
+                ctypes,
+                cstats,
+                dreasons,
+            ),
+        )
+
+        batched_insert(
+            con,
+            "claim_lines",
+            [
+                "line_id",
+                "claim_id",
+                "cpt_code",
+                "quantity",
+                "unit_cost",
+                "allowed_amount",
+                "paid_amount",
+            ],
+            run_parallel(executor, generate_claim_lines_chunk, NCLL, NCL, cpts),
+        )
+
+        batched_insert(
+            con,
+            "diagnoses",
+            ["diag_id", "claim_id", "icd_code", "is_primary", "chronic_flag"],
+            run_parallel(executor, generate_diagnoses_chunk, NDX, NCL, icds),
+        )
 
     con.close()
     print(f"p07 done patients={NPA} claims={NCL}")
+
 
 if __name__ == "__main__":
     main()

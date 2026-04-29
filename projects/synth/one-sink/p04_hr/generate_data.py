@@ -78,12 +78,13 @@ def generate_leave_requests_chunk(start, end, NE, base, ltypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 200
-    ND = max(5, int(30 * sf))
-    NE = max(20, int(800 * sf))
-    NS = max(30, int(2000 * sf))
-    NPR = max(20, int(1600 * sf))
-    NLR = max(10, int(1200 * sf))
+    sf_adj = sf * 200.0
+    ND = max(5, int(30 * sf_adj))
+    NE = max(20, int(800 * sf_adj))
+    NS = max(30, int(2000 * sf_adj))
+    NPR = max(20, int(1600 * sf_adj))
+    NLR = max(10, int(1200 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
