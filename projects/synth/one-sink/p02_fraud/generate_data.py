@@ -65,11 +65,12 @@ def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 200
-    NA = max(10, int(1000 * sf))
-    NM = max(10, int(300 * sf))
-    NT = max(50, int(20000 * sf))
-    NAL = max(5, int(500 * sf))
+    sf_adj = sf * 200.0
+    NA = max(10, int(1000 * sf_adj))
+    NM = max(10, int(300 * sf_adj))
+    NT = max(50, int(20000 * sf_adj))
+    NAL = max(5, int(500 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

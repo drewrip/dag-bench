@@ -79,12 +79,13 @@ def generate_diagnoses_chunk(start, end, NCL, icd_codes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 1000
-    NPA = max(20, int(1000 * sf))
-    NPR = max(10, int(200 * sf))
-    NCL = max(30, int(3000 * sf))
-    NCLL = max(50, int(9000 * sf))
-    NDX = max(10, int(100 * sf))
+    sf_adj = sf * 1000.0
+    NPA = max(20, int(1000 * sf_adj))
+    NPR = max(10, int(200 * sf_adj))
+    NCL = max(30, int(3000 * sf_adj))
+    NCLL = max(50, int(9000 * sf_adj))
+    NDX = max(10, int(100 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

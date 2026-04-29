@@ -83,12 +83,13 @@ def generate_purchase_orders_chunk(start, end, NSUP, skus, base, po_statuses):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 1000
-    NSUP = max(5, int(100 * sf))
-    NWH = max(3, int(20 * sf))
-    NSH = max(20, int(5000 * sf))
-    NIN = max(10, int(1000 * sf))
-    NPO = max(10, int(2000 * sf))
+    sf_adj = sf * 1000.0
+    NSUP = max(5, int(100 * sf_adj))
+    NWH = max(3, int(20 * sf_adj))
+    NSH = max(20, int(5000 * sf_adj))
+    NIN = max(10, int(1000 * sf_adj))
+    NPO = max(10, int(2000 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

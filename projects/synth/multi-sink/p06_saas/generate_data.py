@@ -19,6 +19,7 @@ def generate_accounts_chunk(start, end, industries, base):
         for i in range(start, end)
     ]
 
+
 def generate_subscriptions_chunk(start, end, NAC, plans, base):
     return [
         (
@@ -34,6 +35,7 @@ def generate_subscriptions_chunk(start, end, NAC, plans, base):
         for i in range(start, end)
     ]
 
+
 def generate_events_chunk(start, end, NAC, etypes, bts):
     return [
         (
@@ -48,6 +50,7 @@ def generate_events_chunk(start, end, NAC, etypes, bts):
         for i in range(start, end)
     ]
 
+
 def generate_feature_usage_chunk(start, end, NAC, features, base):
     return [
         (
@@ -59,6 +62,7 @@ def generate_feature_usage_chunk(start, end, NAC, features, base):
         )
         for i in range(start, end)
     ]
+
 
 def generate_support_tickets_chunk(start, end, NAC, bts, priorities, tcats):
     return [
@@ -80,9 +84,9 @@ def generate_support_tickets_chunk(start, end, NAC, bts, priorities, tcats):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 100
+    sf_adj = sf * 1
     NAC, NSB, NEV, NFU, NST = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(10, 500), (10, 700), (100, 50000), (20, 5000), (10, 2000)]
     )
     os.makedirs("data", exist_ok=True)
@@ -108,31 +112,103 @@ def main():
     industries = ["fintech", "healthtech", "edtech", "ecommerce", "manufacturing"]
     plans = ["starter", "growth", "enterprise", "enterprise_plus"]
     etypes = ["login", "page_view", "feature_click", "export", "api_call"]
-    features = ["dashboard", "reports", "api", "integrations", "automations", "analytics"]
+    features = [
+        "dashboard",
+        "reports",
+        "api",
+        "integrations",
+        "automations",
+        "analytics",
+    ]
     priorities = ["low", "medium", "high", "critical"]
     tcats = ["billing", "technical", "feature_request", "onboarding", "other"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "accounts", ['account_id', 'name', 'industry', 'country', 'arr', 'created_date', 'csm_id', 'health_score'], 
-                       run_parallel(executor, generate_accounts_chunk, NAC, industries, base))
-        
-        batched_insert(con, "subscriptions", ['sub_id', 'account_id', 'plan', 'seats', 'mrr', 'start_date', 'end_date', 'is_active'],
-                       run_parallel(executor, generate_subscriptions_chunk, NSB, NAC, plans, base))
-        
-        batched_insert(con, "events", ['event_id', 'account_id', 'user_id', 'event_type', 'event_ts', 'session_id', 'platform'],
-                       run_parallel(executor, generate_events_chunk, NEV, NAC, etypes, bts))
-        
-        batched_insert(con, "feature_usage", ['fu_id', 'account_id', 'feature_name', 'usage_date', 'usage_count'],
-                       run_parallel(executor, generate_feature_usage_chunk, NFU, NAC, features, base))
-        
-        batched_insert(con, "support_tickets", ['ticket_id', 'account_id', 'created_ts', 'resolved_ts', 'priority', 'category', 'csat_score', 'is_resolved'],
-                       run_parallel(executor, generate_support_tickets_chunk, NST, NAC, bts, priorities, tcats))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "accounts",
+            [
+                "account_id",
+                "name",
+                "industry",
+                "country",
+                "arr",
+                "created_date",
+                "csm_id",
+                "health_score",
+            ],
+            run_parallel(executor, generate_accounts_chunk, NAC, industries, base),
+        )
+
+        batched_insert(
+            con,
+            "subscriptions",
+            [
+                "sub_id",
+                "account_id",
+                "plan",
+                "seats",
+                "mrr",
+                "start_date",
+                "end_date",
+                "is_active",
+            ],
+            run_parallel(executor, generate_subscriptions_chunk, NSB, NAC, plans, base),
+        )
+
+        batched_insert(
+            con,
+            "events",
+            [
+                "event_id",
+                "account_id",
+                "user_id",
+                "event_type",
+                "event_ts",
+                "session_id",
+                "platform",
+            ],
+            run_parallel(executor, generate_events_chunk, NEV, NAC, etypes, bts),
+        )
+
+        batched_insert(
+            con,
+            "feature_usage",
+            ["fu_id", "account_id", "feature_name", "usage_date", "usage_count"],
+            run_parallel(
+                executor, generate_feature_usage_chunk, NFU, NAC, features, base
+            ),
+        )
+
+        batched_insert(
+            con,
+            "support_tickets",
+            [
+                "ticket_id",
+                "account_id",
+                "created_ts",
+                "resolved_ts",
+                "priority",
+                "category",
+                "csat_score",
+                "is_resolved",
+            ],
+            run_parallel(
+                executor,
+                generate_support_tickets_chunk,
+                NST,
+                NAC,
+                bts,
+                priorities,
+                tcats,
+            ),
+        )
 
     con.close()
     print(f"p06 done accounts={NAC} events={NEV}")
+
 
 if __name__ == "__main__":
     main()

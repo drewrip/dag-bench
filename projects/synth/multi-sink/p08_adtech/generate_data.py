@@ -20,6 +20,7 @@ def generate_campaigns_chunk(start, end, chans, objs, base):
         for i in range(start, end)
     ]
 
+
 def generate_impressions_chunk(start, end, NCA, NIMP, bts, devs, geos, places):
     return [
         (
@@ -34,6 +35,7 @@ def generate_impressions_chunk(start, end, NCA, NIMP, bts, devs, geos, places):
         )
         for i in range(start, end)
     ]
+
 
 def generate_clicks_chunk(start, end, imp_rows):
     rows = []
@@ -50,6 +52,7 @@ def generate_clicks_chunk(start, end, imp_rows):
             )
         )
     return rows
+
 
 def generate_conversions_chunk(start, end, click_rows, NCA, NIMP, bts, ctypes):
     return [
@@ -68,8 +71,10 @@ def generate_conversions_chunk(start, end, click_rows, NCA, NIMP, bts, ctypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    sf_adj = sf * 1
     NCA, NIMP, NCL, NCV = (
-        max(a, int(b * sf)) for a, b in [(10, 200), (100, 500000), (20, 15000), (5, 3000)]
+        max(a, int(b * sf_adj))
+        for a, b in [(10, 200), (100, 500000), (20, 15000), (5, 3000)]
     )
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
@@ -97,23 +102,87 @@ def main():
     ctypes = ["purchase", "lead", "signup", "download", "call"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'], 
-                       run_parallel(executor, generate_campaigns_chunk, NCA, chans, objs, base))
-        
-        imp_rows = run_parallel(executor, generate_impressions_chunk, NIMP, NCA, NIMP, bts, devs, geos, places)
-        batched_insert(con, "impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
-        
-        click_rows = run_parallel(executor, generate_clicks_chunk, NCL, imp_rows)
-        batched_insert(con, "clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'device'], click_rows)
-        
-        batched_insert(con, "conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'],
-                       run_parallel(executor, generate_conversions_chunk, NCV, click_rows, NCA, NIMP, bts, ctypes))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "campaigns",
+            [
+                "campaign_id",
+                "name",
+                "advertiser",
+                "channel",
+                "objective",
+                "start_date",
+                "end_date",
+                "budget",
+                "cpm_target",
+            ],
+            run_parallel(executor, generate_campaigns_chunk, NCA, chans, objs, base),
+        )
+
+        imp_rows = run_parallel(
+            executor,
+            generate_impressions_chunk,
+            NIMP,
+            NCA,
+            NIMP,
+            bts,
+            devs,
+            geos,
+            places,
+        )
+        batched_insert(
+            con,
+            "impressions",
+            [
+                "imp_id",
+                "campaign_id",
+                "user_id",
+                "imp_ts",
+                "device",
+                "geo",
+                "placement",
+                "cost_usd",
+            ],
+            imp_rows,
+        )
+
+        click_rows = run_parallel(executor, generate_clicks_chunk, NCL, imp_rows)
+        batched_insert(
+            con,
+            "clicks",
+            ["click_id", "imp_id", "campaign_id", "user_id", "click_ts", "device"],
+            click_rows,
+        )
+
+        batched_insert(
+            con,
+            "conversions",
+            [
+                "conv_id",
+                "click_id",
+                "campaign_id",
+                "user_id",
+                "conv_ts",
+                "conv_type",
+                "revenue",
+            ],
+            run_parallel(
+                executor,
+                generate_conversions_chunk,
+                NCV,
+                click_rows,
+                NCA,
+                NIMP,
+                bts,
+                ctypes,
+            ),
+        )
 
     con.close()
     print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")
+
 
 if __name__ == "__main__":
     main()

@@ -82,11 +82,12 @@ def generate_reviews_chunk(start, end, NP, NC, base):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 100
+    sf_adj = sf * 100.0
     NC, NCT, NP, NO, NI, NR = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(10, 2000), (5, 20), (20, 500), (30, 8000), (50, 24000), (20, 6000)]
     )
+
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
 

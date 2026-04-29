@@ -17,6 +17,7 @@ def generate_departments_chunk(start, end, divs, locs):
         for i in range(start, end)
     ]
 
+
 def generate_employees_chunk(start, end, ND, mgrs, base, titles, etypes):
     return [
         (
@@ -34,6 +35,7 @@ def generate_employees_chunk(start, end, ND, mgrs, base, titles, etypes):
         for i in range(start, end)
     ]
 
+
 def generate_salaries_chunk(start, end, NE, base):
     return [
         (
@@ -47,6 +49,7 @@ def generate_salaries_chunk(start, end, NE, base):
         for i in range(start, end)
     ]
 
+
 def generate_performance_reviews_chunk(start, end, NE, base, cats):
     return [
         (
@@ -59,6 +62,7 @@ def generate_performance_reviews_chunk(start, end, NE, base, cats):
         )
         for i in range(start, end)
     ]
+
 
 def generate_leave_requests_chunk(start, end, NE, base, ltypes):
     return [
@@ -76,9 +80,9 @@ def generate_leave_requests_chunk(start, end, NE, base, ltypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 100
+    sf_adj = sf * 1
     ND, NE, NS, NPR, NLR = (
-        max(a, int(b * sf))
+        max(a, int(b * sf_adj))
         for a, b in [(5, 30), (20, 800), (30, 2000), (20, 1600), (10, 1200)]
     )
     os.makedirs("data", exist_ok=True)
@@ -109,26 +113,70 @@ def main():
 
     mgrs = list(range(1, max(2, NE // 10) + 1))
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'], 
-                       run_parallel(executor, generate_departments_chunk, ND, divs, locs))
-        
-        batched_insert(con, "employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'],
-                       run_parallel(executor, generate_employees_chunk, NE, ND, mgrs, base, titles, etypes))
-        
-        batched_insert(con, "salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'],
-                       run_parallel(executor, generate_salaries_chunk, NS, NE, base))
-        
-        batched_insert(con, "performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category'],
-                       run_parallel(executor, generate_performance_reviews_chunk, NPR, NE, base, cats))
-        
-        batched_insert(con, "leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'],
-                       run_parallel(executor, generate_leave_requests_chunk, NLR, NE, base, ltypes))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "departments",
+            ["dept_id", "name", "division", "location", "budget", "headcount_target"],
+            run_parallel(executor, generate_departments_chunk, ND, divs, locs),
+        )
+
+        batched_insert(
+            con,
+            "employees",
+            [
+                "emp_id",
+                "dept_id",
+                "manager_id",
+                "first_name",
+                "last_name",
+                "gender",
+                "hire_date",
+                "job_title",
+                "employment_type",
+                "is_active",
+            ],
+            run_parallel(
+                executor, generate_employees_chunk, NE, ND, mgrs, base, titles, etypes
+            ),
+        )
+
+        batched_insert(
+            con,
+            "salaries",
+            [
+                "salary_id",
+                "emp_id",
+                "effective_date",
+                "base_salary",
+                "bonus",
+                "currency",
+            ],
+            run_parallel(executor, generate_salaries_chunk, NS, NE, base),
+        )
+
+        batched_insert(
+            con,
+            "performance_reviews",
+            ["review_id", "emp_id", "review_date", "reviewer_id", "score", "category"],
+            run_parallel(
+                executor, generate_performance_reviews_chunk, NPR, NE, base, cats
+            ),
+        )
+
+        batched_insert(
+            con,
+            "leave_requests",
+            ["leave_id", "emp_id", "leave_type", "start_date", "end_date", "approved"],
+            run_parallel(
+                executor, generate_leave_requests_chunk, NLR, NE, base, ltypes
+            ),
+        )
 
     con.close()
     print(f"p04 done depts={ND} emps={NE}")
+
 
 if __name__ == "__main__":
     main()

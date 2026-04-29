@@ -69,10 +69,12 @@ def generate_conversions_chunk(start, end, click_ids, NCA, NIMP, bts, ctypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    NCA = max(10, int(200 * sf))
-    NIMP = max(100, int(500000 * sf))
-    NCL = max(20, int(15000 * sf))
-    NCV = max(5, int(3000 * sf))
+    sf_adj = sf * 1.0
+    NCA = max(10, int(200 * sf_adj))
+    NIMP = max(100, int(500000 * sf_adj))
+    NCL = max(20, int(15000 * sf_adj))
+    NCV = max(5, int(3000 * sf_adj))
+
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")

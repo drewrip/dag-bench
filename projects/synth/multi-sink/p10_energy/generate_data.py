@@ -18,6 +18,7 @@ def generate_substations_chunk(start, end, regions):
         for i in range(start, end)
     ]
 
+
 def generate_meters_chunk(start, end, NSB, NMT, mtypes, tariffs, base):
     return [
         (
@@ -33,6 +34,7 @@ def generate_meters_chunk(start, end, NSB, NMT, mtypes, tariffs, base):
         for i in range(start, end)
     ]
 
+
 def generate_consumption_readings_chunk(start, end, NMT, bts):
     return [
         (
@@ -46,6 +48,7 @@ def generate_consumption_readings_chunk(start, end, NMT, bts):
         )
         for i in range(start, end)
     ]
+
 
 def generate_outage_events_chunk(start, end, NSB, bts, causes, sevs):
     return [
@@ -64,8 +67,10 @@ def generate_outage_events_chunk(start, end, NSB, bts, causes, sevs):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    sf_adj = sf * 1
     NSB, NMT, NCR, NOE = (
-        max(a, int(b * sf)) for a, b in [(5, 50), (20, 1000), (200, 500000), (5, 200)]
+        max(a, int(b * sf_adj))
+        for a, b in [(5, 50), (20, 1000), (200, 500000), (5, 200)]
     )
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
@@ -92,23 +97,68 @@ def main():
     sevs = ["minor", "moderate", "major", "critical"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-    
-    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'], 
-                       run_parallel(executor, generate_substations_chunk, NSB, regions))
-        
-        batched_insert(con, "meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'tariff_class', 'install_date', 'is_smart', 'rated_capacity_kw'],
-                       run_parallel(executor, generate_meters_chunk, NMT, NSB, NMT, mtypes, tariffs, base))
-        
-        batched_insert(con, "consumption_readings", ['reading_id', 'meter_id', 'read_ts', 'kwh', 'voltage_v', 'power_factor', 'is_estimated'],
-                       run_parallel(executor, generate_consumption_readings_chunk, NCR, NMT, bts))
-        
-        batched_insert(con, "outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'cause', 'affected_meters', 'severity'],
-                       run_parallel(executor, generate_outage_events_chunk, NOE, NSB, bts, causes, sevs))
 
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        batched_insert(
+            con,
+            "substations",
+            ["sub_id", "name", "region", "capacity_mw", "voltage_kv", "lat", "lon"],
+            run_parallel(executor, generate_substations_chunk, NSB, regions),
+        )
+
+        batched_insert(
+            con,
+            "meters",
+            [
+                "meter_id",
+                "sub_id",
+                "customer_id",
+                "meter_type",
+                "tariff_class",
+                "install_date",
+                "is_smart",
+                "rated_capacity_kw",
+            ],
+            run_parallel(
+                executor, generate_meters_chunk, NMT, NSB, NMT, mtypes, tariffs, base
+            ),
+        )
+
+        batched_insert(
+            con,
+            "consumption_readings",
+            [
+                "reading_id",
+                "meter_id",
+                "read_ts",
+                "kwh",
+                "voltage_v",
+                "power_factor",
+                "is_estimated",
+            ],
+            run_parallel(executor, generate_consumption_readings_chunk, NCR, NMT, bts),
+        )
+
+        batched_insert(
+            con,
+            "outage_events",
+            [
+                "outage_id",
+                "sub_id",
+                "start_ts",
+                "end_ts",
+                "cause",
+                "affected_meters",
+                "severity",
+            ],
+            run_parallel(
+                executor, generate_outage_events_chunk, NOE, NSB, bts, causes, sevs
+            ),
+        )
 
     con.close()
     print(f"p10 done substations={NSB} meters={NMT} readings={NCR}")
+
 
 if __name__ == "__main__":
     main()

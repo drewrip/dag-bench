@@ -10,6 +10,7 @@ def generate_categories_chunk(start, end, cats):
         for i in range(start, end)
     ]
 
+
 def generate_customers_chunk(start, end, cn, base):
     return [
         (
@@ -23,6 +24,7 @@ def generate_customers_chunk(start, end, cn, base):
         )
         for i in range(start, end)
     ]
+
 
 def generate_products_chunk(start, end, NCT, base):
     return [
@@ -40,6 +42,7 @@ def generate_products_chunk(start, end, NCT, base):
         for i in range(start, end)
     ]
 
+
 def generate_orders_chunk(start, end, NC, st, ch, base):
     return [
         (
@@ -54,6 +57,7 @@ def generate_orders_chunk(start, end, NC, st, ch, base):
         for i in range(start, end)
     ]
 
+
 def generate_order_items_chunk(start, end, NO, NP):
     return [
         (
@@ -65,6 +69,7 @@ def generate_order_items_chunk(start, end, NO, NP):
         )
         for i in range(start, end)
     ]
+
 
 def generate_reviews_chunk(start, end, NP, NC, base):
     return [
@@ -82,13 +87,13 @@ def generate_reviews_chunk(start, end, NP, NC, base):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf *= 50.0
-    NC = max(10, int(2000 * sf))
-    NCT = max(5, int(20 * sf))
-    NP = max(20, int(500 * sf))
-    NO = max(30, int(8000 * sf))
-    NI = max(50, int(24000 * sf))
-    NR = max(20, int(6000 * sf))
+    sf_adj = sf * 50.0
+    NC = max(10, int(2000 * sf_adj))
+    NCT = max(5, int(20 * sf_adj))
+    NP = max(20, int(500 * sf_adj))
+    NO = max(30, int(8000 * sf_adj))
+    NI = max(50, int(24000 * sf_adj))
+    NR = max(20, int(6000 * sf_adj))
 
     os.makedirs("data", exist_ok=True)
     con = duckdb.connect("data/warehouse.duckdb")
@@ -119,29 +124,103 @@ def main():
     st = ["completed", "pending", "shipped", "cancelled", "refunded"]
     ch = ["web", "mobile", "in-store", "marketplace"]
     cats = [
-        "Electronics", "Clothing", "Books", "Home", "Sports", "Beauty", "Toys", "Food",
-        "Garden", "Automotive", "Health", "Office", "Jewelry", "Music", "Movies", "Games",
-        "Travel", "Pets", "Tools", "Baby",
+        "Electronics",
+        "Clothing",
+        "Books",
+        "Home",
+        "Sports",
+        "Beauty",
+        "Toys",
+        "Food",
+        "Garden",
+        "Automotive",
+        "Health",
+        "Office",
+        "Jewelry",
+        "Music",
+        "Movies",
+        "Games",
+        "Travel",
+        "Pets",
+        "Tools",
+        "Baby",
     ]
 
     cpu_count = min(4, os.cpu_count() or 1)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        batched_insert(con, "categories", ['category_id', 'name', 'parent_id', 'display_rank'], 
-                       run_parallel(executor, generate_categories_chunk, NCT, cats))
-        batched_insert(con, "customers", ['customer_id', 'full_name', 'email', 'country', 'signup_date', 'is_active', 'lifetime_spend'], 
-                       run_parallel(executor, generate_customers_chunk, NC, cn, base))
-        batched_insert(con, "products", ['product_id', 'category_id', 'sku', 'name', 'price', 'cost', 'weight_kg', 'is_active', 'stock_qty'], 
-                       run_parallel(executor, generate_products_chunk, NP, NCT, base))
-        batched_insert(con, "orders", ['order_id', 'customer_id', 'order_date', 'status', 'channel', 'discount_pct', 'shipping_cost'], 
-                       run_parallel(executor, generate_orders_chunk, NO, NC, st, ch, base))
-        batched_insert(con, "order_items", ['item_id', 'order_id', 'product_id', 'quantity', 'unit_price'], 
-                       run_parallel(executor, generate_order_items_chunk, NI, NO, NP))
-        batched_insert(con, "reviews", ['review_id', 'product_id', 'customer_id', 'rating', 'review_date', 'helpful_votes'], 
-                       run_parallel(executor, generate_reviews_chunk, NR, NP, NC, base))
-
+        batched_insert(
+            con,
+            "categories",
+            ["category_id", "name", "parent_id", "display_rank"],
+            run_parallel(executor, generate_categories_chunk, NCT, cats),
+        )
+        batched_insert(
+            con,
+            "customers",
+            [
+                "customer_id",
+                "full_name",
+                "email",
+                "country",
+                "signup_date",
+                "is_active",
+                "lifetime_spend",
+            ],
+            run_parallel(executor, generate_customers_chunk, NC, cn, base),
+        )
+        batched_insert(
+            con,
+            "products",
+            [
+                "product_id",
+                "category_id",
+                "sku",
+                "name",
+                "price",
+                "cost",
+                "weight_kg",
+                "is_active",
+                "stock_qty",
+            ],
+            run_parallel(executor, generate_products_chunk, NP, NCT, base),
+        )
+        batched_insert(
+            con,
+            "orders",
+            [
+                "order_id",
+                "customer_id",
+                "order_date",
+                "status",
+                "channel",
+                "discount_pct",
+                "shipping_cost",
+            ],
+            run_parallel(executor, generate_orders_chunk, NO, NC, st, ch, base),
+        )
+        batched_insert(
+            con,
+            "order_items",
+            ["item_id", "order_id", "product_id", "quantity", "unit_price"],
+            run_parallel(executor, generate_order_items_chunk, NI, NO, NP),
+        )
+        batched_insert(
+            con,
+            "reviews",
+            [
+                "review_id",
+                "product_id",
+                "customer_id",
+                "rating",
+                "review_date",
+                "helpful_votes",
+            ],
+            run_parallel(executor, generate_reviews_chunk, NR, NP, NC, base),
+        )
 
     con.close()
     print(f"p01 done: sf={sf} customers={NC} orders={NO} items={NI}")
+
 
 if __name__ == "__main__":
     main()
