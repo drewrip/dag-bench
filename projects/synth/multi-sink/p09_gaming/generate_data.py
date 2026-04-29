@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -9,18 +10,12 @@ NPL, NSS, NEV, NPU, NLV = (
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 con.execute("""
 DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS events;
@@ -36,7 +31,6 @@ CREATE TABLE events(event_id BIGINT PRIMARY KEY,session_id BIGINT,player_id INTE
 CREATE TABLE purchases(purchase_id INTEGER PRIMARY KEY,player_id INTEGER,purchase_ts TIMESTAMP,
   item_type VARCHAR,item_name VARCHAR,price_usd DECIMAL(8,2),is_refunded BOOLEAN);
 """)
-con.execute("BEGIN")
 bts = datetime(2023, 1, 1)
 countries = ["US", "CN", "DE", "JP", "BR", "KR", "RU", "GB"]
 platforms = ["PC", "Mobile_iOS", "Mobile_Android", "Console"]
@@ -45,9 +39,7 @@ worlds = ["Forest", "Desert", "Ocean", "Space", "Underground", "Sky"]
 diffs = ["easy", "normal", "hard", "nightmare"]
 etypes = ["level_start", "level_complete", "level_fail", "achievement", "death"]
 itypes = ["coin_pack", "skin", "level_skip", "power_up", "subscription"]
-batched_insert(
-    "INSERT INTO players VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("players", ['player_id', 'username', 'country', 'platform', 'created_ts', 'age_group', 'is_paid_user'], [
         (
             i,
             f"Player_{i}",
@@ -60,9 +52,7 @@ batched_insert(
         for i in range(1, NPL + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO levels VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("levels", ['level_id', 'level_name', 'world', 'difficulty', 'par_time_sec', 'reward_coins'], [
         (
             i,
             f"Level_{i}",
@@ -88,7 +78,7 @@ for i in range(1, NSS + 1):
             random.randint(0, 1000),
         )
     )
-batched_insert("INSERT INTO sessions VALUES(?,?,?,?,?,?,?)", sess)
+batched_insert("sessions", ['session_id', 'player_id', 'session_start', 'session_end', 'platform', 'version', 'coins_earned'], sess)
 ev = []
 for i in range(1, NEV + 1):
     s = random.choice(sess)
@@ -103,10 +93,8 @@ for i in range(1, NEV + 1):
             round(random.uniform(0, 1000), 2),
         )
     )
-batched_insert("INSERT INTO events VALUES(?,?,?,?,?,?,?)", ev)
-batched_insert(
-    "INSERT INTO purchases VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("events", ['event_id', 'session_id', 'player_id', 'event_type', 'event_ts', 'level_id', 'value'], ev)
+batched_insert("purchases", ['purchase_id', 'player_id', 'purchase_ts', 'item_type', 'item_name', 'price_usd', 'is_refunded'], [
         (
             i,
             random.randint(1, NPL),
@@ -119,6 +107,5 @@ batched_insert(
         for i in range(1, NPU + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p09 done players={NPL} sessions={NSS} events={NEV}")

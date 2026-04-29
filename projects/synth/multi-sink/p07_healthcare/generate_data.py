@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -11,20 +12,12 @@ os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile(
-        "w", newline="", suffix=".csv", delete=False
-    ) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
 con.execute("""
@@ -42,7 +35,6 @@ CREATE TABLE claim_lines(line_id INTEGER PRIMARY KEY,claim_id INTEGER,cpt_code V
 CREATE TABLE diagnoses(diag_id INTEGER PRIMARY KEY,claim_id INTEGER,icd_code VARCHAR,
   is_primary BOOLEAN,chronic_flag BOOLEAN);
 """)
-con.execute("BEGIN")
 base = date(2020, 1, 1)
 plans = ["HMO", "PPO", "EPO", "HDHP", "Medicare", "Medicaid"]
 specs = [
@@ -59,9 +51,7 @@ dreasons = ["not_covered", "prior_auth", "out_of_network", None, None, None]
 cpts = [f"CPT{i:05d}" for i in range(1, 51)]
 icds = [f"ICD{i:04d}" for i in range(1, 101)]
 states = ["CA", "TX", "NY", "FL", "IL", "WA"]
-batched_insert(
-    "INSERT INTO patients VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("patients", ['patient_id', 'dob', 'gender', 'zip_code', 'plan_type', 'state'], [
         (
             i,
             base - timedelta(days=random.randint(365 * 5, 365 * 85)),
@@ -73,9 +63,7 @@ batched_insert(
         for i in range(1, NPA + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO providers VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("providers", ['provider_id', 'name', 'specialty', 'state', 'is_in_network', 'npi'], [
         (
             i,
             f"Provider {i}",
@@ -106,10 +94,8 @@ for i in range(1, NCL + 1):
             random.choice(dreasons),
         )
     )
-batched_insert("INSERT INTO claims VALUES(?,?,?,?,?,?,?,?,?,?)", rows)
-batched_insert(
-    "INSERT INTO claim_lines VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("claims", ['claim_id', 'patient_id', 'provider_id', 'service_date', 'claim_type', 'total_billed', 'total_allowed', 'total_paid', 'status', 'denial_reason'], rows)
+batched_insert("claim_lines", ['line_id', 'claim_id', 'cpt_code', 'quantity', 'unit_cost', 'allowed_amount', 'paid_amount'], [
         (
             i,
             random.randint(1, NCL),
@@ -122,9 +108,7 @@ batched_insert(
         for i in range(1, NCLL + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO diagnoses VALUES(?,?,?,?,?)",
-    [
+batched_insert("diagnoses", ['diag_id', 'claim_id', 'icd_code', 'is_primary', 'chronic_flag'], [
         (
             i,
             random.randint(1, NCL),
@@ -135,6 +119,5 @@ batched_insert(
         for i in range(1, NDX + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p07 done patients={NPA} claims={NCL}")

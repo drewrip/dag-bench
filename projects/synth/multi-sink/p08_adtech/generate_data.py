@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -8,18 +9,12 @@ NCA, NIMP, NCL, NCV = (
 os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile("w", newline="", suffix=".csv", delete=False) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 con.execute("""
 DROP TABLE IF EXISTS conversions; DROP TABLE IF EXISTS clicks;
@@ -34,7 +29,6 @@ CREATE TABLE clicks(click_id BIGINT PRIMARY KEY,imp_id BIGINT,campaign_id INTEGE
 CREATE TABLE conversions(conv_id INTEGER PRIMARY KEY,click_id BIGINT,campaign_id INTEGER,
   user_id BIGINT,conv_ts TIMESTAMP,conv_type VARCHAR,revenue DECIMAL(10,2));
 """)
-con.execute("BEGIN")
 bts = datetime(2023, 1, 1)
 base = date(2023, 1, 1)
 chans = ["search", "social", "display", "video", "email", "affiliate"]
@@ -43,9 +37,7 @@ devs = ["desktop", "mobile", "tablet", "ctv"]
 geos = ["US", "UK", "CA", "DE", "FR", "AU", "JP", "BR"]
 places = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
 ctypes = ["purchase", "lead", "signup", "download", "call"]
-batched_insert(
-    "INSERT INTO campaigns VALUES(?,?,?,?,?,?,?,?,?)",
-    [
+batched_insert("campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'], [
         (
             i,
             f"Campaign {i}",
@@ -74,7 +66,7 @@ for i in range(1, NIMP + 1):
             round(random.uniform(0.0001, 0.05), 6),
         )
     )
-batched_insert("INSERT INTO impressions VALUES(?,?,?,?,?,?,?,?)", imp_rows)
+batched_insert("impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
 click_rows = []
 for i in range(1, NCL + 1):
     ir = imp_rows[random.randint(0, len(imp_rows) - 1)]
@@ -88,10 +80,8 @@ for i in range(1, NCL + 1):
             ir[4],
         )
     )
-batched_insert("INSERT INTO clicks VALUES(?,?,?,?,?,?)", click_rows)
-batched_insert(
-    "INSERT INTO conversions VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'device'], click_rows)
+batched_insert("conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'], [
         (
             i,
             click_rows[random.randint(0, len(click_rows) - 1)][0],
@@ -104,6 +94,5 @@ batched_insert(
         for i in range(1, NCV + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")

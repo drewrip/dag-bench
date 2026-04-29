@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -11,20 +12,12 @@ os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile(
-        "w", newline="", suffix=".csv", delete=False
-    ) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
 con.execute("""
@@ -43,16 +36,13 @@ CREATE TABLE purchase_orders(po_id INTEGER PRIMARY KEY,supplier_id INTEGER,sku V
   ordered_qty INTEGER,unit_price DECIMAL(10,2),order_date DATE,expected_date DATE,
   received_qty INTEGER,status VARCHAR);
 """)
-con.execute("BEGIN")
 base = date(2021, 1, 1)
 cats = ["raw_materials", "components", "packaging", "finished_goods", "consumables"]
 regions = ["NA", "EU", "APAC", "ME", "SA"]
 statuses = ["delivered", "in_transit", "delayed", "cancelled", "lost"]
 pos = ["open", "partial", "complete", "cancelled"]
 skus = [f"SKU-{i:05d}" for i in range(1, 51)]
-batched_insert(
-    "INSERT INTO suppliers VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("suppliers", ['supplier_id', 'name', 'country', 'reliability_score', 'lead_time_days', 'category', 'is_preferred'], [
         (
             i,
             f"Supplier {i}",
@@ -65,9 +55,7 @@ batched_insert(
         for i in range(1, NSUP + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO warehouses VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("warehouses", ['wh_id', 'name', 'country', 'region', 'capacity_m3', 'is_active'], [
         (
             i,
             f"WH-{i}",
@@ -79,9 +67,7 @@ batched_insert(
         for i in range(1, NWH + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO shipments VALUES(?,?,?,?,?,?,?,?,?,?)",
-    [
+batched_insert("shipments", ['shipment_id', 'supplier_id', 'wh_id', 'sku', 'quantity', 'unit_cost', 'shipped_date', 'received_date', 'status', 'freight_cost'], [
         (
             i,
             random.randint(1, NSUP),
@@ -97,9 +83,7 @@ batched_insert(
         for i in range(1, NSH + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO inventory VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("inventory", ['inv_id', 'wh_id', 'sku', 'qty_on_hand', 'qty_reserved', 'reorder_point', 'snapshot_date'], [
         (
             i,
             random.randint(1, NWH),
@@ -112,9 +96,7 @@ batched_insert(
         for i in range(1, NIN + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO purchase_orders VALUES(?,?,?,?,?,?,?,?,?)",
-    [
+batched_insert("purchase_orders", ['po_id', 'supplier_id', 'sku', 'ordered_qty', 'unit_price', 'order_date', 'expected_date', 'received_qty', 'status'], [
         (
             i,
             random.randint(1, NSUP),
@@ -129,6 +111,5 @@ batched_insert(
         for i in range(1, NPO + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p05 done suppliers={NSUP} shipments={NSH}")

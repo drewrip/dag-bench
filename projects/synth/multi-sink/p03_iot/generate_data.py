@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -10,20 +11,12 @@ os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile(
-        "w", newline="", suffix=".csv", delete=False
-    ) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
 con.execute("""
@@ -39,14 +32,11 @@ CREATE TABLE readings(reading_id BIGINT PRIMARY KEY,device_id INTEGER,ts TIMESTA
 CREATE TABLE maintenance_logs(log_id INTEGER PRIMARY KEY,device_id INTEGER,
   log_ts TIMESTAMP,action VARCHAR,technician VARCHAR);
 """)
-con.execute("BEGIN")
 base = datetime(2023, 1, 1)
 regions = ["NA", "EU", "APAC", "LATAM"]
 dtypes = ["temperature", "humidity", "pressure", "multi", "air_quality"]
 actions = ["calibrate", "replace_battery", "firmware_update", "repair", "inspect"]
-batched_insert(
-    "INSERT INTO sites VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("sites", ['site_id', 'name', 'region', 'latitude', 'longitude', 'timezone'], [
         (
             i,
             f"Site-{i}",
@@ -58,9 +48,7 @@ batched_insert(
         for i in range(1, NS + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO devices VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("devices", ['device_id', 'site_id', 'device_type', 'model', 'firmware', 'installed_date', 'is_active'], [
         (
             i,
             random.randint(1, NS),
@@ -88,10 +76,8 @@ for i in range(1, NR + 1):
             random.random() < 0.02,
         )
     )
-batched_insert("INSERT INTO readings VALUES(?,?,?,?,?,?,?,?,?)", rows)
-batched_insert(
-    "INSERT INTO maintenance_logs VALUES(?,?,?,?,?)",
-    [
+batched_insert("readings", ['reading_id', 'device_id', 'ts', 'temperature_c', 'humidity_pct', 'pressure_hpa', 'battery_pct', 'rssi_dbm', 'error_flag'], rows)
+batched_insert("maintenance_logs", ['log_id', 'device_id', 'log_ts', 'action', 'technician'], [
         (
             i,
             random.randint(1, ND),
@@ -102,6 +88,5 @@ batched_insert(
         for i in range(1, NML + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p03 done sites={NS} devices={ND} readings={NR}")
