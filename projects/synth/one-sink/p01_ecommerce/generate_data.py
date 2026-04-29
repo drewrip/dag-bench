@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_categories_chunk(start, end, cats):
     return [
@@ -78,11 +79,6 @@ def generate_reviews_chunk(start, end, NP, NC, base):
         for i in range(start, end)
     ]
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -130,28 +126,19 @@ def main():
 
     cpu_count = min(4, os.cpu_count() or 1)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "categories", ['category_id', 'name', 'parent_id', 'display_rank'], 
-                       run_parallel(generate_categories_chunk, NCT, cats))
+                       run_parallel(executor, generate_categories_chunk, NCT, cats))
         batched_insert(con, "customers", ['customer_id', 'full_name', 'email', 'country', 'signup_date', 'is_active', 'lifetime_spend'], 
-                       run_parallel(generate_customers_chunk, NC, cn, base))
+                       run_parallel(executor, generate_customers_chunk, NC, cn, base))
         batched_insert(con, "products", ['product_id', 'category_id', 'sku', 'name', 'price', 'cost', 'weight_kg', 'is_active', 'stock_qty'], 
-                       run_parallel(generate_products_chunk, NP, NCT, base))
+                       run_parallel(executor, generate_products_chunk, NP, NCT, base))
         batched_insert(con, "orders", ['order_id', 'customer_id', 'order_date', 'status', 'channel', 'discount_pct', 'shipping_cost'], 
-                       run_parallel(generate_orders_chunk, NO, NC, st, ch, base))
+                       run_parallel(executor, generate_orders_chunk, NO, NC, st, ch, base))
         batched_insert(con, "order_items", ['item_id', 'order_id', 'product_id', 'quantity', 'unit_price'], 
-                       run_parallel(generate_order_items_chunk, NI, NO, NP))
+                       run_parallel(executor, generate_order_items_chunk, NI, NO, NP))
         batched_insert(con, "reviews", ['review_id', 'product_id', 'customer_id', 'rating', 'review_date', 'helpful_votes'], 
-                       run_parallel(generate_reviews_chunk, NR, NP, NC, base))
+                       run_parallel(executor, generate_reviews_chunk, NR, NP, NC, base))
+
 
     con.close()
     print(f"p01 done: sf={sf} customers={NC} orders={NO} items={NI}")

@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_campaigns_chunk(start, end, chans, objs, base):
     return [
@@ -64,11 +65,6 @@ def generate_conversions_chunk(start, end, click_rows, NCA, NIMP, bts, ctypes):
         for i in range(start, end)
     ]
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -101,29 +97,20 @@ def main():
     ctypes = ["purchase", "lead", "signup", "download", "call"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-
+    
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'], 
-                       run_parallel(generate_campaigns_chunk, NCA, chans, objs, base))
+                       run_parallel(executor, generate_campaigns_chunk, NCA, chans, objs, base))
         
-        imp_rows = run_parallel(generate_impressions_chunk, NIMP, NCA, NIMP, bts, devs, geos, places)
+        imp_rows = run_parallel(executor, generate_impressions_chunk, NIMP, NCA, NIMP, bts, devs, geos, places)
         batched_insert(con, "impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
         
-        click_rows = run_parallel(generate_clicks_chunk, NCL, imp_rows)
+        click_rows = run_parallel(executor, generate_clicks_chunk, NCL, imp_rows)
         batched_insert(con, "clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'device'], click_rows)
         
         batched_insert(con, "conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'],
-                       run_parallel(generate_conversions_chunk, NCV, click_rows, NCA, NIMP, bts, ctypes))
+                       run_parallel(executor, generate_conversions_chunk, NCV, click_rows, NCA, NIMP, bts, ctypes))
+
 
     con.close()
     print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")

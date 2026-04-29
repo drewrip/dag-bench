@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_accounts_chunk(start, end, atypes, base):
     return [
@@ -61,11 +62,6 @@ def generate_alerts_chunk(start, end, flagged_ids, atypes2, sevs, base, ress):
         for i in range(start, end)
     ]
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -101,30 +97,21 @@ def main():
     ress = ["confirmed_fraud", "false_positive", "under_review"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-
+    
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "accounts", ['account_id', 'holder_name', 'account_type', 'country', 'credit_limit', 'opened_date', 'is_frozen'], 
-                       run_parallel(generate_accounts_chunk, NA, atypes, base))
+                       run_parallel(executor, generate_accounts_chunk, NA, atypes, base))
         
         batched_insert(con, "merchants", ['merchant_id', 'name', 'category', 'country', 'risk_tier', 'avg_txn_amount'],
-                       run_parallel(generate_merchants_chunk, NM, cats, risks))
+                       run_parallel(executor, generate_merchants_chunk, NM, cats, risks))
         
-        txns = run_parallel(generate_transactions_chunk, NT, NA, NM, base, chans, currs, rcodes)
+        txns = run_parallel(executor, generate_transactions_chunk, NT, NA, NM, base, chans, currs, rcodes)
         batched_insert(con, "transactions", ['txn_id', 'account_id', 'merchant_id', 'amount', 'txn_ts', 'channel', 'currency', 'is_declined', 'is_flagged', 'response_code'], txns)
         
         flagged_ids = [t[0] for t in txns if t[8]]
         batched_insert(con, "alerts", ['alert_id', 'txn_id', 'alert_type', 'severity', 'created_ts', 'resolved', 'resolution'],
-                       run_parallel(generate_alerts_chunk, NAL, flagged_ids, atypes2, sevs, base, ress))
+                       run_parallel(executor, generate_alerts_chunk, NAL, flagged_ids, atypes2, sevs, base, ress))
+
 
     con.close()
     print(f"p02 done accounts={NA} txns={NT}")

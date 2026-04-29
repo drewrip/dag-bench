@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_patients_chunk(start, end, plans, states, base):
     return [
@@ -77,11 +78,6 @@ def generate_diagnoses_chunk(start, end, NCL, icds):
         for i in range(start, end)
     ]
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -126,32 +122,23 @@ def main():
     states = ["CA", "TX", "NY", "FL", "IL", "WA"]
 
     cpu_count = min(4, os.cpu_count() or 1)
-
+    
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "patients", ['patient_id', 'dob', 'gender', 'zip_code', 'plan_type', 'state'], 
-                       run_parallel(generate_patients_chunk, NPA, plans, states, base))
+                       run_parallel(executor, generate_patients_chunk, NPA, plans, states, base))
         
         batched_insert(con, "providers", ['provider_id', 'name', 'specialty', 'state', 'is_in_network', 'npi'],
-                       run_parallel(generate_providers_chunk, NPR, specs, states))
+                       run_parallel(executor, generate_providers_chunk, NPR, specs, states))
         
         batched_insert(con, "claims", ['claim_id', 'patient_id', 'provider_id', 'service_date', 'claim_type', 'total_billed', 'total_allowed', 'total_paid', 'status', 'denial_reason'],
-                       run_parallel(generate_claims_chunk, NCL, NPA, NPR, base, ctypes, cstats, dreasons))
+                       run_parallel(executor, generate_claims_chunk, NCL, NPA, NPR, base, ctypes, cstats, dreasons))
         
         batched_insert(con, "claim_lines", ['line_id', 'claim_id', 'cpt_code', 'quantity', 'unit_cost', 'allowed_amount', 'paid_amount'],
-                       run_parallel(generate_claim_lines_chunk, NCLL, NCL, cpts))
+                       run_parallel(executor, generate_claim_lines_chunk, NCLL, NCL, cpts))
         
         batched_insert(con, "diagnoses", ['diag_id', 'claim_id', 'icd_code', 'is_primary', 'chronic_flag'],
-                       run_parallel(generate_diagnoses_chunk, NDX, NCL, icds))
+                       run_parallel(executor, generate_diagnoses_chunk, NDX, NCL, icds))
+
 
     con.close()
     print(f"p07 done patients={NPA} claims={NCL}")

@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_departments_chunk(start, end, divs, locs):
     return [
@@ -74,11 +75,6 @@ def generate_leave_requests_chunk(start, end, NE, base, ltypes):
         ))
     return rows
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -124,26 +120,17 @@ def main():
 
     cpu_count = min(4, os.cpu_count() or 1)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'],
-                       run_parallel(generate_departments_chunk, ND, divs, locs))
+                       run_parallel(executor, generate_departments_chunk, ND, divs, locs))
         batched_insert(con, "employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'],
-                       run_parallel(generate_employees_chunk, NE, ND, mgr_ids, base, ttitles, etypes))
+                       run_parallel(executor, generate_employees_chunk, NE, ND, mgr_ids, base, ttitles, etypes))
         batched_insert(con, "salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'],
-                       run_parallel(generate_salaries_chunk, NS, NE, base))
+                       run_parallel(executor, generate_salaries_chunk, NS, NE, base))
         batched_insert(con, "performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category', 'notes'],
-                       run_parallel(generate_performance_reviews_chunk, NPR, NE, base, cats))
+                       run_parallel(executor, generate_performance_reviews_chunk, NPR, NE, base, cats))
         batched_insert(con, "leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'],
-                       run_parallel(generate_leave_requests_chunk, NLR, NE, base, ltypes))
+                       run_parallel(executor, generate_leave_requests_chunk, NLR, NE, base, ltypes))
+
 
     con.close()
     print(f"p04 done: depts={ND} emps={NE} salaries={NS}")
