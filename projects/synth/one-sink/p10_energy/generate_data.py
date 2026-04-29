@@ -1,7 +1,8 @@
-import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
+from utils.synth_utils import batched_insert, run_parallel
+
 
 def generate_substations_chunk(start, end, regions):
     return [
@@ -61,11 +62,6 @@ def generate_outages_chunk(start, end, NSB, causes, severities, bts):
         ))
     return rows
 
-def batched_insert(con, table_name, columns, rows):
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -105,24 +101,15 @@ def main():
 
     cpu_count = min(4, os.cpu_count() or 1)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
-        def run_parallel(gen_func, total, *args):
-            chunk_size = max(1, total // cpu_count)
-            futures = []
-            for i in range(0, total, chunk_size):
-                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
-            rows = []
-            for f in futures:
-                rows.extend(f.result())
-            return rows
-
         batched_insert(con, "substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'],
-                       run_parallel(generate_substations_chunk, NSB, regions))
+                       run_parallel(executor, generate_substations_chunk, NSB, regions))
         batched_insert(con, "meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'tariff_class', 'install_date', 'is_smart', 'rated_capacity_kw'],
-                       run_parallel(generate_meters_chunk, NMT, NSB, mtypes, tariffs, base))
+                       run_parallel(executor, generate_meters_chunk, NMT, NSB, mtypes, tariffs, base))
         batched_insert(con, "consumption_readings", ['reading_id', 'meter_id', 'read_ts', 'kwh', 'voltage_v', 'power_factor', 'is_estimated'],
-                       run_parallel(generate_readings_chunk, NCR, NMT, bts))
+                       run_parallel(executor, generate_readings_chunk, NCR, NMT, bts))
         batched_insert(con, "outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'cause', 'affected_meters', 'severity'],
-                       run_parallel(generate_outages_chunk, NOE, NSB, causes, severities, bts))
+                       run_parallel(executor, generate_outages_chunk, NOE, NSB, causes, severities, bts))
+
 
     con.close()
     print(f"p10 done: substations={NSB} meters={NMT} readings={NCR} outages={NOE}")
