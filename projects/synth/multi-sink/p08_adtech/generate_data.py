@@ -1,43 +1,10 @@
 import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
+from concurrent.futures import ProcessPoolExecutor
 
-sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-NCA, NIMP, NCL, NCV = (
-    max(a, int(b * sf)) for a, b in [(10, 200), (100, 500000), (20, 15000), (5, 3000)]
-)
-os.makedirs("data", exist_ok=True)
-con = duckdb.connect("data/warehouse.duckdb")
-
-def batched_insert(table_name, columns, rows):
-    rows = list(rows)
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
-
-con.execute("""
-DROP TABLE IF EXISTS conversions; DROP TABLE IF EXISTS clicks;
-DROP TABLE IF EXISTS impressions; DROP TABLE IF EXISTS campaigns;
-CREATE TABLE campaigns(campaign_id INTEGER PRIMARY KEY,name VARCHAR,advertiser VARCHAR,
-  channel VARCHAR,objective VARCHAR,start_date DATE,end_date DATE,
-  budget DECIMAL(12,2),cpm_target DECIMAL(6,2));
-CREATE TABLE impressions(imp_id BIGINT PRIMARY KEY,campaign_id INTEGER,user_id BIGINT,
-  imp_ts TIMESTAMP,device VARCHAR,geo VARCHAR,placement VARCHAR,cost_usd DECIMAL(8,6));
-CREATE TABLE clicks(click_id BIGINT PRIMARY KEY,imp_id BIGINT,campaign_id INTEGER,
-  user_id BIGINT,click_ts TIMESTAMP,device VARCHAR);
-CREATE TABLE conversions(conv_id INTEGER PRIMARY KEY,click_id BIGINT,campaign_id INTEGER,
-  user_id BIGINT,conv_ts TIMESTAMP,conv_type VARCHAR,revenue DECIMAL(10,2));
-""")
-bts = datetime(2023, 1, 1)
-base = date(2023, 1, 1)
-chans = ["search", "social", "display", "video", "email", "affiliate"]
-objs = ["awareness", "traffic", "leads", "sales", "retention"]
-devs = ["desktop", "mobile", "tablet", "ctv"]
-geos = ["US", "UK", "CA", "DE", "FR", "AU", "JP", "BR"]
-places = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
-ctypes = ["purchase", "lead", "signup", "download", "call"]
-batched_insert("campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'], [
+def generate_campaigns_chunk(start, end, chans, objs, base):
+    return [
         (
             i,
             f"Campaign {i}",
@@ -49,12 +16,11 @@ batched_insert("campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'ob
             round(random.uniform(5000, 500000), 2),
             round(random.uniform(0.5, 15), 2),
         )
-        for i in range(1, NCA + 1)
-    ],
-)
-imp_rows = []
-for i in range(1, NIMP + 1):
-    imp_rows.append(
+        for i in range(start, end)
+    ]
+
+def generate_impressions_chunk(start, end, NCA, NIMP, bts, devs, geos, places):
+    return [
         (
             i,
             random.randint(1, NCA),
@@ -65,23 +31,27 @@ for i in range(1, NIMP + 1):
             random.choice(places),
             round(random.uniform(0.0001, 0.05), 6),
         )
-    )
-batched_insert("impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
-click_rows = []
-for i in range(1, NCL + 1):
-    ir = imp_rows[random.randint(0, len(imp_rows) - 1)]
-    click_rows.append(
-        (
-            i,
-            ir[0],
-            ir[1],
-            ir[2],
-            ir[3] + timedelta(seconds=random.randint(1, 3600)),
-            ir[4],
+        for i in range(start, end)
+    ]
+
+def generate_clicks_chunk(start, end, imp_rows):
+    rows = []
+    for i in range(start, end):
+        ir = imp_rows[random.randint(0, len(imp_rows) - 1)]
+        rows.append(
+            (
+                i,
+                ir[0],
+                ir[1],
+                ir[2],
+                ir[3] + timedelta(seconds=random.randint(1, 3600)),
+                ir[4],
+            )
         )
-    )
-batched_insert("clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'device'], click_rows)
-batched_insert("conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'], [
+    return rows
+
+def generate_conversions_chunk(start, end, click_rows, NCA, NIMP, bts, ctypes):
+    return [
         (
             i,
             click_rows[random.randint(0, len(click_rows) - 1)][0],
@@ -91,8 +61,72 @@ batched_insert("conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 
             random.choice(ctypes),
             round(random.uniform(0, 500), 2),
         )
-        for i in range(1, NCV + 1)
-    ],
-)
-con.close()
-print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")
+        for i in range(start, end)
+    ]
+
+def batched_insert(con, table_name, columns, rows):
+    if not rows:
+        return
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
+
+def main():
+    sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    NCA, NIMP, NCL, NCV = (
+        max(a, int(b * sf)) for a, b in [(10, 200), (100, 500000), (20, 15000), (5, 3000)]
+    )
+    os.makedirs("data", exist_ok=True)
+    con = duckdb.connect("data/warehouse.duckdb")
+
+    con.execute("""
+    DROP TABLE IF EXISTS conversions; DROP TABLE IF EXISTS clicks;
+    DROP TABLE IF EXISTS impressions; DROP TABLE IF EXISTS campaigns;
+    CREATE TABLE campaigns(campaign_id INTEGER PRIMARY KEY,name VARCHAR,advertiser VARCHAR,
+      channel VARCHAR,objective VARCHAR,start_date DATE,end_date DATE,
+      budget DECIMAL(12,2),cpm_target DECIMAL(6,2));
+    CREATE TABLE impressions(imp_id BIGINT PRIMARY KEY,campaign_id INTEGER,user_id BIGINT,
+      imp_ts TIMESTAMP,device VARCHAR,geo VARCHAR,placement VARCHAR,cost_usd DECIMAL(8,6));
+    CREATE TABLE clicks(click_id BIGINT PRIMARY KEY,imp_id BIGINT,campaign_id INTEGER,
+      user_id BIGINT,click_ts TIMESTAMP,device VARCHAR);
+    CREATE TABLE conversions(conv_id INTEGER PRIMARY KEY,click_id BIGINT,campaign_id INTEGER,
+      user_id BIGINT,conv_ts TIMESTAMP,conv_type VARCHAR,revenue DECIMAL(10,2));
+    """)
+    bts = datetime(2023, 1, 1)
+    base = date(2023, 1, 1)
+    chans = ["search", "social", "display", "video", "email", "affiliate"]
+    objs = ["awareness", "traffic", "leads", "sales", "retention"]
+    devs = ["desktop", "mobile", "tablet", "ctv"]
+    geos = ["US", "UK", "CA", "DE", "FR", "AU", "JP", "BR"]
+    places = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
+    ctypes = ["purchase", "lead", "signup", "download", "call"]
+
+    cpu_count = min(4, os.cpu_count() or 1)
+
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        def run_parallel(gen_func, total, *args):
+            chunk_size = max(1, total // cpu_count)
+            futures = []
+            for i in range(0, total, chunk_size):
+                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
+            rows = []
+            for f in futures:
+                rows.extend(f.result())
+            return rows
+
+        batched_insert(con, "campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'], 
+                       run_parallel(generate_campaigns_chunk, NCA, chans, objs, base))
+        
+        imp_rows = run_parallel(generate_impressions_chunk, NIMP, NCA, NIMP, bts, devs, geos, places)
+        batched_insert(con, "impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
+        
+        click_rows = run_parallel(generate_clicks_chunk, NCL, imp_rows)
+        batched_insert(con, "clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'device'], click_rows)
+        
+        batched_insert(con, "conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'],
+                       run_parallel(generate_conversions_chunk, NCV, click_rows, NCA, NIMP, bts, ctypes))
+
+    con.close()
+    print(f"p08 done campaigns={NCA} impressions={NIMP} clicks={NCL}")
+
+if __name__ == "__main__":
+    main()

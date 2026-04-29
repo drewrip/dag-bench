@@ -1,48 +1,10 @@
 import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
+from concurrent.futures import ProcessPoolExecutor
 
-sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-sf *= 100
-NA, NM, NT, NAL = (
-    max(a, int(b * sf)) for a, b in [(10, 1000), (10, 300), (50, 20000), (5, 500)]
-)
-os.makedirs("data", exist_ok=True)
-con = duckdb.connect("data/warehouse.duckdb")
-
-
-def batched_insert(table_name, columns, rows):
-    rows = list(rows)
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
-
-
-con.execute("""
-DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS transactions;
-DROP TABLE IF EXISTS merchants; DROP TABLE IF EXISTS accounts;
-CREATE TABLE accounts(account_id INTEGER PRIMARY KEY,holder_name VARCHAR,
-  account_type VARCHAR,country VARCHAR,credit_limit DECIMAL(12,2),opened_date DATE,is_frozen BOOLEAN);
-CREATE TABLE merchants(merchant_id INTEGER PRIMARY KEY,name VARCHAR,category VARCHAR,
-  country VARCHAR,risk_tier VARCHAR,avg_txn_amount DECIMAL(10,2));
-CREATE TABLE transactions(txn_id INTEGER PRIMARY KEY,account_id INTEGER,merchant_id INTEGER,
-  amount DECIMAL(12,2),txn_ts TIMESTAMP,channel VARCHAR,currency VARCHAR,
-  is_declined BOOLEAN,is_flagged BOOLEAN,response_code VARCHAR);
-CREATE TABLE alerts(alert_id INTEGER PRIMARY KEY,txn_id INTEGER,alert_type VARCHAR,
-  severity VARCHAR,created_ts TIMESTAMP,resolved BOOLEAN,resolution VARCHAR);
-""")
-base = datetime(2022, 1, 1)
-atypes = ["checking", "savings", "credit", "business"]
-cats = ["retail", "travel", "grocery", "online", "gaming", "crypto", "atm"]
-risks = ["low", "medium", "high", "critical"]
-chans = ["pos", "web", "mobile", "atm", "wire"]
-currs = ["USD", "EUR", "GBP", "JPY", "BTC"]
-rcodes = ["00", "01", "05", "14", "51", "57", "96"]
-atypes2 = ["velocity", "geo_anomaly", "amount_spike", "card_not_present", "identity"]
-sevs = ["info", "warning", "critical"]
-ress = ["confirmed_fraud", "false_positive", "under_review"]
-batched_insert("accounts", ['account_id', 'holder_name', 'account_type', 'country', 'credit_limit', 'opened_date', 'is_frozen'], [
+def generate_accounts_chunk(start, end, atypes, base):
+    return [
         (
             i,
             f"Holder {i}",
@@ -52,10 +14,11 @@ batched_insert("accounts", ['account_id', 'holder_name', 'account_type', 'countr
             (base - timedelta(days=random.randint(30, 3650))).date(),
             random.random() < 0.03,
         )
-        for i in range(1, NA + 1)
-    ],
-)
-batched_insert("merchants", ['merchant_id', 'name', 'category', 'country', 'risk_tier', 'avg_txn_amount'], [
+        for i in range(start, end)
+    ]
+
+def generate_merchants_chunk(start, end, cats, risks):
+    return [
         (
             i,
             f"Merchant {i}",
@@ -64,13 +27,11 @@ batched_insert("merchants", ['merchant_id', 'name', 'category', 'country', 'risk
             random.choice(risks),
             round(random.uniform(5, 500), 2),
         )
-        for i in range(1, NM + 1)
-    ],
-)
-txns = []
-for i in range(1, NT + 1):
-    flagged = random.random() < 0.04
-    txns.append(
+        for i in range(start, end)
+    ]
+
+def generate_transactions_chunk(start, end, NA, NM, base, chans, currs, rcodes):
+    return [
         (
             i,
             random.randint(1, NA),
@@ -80,13 +41,14 @@ for i in range(1, NT + 1):
             random.choice(chans),
             random.choice(currs),
             random.random() < 0.05,
-            flagged,
+            random.random() < 0.04, # is_flagged
             random.choice(rcodes),
         )
-    )
-batched_insert("transactions", ['txn_id', 'account_id', 'merchant_id', 'amount', 'txn_ts', 'channel', 'currency', 'is_declined', 'is_flagged', 'response_code'], txns)
-flagged_ids = [t[0] for t in txns if t[8]]
-batched_insert("alerts", ['alert_id', 'txn_id', 'alert_type', 'severity', 'created_ts', 'resolved', 'resolution'], [
+        for i in range(start, end)
+    ]
+
+def generate_alerts_chunk(start, end, flagged_ids, atypes2, sevs, base, ress):
+    return [
         (
             i,
             random.choice(flagged_ids) if flagged_ids else i,
@@ -96,8 +58,76 @@ batched_insert("alerts", ['alert_id', 'txn_id', 'alert_type', 'severity', 'creat
             random.random() > 0.4,
             random.choice(ress) if random.random() > 0.4 else None,
         )
-        for i in range(1, NAL + 1)
-    ],
-)
-con.close()
-print(f"p02 done accounts={NA} txns={NT}")
+        for i in range(start, end)
+    ]
+
+def batched_insert(con, table_name, columns, rows):
+    if not rows:
+        return
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
+
+def main():
+    sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    sf *= 100
+    NA, NM, NT, NAL = (
+        max(a, int(b * sf)) for a, b in [(10, 1000), (10, 300), (50, 20000), (5, 500)]
+    )
+    os.makedirs("data", exist_ok=True)
+    con = duckdb.connect("data/warehouse.duckdb")
+
+    con.execute("""
+    DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS transactions;
+    DROP TABLE IF EXISTS merchants; DROP TABLE IF EXISTS accounts;
+    CREATE TABLE accounts(account_id INTEGER PRIMARY KEY,holder_name VARCHAR,
+      account_type VARCHAR,country VARCHAR,credit_limit DECIMAL(12,2),opened_date DATE,is_frozen BOOLEAN);
+    CREATE TABLE merchants(merchant_id INTEGER PRIMARY KEY,name VARCHAR,category VARCHAR,
+      country VARCHAR,risk_tier VARCHAR,avg_txn_amount DECIMAL(10,2));
+    CREATE TABLE transactions(txn_id INTEGER PRIMARY KEY,account_id INTEGER,merchant_id INTEGER,
+      amount DECIMAL(12,2),txn_ts TIMESTAMP,channel VARCHAR,currency VARCHAR,
+      is_declined BOOLEAN,is_flagged BOOLEAN,response_code VARCHAR);
+    CREATE TABLE alerts(alert_id INTEGER PRIMARY KEY,txn_id INTEGER,alert_type VARCHAR,
+      severity VARCHAR,created_ts TIMESTAMP,resolved BOOLEAN,resolution VARCHAR);
+    """)
+    base = datetime(2022, 1, 1)
+    atypes = ["checking", "savings", "credit", "business"]
+    cats = ["retail", "travel", "grocery", "online", "gaming", "crypto", "atm"]
+    risks = ["low", "medium", "high", "critical"]
+    chans = ["pos", "web", "mobile", "atm", "wire"]
+    currs = ["USD", "EUR", "GBP", "JPY", "BTC"]
+    rcodes = ["00", "01", "05", "14", "51", "57", "96"]
+    atypes2 = ["velocity", "geo_anomaly", "amount_spike", "card_not_present", "identity"]
+    sevs = ["info", "warning", "critical"]
+    ress = ["confirmed_fraud", "false_positive", "under_review"]
+
+    cpu_count = min(4, os.cpu_count() or 1)
+
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        def run_parallel(gen_func, total, *args):
+            chunk_size = max(1, total // cpu_count)
+            futures = []
+            for i in range(0, total, chunk_size):
+                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
+            rows = []
+            for f in futures:
+                rows.extend(f.result())
+            return rows
+
+        batched_insert(con, "accounts", ['account_id', 'holder_name', 'account_type', 'country', 'credit_limit', 'opened_date', 'is_frozen'], 
+                       run_parallel(generate_accounts_chunk, NA, atypes, base))
+        
+        batched_insert(con, "merchants", ['merchant_id', 'name', 'category', 'country', 'risk_tier', 'avg_txn_amount'],
+                       run_parallel(generate_merchants_chunk, NM, cats, risks))
+        
+        txns = run_parallel(generate_transactions_chunk, NT, NA, NM, base, chans, currs, rcodes)
+        batched_insert(con, "transactions", ['txn_id', 'account_id', 'merchant_id', 'amount', 'txn_ts', 'channel', 'currency', 'is_declined', 'is_flagged', 'response_code'], txns)
+        
+        flagged_ids = [t[0] for t in txns if t[8]]
+        batched_insert(con, "alerts", ['alert_id', 'txn_id', 'alert_type', 'severity', 'created_ts', 'resolved', 'resolution'],
+                       run_parallel(generate_alerts_chunk, NAL, flagged_ids, atypes2, sevs, base, ress))
+
+    con.close()
+    print(f"p02 done accounts={NA} txns={NT}")
+
+if __name__ == "__main__":
+    main()

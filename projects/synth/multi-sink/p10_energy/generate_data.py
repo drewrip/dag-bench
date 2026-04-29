@@ -1,42 +1,10 @@
 import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import datetime, timedelta, date
+from concurrent.futures import ProcessPoolExecutor
 
-sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-NSB, NMT, NCR, NOE = (
-    max(a, int(b * sf)) for a, b in [(5, 50), (20, 1000), (200, 500000), (5, 200)]
-)
-os.makedirs("data", exist_ok=True)
-con = duckdb.connect("data/warehouse.duckdb")
-
-def batched_insert(table_name, columns, rows):
-    rows = list(rows)
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
-
-con.execute("""
-DROP TABLE IF EXISTS outage_events; DROP TABLE IF EXISTS consumption_readings;
-DROP TABLE IF EXISTS meters; DROP TABLE IF EXISTS substations;
-CREATE TABLE substations(sub_id INTEGER PRIMARY KEY,name VARCHAR,region VARCHAR,
-  capacity_mw DECIMAL(10,2),voltage_kv INTEGER,lat DOUBLE,lon DOUBLE);
-CREATE TABLE meters(meter_id INTEGER PRIMARY KEY,sub_id INTEGER,customer_id INTEGER,
-  meter_type VARCHAR,tariff_class VARCHAR,install_date DATE,is_smart BOOLEAN,
-  rated_capacity_kw DECIMAL(8,2));
-CREATE TABLE consumption_readings(reading_id BIGINT PRIMARY KEY,meter_id INTEGER,
-  read_ts TIMESTAMP,kwh DECIMAL(12,4),voltage_v DOUBLE,power_factor DOUBLE,is_estimated BOOLEAN);
-CREATE TABLE outage_events(outage_id INTEGER PRIMARY KEY,sub_id INTEGER,start_ts TIMESTAMP,
-  end_ts TIMESTAMP,cause VARCHAR,affected_meters INTEGER,severity VARCHAR);
-""")
-bts = datetime(2023, 1, 1)
-base = date(2023, 1, 1)
-regions = ["NORTH", "SOUTH", "EAST", "WEST", "CENTRAL"]
-mtypes = ["residential", "commercial", "industrial", "municipal"]
-tariffs = ["standard", "time_of_use", "demand", "green", "low_income"]
-causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
-sevs = ["minor", "moderate", "major", "critical"]
-batched_insert("substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'], [
+def generate_substations_chunk(start, end, regions):
+    return [
         (
             i,
             f"SUB-{i:03d}",
@@ -46,10 +14,11 @@ batched_insert("substations", ['sub_id', 'name', 'region', 'capacity_mw', 'volta
             round(random.uniform(25, 50), 4),
             round(random.uniform(-120, -70), 4),
         )
-        for i in range(1, NSB + 1)
-    ],
-)
-batched_insert("meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'tariff_class', 'install_date', 'is_smart', 'rated_capacity_kw'], [
+        for i in range(start, end)
+    ]
+
+def generate_meters_chunk(start, end, NSB, NMT, mtypes, tariffs, base):
+    return [
         (
             i,
             random.randint(1, NSB),
@@ -60,12 +29,11 @@ batched_insert("meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'ta
             random.random() > 0.3,
             round(random.uniform(1, 1000), 2),
         )
-        for i in range(1, NMT + 1)
-    ],
-)
-rows = []
-for i in range(1, NCR + 1):
-    rows.append(
+        for i in range(start, end)
+    ]
+
+def generate_consumption_readings_chunk(start, end, NMT, bts):
+    return [
         (
             i,
             random.randint(1, NMT),
@@ -75,9 +43,11 @@ for i in range(1, NCR + 1):
             round(random.uniform(0.7, 1), 3),
             random.random() < 0.02,
         )
-    )
-batched_insert("consumption_readings", ['reading_id', 'meter_id', 'read_ts', 'kwh', 'voltage_v', 'power_factor', 'is_estimated'], rows)
-batched_insert("outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'cause', 'affected_meters', 'severity'], [
+        for i in range(start, end)
+    ]
+
+def generate_outage_events_chunk(start, end, NSB, bts, causes, sevs):
+    return [
         (
             i,
             random.randint(1, NSB),
@@ -87,8 +57,71 @@ batched_insert("outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'c
             random.randint(1, 500),
             random.choice(sevs),
         )
-        for i in range(1, NOE + 1)
-    ],
-)
-con.close()
-print(f"p10 done substations={NSB} meters={NMT} readings={NCR}")
+        for i in range(start, end)
+    ]
+
+def batched_insert(con, table_name, columns, rows):
+    if not rows:
+        return
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
+
+def main():
+    sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    NSB, NMT, NCR, NOE = (
+        max(a, int(b * sf)) for a, b in [(5, 50), (20, 1000), (200, 500000), (5, 200)]
+    )
+    os.makedirs("data", exist_ok=True)
+    con = duckdb.connect("data/warehouse.duckdb")
+
+    con.execute("""
+    DROP TABLE IF EXISTS outage_events; DROP TABLE IF EXISTS consumption_readings;
+    DROP TABLE IF EXISTS meters; DROP TABLE IF EXISTS substations;
+    CREATE TABLE substations(sub_id INTEGER PRIMARY KEY,name VARCHAR,region VARCHAR,
+      capacity_mw DECIMAL(10,2),voltage_kv INTEGER,lat DOUBLE,lon DOUBLE);
+    CREATE TABLE meters(meter_id INTEGER PRIMARY KEY,sub_id INTEGER,customer_id INTEGER,
+      meter_type VARCHAR,tariff_class VARCHAR,install_date DATE,is_smart BOOLEAN,
+      rated_capacity_kw DECIMAL(8,2));
+    CREATE TABLE consumption_readings(reading_id BIGINT PRIMARY KEY,meter_id INTEGER,
+      read_ts TIMESTAMP,kwh DECIMAL(12,4),voltage_v DOUBLE,power_factor DOUBLE,is_estimated BOOLEAN);
+    CREATE TABLE outage_events(outage_id INTEGER PRIMARY KEY,sub_id INTEGER,start_ts TIMESTAMP,
+      end_ts TIMESTAMP,cause VARCHAR,affected_meters INTEGER,severity VARCHAR);
+    """)
+    bts = datetime(2023, 1, 1)
+    base = date(2023, 1, 1)
+    regions = ["NORTH", "SOUTH", "EAST", "WEST", "CENTRAL"]
+    mtypes = ["residential", "commercial", "industrial", "municipal"]
+    tariffs = ["standard", "time_of_use", "demand", "green", "low_income"]
+    causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
+    sevs = ["minor", "moderate", "major", "critical"]
+
+    cpu_count = min(4, os.cpu_count() or 1)
+
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        def run_parallel(gen_func, total, *args):
+            chunk_size = max(1, total // cpu_count)
+            futures = []
+            for i in range(0, total, chunk_size):
+                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
+            rows = []
+            for f in futures:
+                rows.extend(f.result())
+            return rows
+
+        batched_insert(con, "substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'], 
+                       run_parallel(generate_substations_chunk, NSB, regions))
+        
+        batched_insert(con, "meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'tariff_class', 'install_date', 'is_smart', 'rated_capacity_kw'],
+                       run_parallel(generate_meters_chunk, NMT, NSB, NMT, mtypes, tariffs, base))
+        
+        batched_insert(con, "consumption_readings", ['reading_id', 'meter_id', 'read_ts', 'kwh', 'voltage_v', 'power_factor', 'is_estimated'],
+                       run_parallel(generate_consumption_readings_chunk, NCR, NMT, bts))
+        
+        batched_insert(con, "outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'cause', 'affected_meters', 'severity'],
+                       run_parallel(generate_outage_events_chunk, NOE, NSB, bts, causes, sevs))
+
+    con.close()
+    print(f"p10 done substations={NSB} meters={NMT} readings={NCR}")
+
+if __name__ == "__main__":
+    main()
