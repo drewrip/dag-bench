@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -14,20 +15,12 @@ os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile(
-        "w", newline="", suffix=".csv", delete=False
-    ) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
 con.execute("""
@@ -50,7 +43,6 @@ CREATE TABLE order_items(item_id INTEGER PRIMARY KEY, order_id INTEGER,
 CREATE TABLE reviews(review_id INTEGER PRIMARY KEY, product_id INTEGER,
     customer_id INTEGER, rating TINYINT, review_date DATE, helpful_votes INTEGER);
 """)
-con.execute("BEGIN")
 
 base = date(2018, 1, 1)
 cn = ["US", "GB", "DE", "FR", "CA", "AU", "JP", "BR", "IN", "MX"]
@@ -79,16 +71,12 @@ cats = [
     "Baby",
 ]
 
-batched_insert(
-    "INSERT INTO categories VALUES(?,?,?,?)",
-    [
+batched_insert("categories", ['category_id', 'name', 'parent_id', 'display_rank'], [
         (i, cats[(i - 1) % len(cats)], random.randint(1, i - 1) if i > 4 else None, i)
         for i in range(1, NCT + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO customers VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("customers", ['customer_id', 'full_name', 'email', 'country', 'signup_date', 'is_active', 'lifetime_spend'], [
         (
             i,
             f"Cust {i}",
@@ -101,9 +89,7 @@ batched_insert(
         for i in range(1, NC + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO products VALUES(?,?,?,?,?,?,?,?,?)",
-    [
+batched_insert("products", ['product_id', 'category_id', 'sku', 'name', 'price', 'cost', 'weight_kg', 'is_active', 'stock_qty'], [
         (
             i,
             random.randint(1, NCT),
@@ -118,9 +104,7 @@ batched_insert(
         for i in range(1, NP + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO orders VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("orders", ['order_id', 'customer_id', 'order_date', 'status', 'channel', 'discount_pct', 'shipping_cost'], [
         (
             i,
             random.randint(1, NC),
@@ -133,9 +117,7 @@ batched_insert(
         for i in range(1, NO + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO order_items VALUES(?,?,?,?,?)",
-    [
+batched_insert("order_items", ['item_id', 'order_id', 'product_id', 'quantity', 'unit_price'], [
         (
             i,
             random.randint(1, NO),
@@ -146,9 +128,7 @@ batched_insert(
         for i in range(1, NI + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO reviews VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("reviews", ['review_id', 'product_id', 'customer_id', 'rating', 'review_date', 'helpful_votes'], [
         (
             i,
             random.randint(1, NP),
@@ -160,6 +140,5 @@ batched_insert(
         for i in range(1, NR + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p01 done: sf={sf} customers={NC} orders={NO} items={NI}")

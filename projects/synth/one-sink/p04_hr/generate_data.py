@@ -1,4 +1,5 @@
-import csv, duckdb, random, sys, os, tempfile
+import pyarrow as pa
+import duckdb, random, sys, os
 from datetime import date, timedelta
 
 sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
@@ -13,20 +14,12 @@ os.makedirs("data", exist_ok=True)
 con = duckdb.connect("data/warehouse.duckdb")
 
 
-def batched_insert(sql, rows):
+def batched_insert(table_name, columns, rows):
     rows = list(rows)
     if not rows:
         return
-    table_name = sql.split()[2]
-    with tempfile.NamedTemporaryFile(
-        "w", newline="", suffix=".csv", delete=False
-    ) as tmp:
-        csv.writer(tmp).writerows(rows)
-        temp_path = tmp.name
-    try:
-        con.execute(f"COPY {table_name} FROM '{temp_path}' (FORMAT CSV)")
-    finally:
-        os.unlink(temp_path)
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
 con.execute("""
@@ -48,7 +41,6 @@ CREATE TABLE performance_reviews(review_id INTEGER PRIMARY KEY, emp_id INTEGER,
 CREATE TABLE leave_requests(leave_id INTEGER PRIMARY KEY, emp_id INTEGER,
     leave_type VARCHAR, start_date DATE, end_date DATE, approved BOOLEAN);
 """)
-con.execute("BEGIN")
 
 base = date(2015, 1, 1)
 divs = ["Engineering", "Sales", "Operations", "Finance", "Marketing", "HR"]
@@ -67,9 +59,7 @@ etypes = ["full_time", "part_time", "contractor"]
 ltypes = ["annual", "sick", "parental", "unpaid", "bereavement"]
 cats = ["technical", "leadership", "communication", "teamwork", "delivery"]
 
-batched_insert(
-    "INSERT INTO departments VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'], [
         (
             i,
             f"Dept-{i}",
@@ -83,9 +73,7 @@ batched_insert(
 )
 
 mgr_ids = list(range(1, max(2, NE // 10) + 1))
-batched_insert(
-    "INSERT INTO employees VALUES(?,?,?,?,?,?,?,?,?,?)",
-    [
+batched_insert("employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'], [
         (
             i,
             random.randint(1, ND),
@@ -101,9 +89,7 @@ batched_insert(
         for i in range(1, NE + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO salaries VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'], [
         (
             i,
             random.randint(1, NE),
@@ -115,9 +101,7 @@ batched_insert(
         for i in range(1, NS + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO performance_reviews VALUES(?,?,?,?,?,?,?)",
-    [
+batched_insert("performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category', 'notes'], [
         (
             i,
             random.randint(1, NE),
@@ -130,9 +114,7 @@ batched_insert(
         for i in range(1, NPR + 1)
     ],
 )
-batched_insert(
-    "INSERT INTO leave_requests VALUES(?,?,?,?,?,?)",
-    [
+batched_insert("leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'], [
         (
             i,
             random.randint(1, NE),
@@ -144,6 +126,5 @@ batched_insert(
         for i in range(1, NLR + 1)
     ],
 )
-con.commit()
 con.close()
 print(f"p04 done: depts={ND} emps={NE} salaries={NS}")
