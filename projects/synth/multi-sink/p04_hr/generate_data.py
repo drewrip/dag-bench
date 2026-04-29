@@ -1,48 +1,10 @@
 import pyarrow as pa
 import duckdb, random, sys, os
 from datetime import date, timedelta
+from concurrent.futures import ProcessPoolExecutor
 
-sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-sf *= 100
-ND, NE, NS, NPR, NLR = (
-    max(a, int(b * sf))
-    for a, b in [(5, 30), (20, 800), (30, 2000), (20, 1600), (10, 1200)]
-)
-os.makedirs("data", exist_ok=True)
-con = duckdb.connect("data/warehouse.duckdb")
-
-
-def batched_insert(table_name, columns, rows):
-    rows = list(rows)
-    if not rows:
-        return
-    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
-    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
-
-
-con.execute("""
-DROP TABLE IF EXISTS leave_requests; DROP TABLE IF EXISTS performance_reviews;
-DROP TABLE IF EXISTS salaries; DROP TABLE IF EXISTS employees; DROP TABLE IF EXISTS departments;
-CREATE TABLE departments(dept_id INTEGER PRIMARY KEY,name VARCHAR,division VARCHAR,
-  location VARCHAR,budget DECIMAL(14,2),headcount_target INTEGER);
-CREATE TABLE employees(emp_id INTEGER PRIMARY KEY,dept_id INTEGER,manager_id INTEGER,
-  first_name VARCHAR,last_name VARCHAR,gender VARCHAR,hire_date DATE,
-  job_title VARCHAR,employment_type VARCHAR,is_active BOOLEAN);
-CREATE TABLE salaries(salary_id INTEGER PRIMARY KEY,emp_id INTEGER,effective_date DATE,
-  base_salary DECIMAL(12,2),bonus DECIMAL(10,2),currency VARCHAR);
-CREATE TABLE performance_reviews(review_id INTEGER PRIMARY KEY,emp_id INTEGER,
-  review_date DATE,reviewer_id INTEGER,score DECIMAL(4,2),category VARCHAR);
-CREATE TABLE leave_requests(leave_id INTEGER PRIMARY KEY,emp_id INTEGER,
-  leave_type VARCHAR,start_date DATE,end_date DATE,approved BOOLEAN);
-""")
-base = date(2015, 1, 1)
-divs = ["Engineering", "Sales", "Operations", "Finance", "Marketing", "HR"]
-locs = ["NYC", "London", "Berlin", "Tokyo", "Sydney", "Toronto"]
-titles = ["Engineer", "Manager", "Director", "Analyst", "Specialist", "Lead", "VP"]
-etypes = ["full_time", "part_time", "contractor"]
-ltypes = ["annual", "sick", "parental", "unpaid", "bereavement"]
-cats = ["technical", "leadership", "communication", "teamwork", "delivery"]
-batched_insert("departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'], [
+def generate_departments_chunk(start, end, divs, locs):
+    return [
         (
             i,
             f"Dept-{i}",
@@ -51,11 +13,11 @@ batched_insert("departments", ['dept_id', 'name', 'division', 'location', 'budge
             round(random.uniform(100000, 10000000), 2),
             random.randint(5, 100),
         )
-        for i in range(1, ND + 1)
-    ],
-)
-mgrs = list(range(1, max(2, NE // 10) + 1))
-batched_insert("employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'], [
+        for i in range(start, end)
+    ]
+
+def generate_employees_chunk(start, end, ND, mgrs, base, titles, etypes):
+    return [
         (
             i,
             random.randint(1, ND),
@@ -68,10 +30,11 @@ batched_insert("employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'l
             random.choice(etypes),
             random.random() > 0.07,
         )
-        for i in range(1, NE + 1)
-    ],
-)
-batched_insert("salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'], [
+        for i in range(start, end)
+    ]
+
+def generate_salaries_chunk(start, end, NE, base):
+    return [
         (
             i,
             random.randint(1, NE),
@@ -80,10 +43,11 @@ batched_insert("salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salar
             round(random.uniform(0, 50000), 2),
             "USD",
         )
-        for i in range(1, NS + 1)
-    ],
-)
-batched_insert("performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category'], [
+        for i in range(start, end)
+    ]
+
+def generate_performance_reviews_chunk(start, end, NE, base, cats):
+    return [
         (
             i,
             random.randint(1, NE),
@@ -92,10 +56,11 @@ batched_insert("performance_reviews", ['review_id', 'emp_id', 'review_date', 're
             round(random.uniform(1, 5), 2),
             random.choice(cats),
         )
-        for i in range(1, NPR + 1)
-    ],
-)
-batched_insert("leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'], [
+        for i in range(start, end)
+    ]
+
+def generate_leave_requests_chunk(start, end, NE, base, ltypes):
+    return [
         (
             i,
             random.randint(1, NE),
@@ -104,8 +69,79 @@ batched_insert("leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_dat
             sd + timedelta(days=random.randint(1, 30)),
             random.random() > 0.1,
         )
-        for i in range(1, NLR + 1)
-    ],
-)
-con.close()
-print(f"p04 done depts={ND} emps={NE}")
+        for i in range(start, end)
+    ]
+
+def batched_insert(con, table_name, columns, rows):
+    if not rows:
+        return
+    arrow_table = pa.Table.from_arrays([pa.array(c) for c in zip(*rows)], names=columns)
+    con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
+
+def main():
+    sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
+    sf *= 100
+    ND, NE, NS, NPR, NLR = (
+        max(a, int(b * sf))
+        for a, b in [(5, 30), (20, 800), (30, 2000), (20, 1600), (10, 1200)]
+    )
+    os.makedirs("data", exist_ok=True)
+    con = duckdb.connect("data/warehouse.duckdb")
+
+    con.execute("""
+    DROP TABLE IF EXISTS leave_requests; DROP TABLE IF EXISTS performance_reviews;
+    DROP TABLE IF EXISTS salaries; DROP TABLE IF EXISTS employees; DROP TABLE IF EXISTS departments;
+    CREATE TABLE departments(dept_id INTEGER PRIMARY KEY,name VARCHAR,division VARCHAR,
+      location VARCHAR,budget DECIMAL(14,2),headcount_target INTEGER);
+    CREATE TABLE employees(emp_id INTEGER PRIMARY KEY,dept_id INTEGER,manager_id INTEGER,
+      first_name VARCHAR,last_name VARCHAR,gender VARCHAR,hire_date DATE,
+      job_title VARCHAR,employment_type VARCHAR,is_active BOOLEAN);
+    CREATE TABLE salaries(salary_id INTEGER PRIMARY KEY,emp_id INTEGER,effective_date DATE,
+      base_salary DECIMAL(12,2),bonus DECIMAL(10,2),currency VARCHAR);
+    CREATE TABLE performance_reviews(review_id INTEGER PRIMARY KEY,emp_id INTEGER,
+      review_date DATE,reviewer_id INTEGER,score DECIMAL(4,2),category VARCHAR);
+    CREATE TABLE leave_requests(leave_id INTEGER PRIMARY KEY,emp_id INTEGER,
+      leave_type VARCHAR,start_date DATE,end_date DATE,approved BOOLEAN);
+    """)
+    base = date(2015, 1, 1)
+    divs = ["Engineering", "Sales", "Operations", "Finance", "Marketing", "HR"]
+    locs = ["NYC", "London", "Berlin", "Tokyo", "Sydney", "Toronto"]
+    titles = ["Engineer", "Manager", "Director", "Analyst", "Specialist", "Lead", "VP"]
+    etypes = ["full_time", "part_time", "contractor"]
+    ltypes = ["annual", "sick", "parental", "unpaid", "bereavement"]
+    cats = ["technical", "leadership", "communication", "teamwork", "delivery"]
+
+    mgrs = list(range(1, max(2, NE // 10) + 1))
+    cpu_count = min(4, os.cpu_count() or 1)
+
+    with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        def run_parallel(gen_func, total, *args):
+            chunk_size = max(1, total // cpu_count)
+            futures = []
+            for i in range(0, total, chunk_size):
+                futures.append(executor.submit(gen_func, i + 1, min(i + chunk_size + 1, total + 1), *args))
+            rows = []
+            for f in futures:
+                rows.extend(f.result())
+            return rows
+
+        batched_insert(con, "departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'], 
+                       run_parallel(generate_departments_chunk, ND, divs, locs))
+        
+        batched_insert(con, "employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'],
+                       run_parallel(generate_employees_chunk, NE, ND, mgrs, base, titles, etypes))
+        
+        batched_insert(con, "salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'],
+                       run_parallel(generate_salaries_chunk, NS, NE, base))
+        
+        batched_insert(con, "performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category'],
+                       run_parallel(generate_performance_reviews_chunk, NPR, NE, base, cats))
+        
+        batched_insert(con, "leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'],
+                       run_parallel(generate_leave_requests_chunk, NLR, NE, base, ltypes))
+
+    con.close()
+    print(f"p04 done depts={ND} emps={NE}")
+
+if __name__ == "__main__":
+    main()
