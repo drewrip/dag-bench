@@ -120,7 +120,7 @@ def main():
     priorities = ["low", "medium", "high", "critical"]
     ticket_cats = ["billing", "technical", "feature_request", "onboarding", "other"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "accounts", ['account_id', 'name', 'industry', 'country', 'arr', 'created_date', 'csm_id', 'health_score'],
                        run_parallel(executor, generate_accounts_chunk, NAC, industries, base))

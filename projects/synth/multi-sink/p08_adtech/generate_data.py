@@ -101,7 +101,7 @@ def main():
     places = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
     ctypes = ["purchase", "lead", "signup", "download", "call"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

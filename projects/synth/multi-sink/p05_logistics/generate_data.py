@@ -116,7 +116,7 @@ def main():
     pos = ["open", "partial", "complete", "cancelled"]
     skus = [f"SKU-{i:05d}" for i in range(1, 51)]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

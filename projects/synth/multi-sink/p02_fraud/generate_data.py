@@ -97,7 +97,7 @@ def main():
     sevs = ["info", "warning", "critical"]
     ress = ["confirmed_fraud", "false_positive", "under_review"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "accounts", ['account_id', 'holder_name', 'account_type', 'country', 'credit_limit', 'opened_date', 'is_frozen'], 

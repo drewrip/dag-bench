@@ -114,7 +114,7 @@ def main():
     etypes = ["level_start", "level_complete", "level_fail", "achievement", "death"]
     itypes = ["coin_pack", "skin", "level_skip", "power_up", "subscription"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

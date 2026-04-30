@@ -123,7 +123,7 @@ def main():
     priorities = ["low", "medium", "high", "critical"]
     tcats = ["billing", "technical", "feature_request", "onboarding", "other"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

@@ -123,7 +123,7 @@ def main():
     po_statuses = ["open", "partial", "complete", "cancelled"]
     skus = [f"SKU-{i:05d}" for i in range(1, 51)]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "suppliers", ['supplier_id', 'name', 'country', 'reliability_score', 'lead_time_days', 'category', 'is_preferred'],
                        run_parallel(executor, generate_suppliers_chunk, NSUP, cats))
