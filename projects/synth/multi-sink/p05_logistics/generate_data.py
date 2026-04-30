@@ -1,83 +1,128 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_suppliers_chunk(start, end, cats):
+    rng = np.random.default_rng(start)
+    size = end - start
+    country_idx = rng.integers(0, 5, size)
+    rel_rand = rng.uniform(0.5, 1, size)
+    lead_rand = rng.integers(3, 61, size)
+    cat_idx = rng.integers(0, len(cats), size)
+    pref_rand = rng.random(size)
+    countries = ["CN", "IN", "DE", "US", "MX"]
     return [
         (
             i,
             f"Supplier {i}",
-            random.choice(["CN", "IN", "DE", "US", "MX"]),
-            round(random.uniform(0.5, 1), 2),
-            random.randint(3, 60),
-            random.choice(cats),
-            random.random() > 0.5,
+            countries[country_idx[i - start]],
+            round(float(rel_rand[i - start]), 2),
+            int(lead_rand[i - start]),
+            cats[cat_idx[i - start]],
+            bool(pref_rand[i - start] > 0.5),
         )
         for i in range(start, end)
     ]
 
 
 def generate_warehouses_chunk(start, end, regions):
+    rng = np.random.default_rng(start)
+    size = end - start
+    country_idx = rng.integers(0, 5, size)
+    reg_idx = rng.integers(0, len(regions), size)
+    cap_rand = rng.integers(1000, 50001, size)
+    active_rand = rng.random(size)
+    countries = ["US", "DE", "SG", "BR", "AU"]
     return [
         (
             i,
             f"WH-{i}",
-            random.choice(["US", "DE", "SG", "BR", "AU"]),
-            random.choice(regions),
-            random.randint(1000, 50000),
-            random.random() > 0.05,
+            countries[country_idx[i - start]],
+            regions[reg_idx[i - start]],
+            int(cap_rand[i - start]),
+            bool(active_rand[i - start] > 0.05),
         )
         for i in range(start, end)
     ]
 
 
 def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
+    rng = np.random.default_rng(start)
+    size = end - start
+    sup_rand = rng.integers(1, NSUP + 1, size)
+    wh_rand = rng.integers(1, NWH + 1, size)
+    sku_idx = rng.integers(0, len(skus), size)
+    qty_rand = rng.integers(10, 10001, size)
+    cost_rand = rng.uniform(1, 500, size)
+    sd_days = rng.integers(0, 1001, size)
+    rec_days = rng.integers(3, 46, size)
+    stat_idx = rng.integers(0, len(statuses), size)
+    freight_rand = rng.uniform(50, 5001, size)
     return [
         (
             i,
-            random.randint(1, NSUP),
-            random.randint(1, NWH),
-            random.choice(skus),
-            random.randint(10, 10000),
-            round(random.uniform(1, 500), 2),
-            sd := base + timedelta(days=random.randint(0, 1000)),
-            sd + timedelta(days=random.randint(3, 45)),
-            random.choice(statuses),
-            round(random.uniform(50, 5000), 2),
+            int(sup_rand[i - start]),
+            int(wh_rand[i - start]),
+            skus[sku_idx[i - start]],
+            int(qty_rand[i - start]),
+            round(float(cost_rand[i - start]), 2),
+            (sd := base + timedelta(days=int(sd_days[i - start]))),
+            sd + timedelta(days=int(rec_days[i - start])),
+            statuses[stat_idx[i - start]],
+            round(float(freight_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 
 def generate_inventory_chunk(start, end, NWH, skus, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    wh_rand = rng.integers(1, NWH + 1, size)
+    sku_idx = rng.integers(0, len(skus), size)
+    qty_on_rand = rng.integers(0, 10001, size)
+    qty_res_rand = rng.integers(0, 501, size)
+    reorder_rand = rng.integers(100, 1001, size)
+    snap_days = rng.integers(800, 1001, size)
     return [
         (
             i,
-            random.randint(1, NWH),
-            random.choice(skus),
-            random.randint(0, 10000),
-            random.randint(0, 500),
-            random.randint(100, 1000),
-            base + timedelta(days=random.randint(800, 1000)),
+            int(wh_rand[i - start]),
+            skus[sku_idx[i - start]],
+            int(qty_on_rand[i - start]),
+            int(qty_res_rand[i - start]),
+            int(reorder_rand[i - start]),
+            base + timedelta(days=int(snap_days[i - start])),
         )
         for i in range(start, end)
     ]
 
 
 def generate_purchase_orders_chunk(start, end, NSUP, skus, base, pos):
+    rng = np.random.default_rng(start)
+    size = end - start
+    sup_rand = rng.integers(1, NSUP + 1, size)
+    sku_idx = rng.integers(0, len(skus), size)
+    ord_qty_rand = rng.integers(100, 5001, size)
+    price_rand = rng.uniform(1, 500, size)
+    od_days = rng.integers(0, 901, size)
+    exp_days = rng.integers(7, 61, size)
+    rec_qty_rand = rng.integers(0, 5001, size)
+    stat_idx = rng.integers(0, len(pos), size)
     return [
         (
             i,
-            random.randint(1, NSUP),
-            random.choice(skus),
-            random.randint(100, 5000),
-            round(random.uniform(1, 500), 2),
-            od := base + timedelta(days=random.randint(0, 900)),
-            od + timedelta(days=random.randint(7, 60)),
-            random.randint(0, 5000),
-            random.choice(pos),
+            int(sup_rand[i - start]),
+            skus[sku_idx[i - start]],
+            int(ord_qty_rand[i - start]),
+            round(float(price_rand[i - start]), 2),
+            (od := base + timedelta(days=int(od_days[i - start]))),
+            od + timedelta(days=int(exp_days[i - start])),
+            int(rec_qty_rand[i - start]),
+            pos[stat_idx[i - start]],
         )
         for i in range(start, end)
     ]

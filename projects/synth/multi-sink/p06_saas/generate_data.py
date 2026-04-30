@@ -1,82 +1,126 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_accounts_chunk(start, end, industries, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    ind_idx = rng.integers(0, len(industries), size)
+    country_idx = rng.integers(0, 5, size)
+    arr_rand = rng.uniform(5000, 500000, size)
+    days_rand = rng.integers(0, 701, size)
+    csm_rand = rng.integers(1, 21, size)
+    health_rand = rng.integers(1, 101, size)
+    countries = ["US", "UK", "DE", "FR", "CA"]
     return [
         (
             i,
             f"Account {i}",
-            random.choice(industries),
-            random.choice(["US", "UK", "DE", "FR", "CA"]),
-            round(random.uniform(5000, 500000), 2),
-            base + timedelta(days=random.randint(0, 700)),
-            random.randint(1, 20),
-            random.randint(1, 100),
+            industries[ind_idx[i - start]],
+            countries[country_idx[i - start]],
+            round(float(arr_rand[i - start]), 2),
+            base + timedelta(days=int(days_rand[i - start])),
+            int(csm_rand[i - start]),
+            int(health_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 
 def generate_subscriptions_chunk(start, end, NAC, plans, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    acc_rand = rng.integers(1, NAC + 1, size)
+    plan_idx = rng.integers(0, len(plans), size)
+    seat_rand = rng.integers(1, 201, size)
+    mrr_rand = rng.uniform(99, 9999, size)
+    sd_days = rng.integers(0, 601, size)
+    active_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NAC),
-            random.choice(plans),
-            random.randint(1, 200),
-            round(random.uniform(99, 9999), 2),
-            sd := base + timedelta(days=random.randint(0, 600)),
+            int(acc_rand[i - start]),
+            plans[plan_idx[i - start]],
+            int(seat_rand[i - start]),
+            round(float(mrr_rand[i - start]), 2),
+            (sd := base + timedelta(days=int(sd_days[i - start]))),
             sd + timedelta(days=365),
-            random.random() > 0.1,
+            bool(active_rand[i - start] > 0.1),
         )
         for i in range(start, end)
     ]
 
 
 def generate_events_chunk(start, end, NAC, etypes, bts):
+    rng = np.random.default_rng(start)
+    size = end - start
+    acc_rand = rng.integers(1, NAC + 1, size)
+    user_rand = rng.integers(1, NAC * 5 + 1, size)
+    etype_idx = rng.integers(0, len(etypes), size)
+    sec_rand = rng.integers(0, 700 * 86400 + 1, size)
+    sess_rand = rng.integers(1, NAC * 20 + 1, size)
+    plat_idx = rng.integers(0, 3, size)
+    platforms = ["web", "mobile", "api"]
     return [
         (
             i,
-            random.randint(1, NAC),
-            random.randint(1, NAC * 5),
-            random.choice(etypes),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
-            f"sess_{random.randint(1, NAC * 20)}",
-            random.choice(["web", "mobile", "api"]),
+            int(acc_rand[i - start]),
+            int(user_rand[i - start]),
+            etypes[etype_idx[i - start]],
+            bts + timedelta(seconds=int(sec_rand[i - start])),
+            f"sess_{sess_rand[i - start]}",
+            platforms[plat_idx[i - start]],
         )
         for i in range(start, end)
     ]
 
 
 def generate_feature_usage_chunk(start, end, NAC, features, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    acc_rand = rng.integers(1, NAC + 1, size)
+    feat_idx = rng.integers(0, len(features), size)
+    days_rand = rng.integers(0, 701, size)
+    usage_rand = rng.integers(1, 1001, size)
     return [
         (
             i,
-            random.randint(1, NAC),
-            random.choice(features),
-            base + timedelta(days=random.randint(0, 700)),
-            random.randint(1, 1000),
+            int(acc_rand[i - start]),
+            features[feat_idx[i - start]],
+            base + timedelta(days=int(days_rand[i - start])),
+            int(usage_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 
 def generate_support_tickets_chunk(start, end, NAC, bts, priorities, tcats):
+    rng = np.random.default_rng(start)
+    size = end - start
+    acc_rand = rng.integers(1, NAC + 1, size)
+    created_sec = rng.integers(0, 700 * 86400 + 1, size)
+    resolved_sec = rng.integers(0, 700 * 86400 + 1, size)
+    res_prob = rng.random(size)
+    prio_idx = rng.integers(0, len(priorities), size)
+    cat_idx = rng.integers(0, len(tcats), size)
+    csat_prob = rng.random(size)
+    csat_rand = rng.integers(1, 6, size)
+    resolved_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NAC),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400))
-            if random.random() > 0.2
+            int(acc_rand[i - start]),
+            bts + timedelta(seconds=int(created_sec[i - start])),
+            bts + timedelta(seconds=int(resolved_sec[i - start]))
+            if res_prob[i - start] > 0.2
             else None,
-            random.choice(priorities),
-            random.choice(tcats),
-            random.randint(1, 5) if random.random() > 0.3 else None,
-            random.random() > 0.2,
+            priorities[prio_idx[i - start]],
+            tcats[cat_idx[i - start]],
+            int(csat_rand[i - start]) if csat_prob[i - start] > 0.3 else None,
+            bool(resolved_rand[i - start] > 0.2),
         )
         for i in range(start, end)
     ]

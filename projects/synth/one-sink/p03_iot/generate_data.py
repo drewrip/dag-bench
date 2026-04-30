@@ -1,64 +1,105 @@
-import duckdb, random, sys, os, math
+import duckdb, numpy as np, sys, os, math
 from datetime import datetime, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_sites_chunk(start, end, regions):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    region_indices = rng.integers(0, len(regions), size)
+    lats = rng.uniform(-60, 60, size)
+    lons = rng.uniform(-180, 180, size)
+    tz_list = ["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"]
+    tz_indices = rng.integers(0, len(tz_list), size)
+    
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
             f"Site-{i}",
-            random.choice(regions),
-            round(random.uniform(-60, 60), 4),
-            round(random.uniform(-180, 180), 4),
-            random.choice(["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"]),
-        )
-        for i in range(start, end)
-    ]
+            regions[region_indices[idx]],
+            round(float(lats[idx]), 4),
+            round(float(lons[idx]), 4),
+            tz_list[tz_indices[idx]],
+        ))
+    return rows
 
 def generate_devices_chunk(start, end, NS, dtypes, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    site_ids = rng.integers(1, NS + 1, size)
+    dtype_indices = rng.integers(0, len(dtypes), size)
+    model_letters = ['A', 'B', 'C']
+    model_letter_indices = rng.integers(0, len(model_letters), size)
+    model_numbers = rng.integers(1, 6, size)
+    v_majors = rng.integers(1, 5, size)
+    v_minors = rng.integers(0, 10, size)
+    v_patches = rng.integers(0, 100, size)
+    days_back = rng.integers(0, 731, size)
+    active_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NS),
-            random.choice(dtypes),
-            f"Model-{random.choice(['A', 'B', 'C'])}{random.randint(1, 5)}",
-            f"v{random.randint(1, 4)}.{random.randint(0, 9)}.{random.randint(0, 99)}",
-            (base - timedelta(days=random.randint(0, 730))).date(),
-            random.random() > 0.05,
-        )
-        for i in range(start, end)
-    ]
+            int(site_ids[idx]),
+            dtypes[dtype_indices[idx]],
+            f"Model-{model_letters[model_letter_indices[idx]]}{model_numbers[idx]}",
+            f"v{v_majors[idx]}.{v_minors[idx]}.{v_patches[idx]}",
+            (base - timedelta(days=int(days_back[idx]))).date(),
+            bool(active_probs[idx] > 0.05),
+        ))
+    return rows
 
 def generate_readings_chunk(start, end, ND, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    device_ids = rng.integers(1, ND + 1, size)
+    seconds_offset = rng.integers(0, 180 * 86400 + 1, size)
+    temps = rng.normal(20, 8, size)
+    humids = rng.uniform(20, 95, size)
+    pressures = rng.normal(1013, 15, size)
+    batteries = rng.integers(5, 101, size)
+    rssis = rng.integers(-90, -29, size)
+    error_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, ND),
-            base + timedelta(seconds=random.randint(0, 180 * 86400)),
-            round(random.gauss(20, 8), 2),
-            round(random.uniform(20, 95), 2),
-            round(random.gauss(1013, 15), 2),
-            random.randint(5, 100),
-            random.randint(-90, -30),
-            random.random() < 0.02,
-        )
-        for i in range(start, end)
-    ]
+            int(device_ids[idx]),
+            base + timedelta(seconds=int(seconds_offset[idx])),
+            round(float(temps[idx]), 2),
+            round(float(humids[idx]), 2),
+            round(float(pressures[idx]), 2),
+            int(batteries[idx]),
+            int(rssis[idx]),
+            bool(error_probs[idx] < 0.02),
+        ))
+    return rows
 
 def generate_maintenance_logs_chunk(start, end, ND, base, actions):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    device_ids = rng.integers(1, ND + 1, size)
+    hours_offset = rng.integers(0, 4321, size)
+    action_indices = rng.integers(0, len(actions), size)
+    tech_ids = rng.integers(1, 21, size)
+    note_action_indices = rng.integers(0, len(actions), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        action = actions[action_indices[idx]]
+        rows.append((
             i,
-            random.randint(1, ND),
-            base + timedelta(hours=random.randint(0, 4320)),
-            random.choice(actions),
-            f"Tech-{random.randint(1, 20)}",
-            f"Performed {random.choice(actions)} on device",
-        )
-        for i in range(start, end)
-    ]
+            int(device_ids[idx]),
+            base + timedelta(hours=int(hours_offset[idx])),
+            action,
+            f"Tech-{tech_ids[idx]}",
+            f"Performed {actions[note_action_indices[idx]]} on device",
+        ))
+    return rows
 
 
 def main():

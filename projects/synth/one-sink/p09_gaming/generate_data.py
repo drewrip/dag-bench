@@ -1,85 +1,130 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_players_chunk(start, end, countries, platforms, bts, age_groups):
-    return [
-        (
-            i,
-            f"Player_{i}",
-            random.choice(countries),
-            random.choice(platforms),
-            bts + timedelta(seconds=random.randint(0, 200 * 86400)),
-            random.choice(age_groups),
-            random.random() > 0.6,
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    country_indices = rng.integers(0, len(countries), size)
+    platform_indices = rng.integers(0, len(platforms), size)
+    seconds_offset = rng.integers(0, 200 * 86400 + 1, size)
+    age_indices = rng.integers(0, len(age_groups), size)
+    paid_probs = rng.random(size)
 
-def generate_levels_chunk(start, end, worlds, difficulties):
-    return [
-        (
-            i,
-            f"Level_{i}",
-            random.choice(worlds),
-            random.choice(difficulties),
-            random.randint(60, 600),
-            random.randint(10, 500),
-            max(1, i - random.randint(0, 3)),
-        )
-        for i in range(start, end)
-    ]
-
-def generate_sessions_chunk(start, end, NPL, bts, platforms):
     rows = []
-    for i in range(start, end):
-        ss = bts + timedelta(seconds=random.randint(0, 300 * 86400))
-        dur = random.randint(60, 7200)
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NPL),
+            f"Player_{i}",
+            countries[country_indices[idx]],
+            platforms[platform_indices[idx]],
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            age_groups[age_indices[idx]],
+            bool(paid_probs[idx] > 0.6),
+        ))
+    return rows
+
+def generate_levels_chunk(start, end, worlds, difficulties):
+    size = end - start
+    rng = np.random.default_rng(start)
+    world_indices = rng.integers(0, len(worlds), size)
+    diff_indices = rng.integers(0, len(difficulties), size)
+    par_times = rng.integers(60, 601, size)
+    rewards = rng.integers(10, 501, size)
+    unlock_offsets = rng.integers(0, 4, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            f"Level_{i}",
+            worlds[world_indices[idx]],
+            difficulties[diff_indices[idx]],
+            int(par_times[idx]),
+            int(rewards[idx]),
+            max(1, i - int(unlock_offsets[idx])),
+        ))
+    return rows
+
+def generate_sessions_chunk(start, end, NPL, bts, platforms):
+    size = end - start
+    rng = np.random.default_rng(start)
+    player_ids = rng.integers(1, NPL + 1, size)
+    seconds_offset = rng.integers(0, 300 * 86400 + 1, size)
+    durations = rng.integers(60, 7201, size)
+    platform_indices = rng.integers(0, len(platforms), size)
+    v_majors = rng.integers(1, 4, size)
+    v_minors = rng.integers(0, 10, size)
+    attempts = rng.integers(0, 11, size)
+    coins = rng.integers(0, 1001, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        ss = bts + timedelta(seconds=int(seconds_offset[idx]))
+        dur = int(durations[idx])
+        rows.append((
+            i,
+            int(player_ids[idx]),
             ss,
             ss + timedelta(seconds=dur),
-            random.choice(platforms),
-            f"v{random.randint(1, 3)}.{random.randint(0, 9)}",
-            random.randint(0, 10),
-            random.randint(0, 1000),
+            platforms[platform_indices[idx]],
+            f"v{v_majors[idx]}.{v_minors[idx]}",
+            int(attempts[idx]),
+            int(coins[idx]),
         ))
     return rows
 
 def generate_events_chunk(start, end, sess_rows, etypes, NLV):
+    size = end - start
+    rng = np.random.default_rng(start)
+    sess_indices = rng.integers(0, len(sess_rows), size)
+    etype_indices = rng.integers(0, len(etypes), size)
+    seconds_offset = rng.integers(0, 7201, size)
+    level_ids = rng.integers(1, NLV + 1, size) if NLV > 0 else np.ones(size, dtype=int)
+    values = rng.uniform(0, 1000, size)
+
     rows = []
-    for i in range(start, end):
-        sess = random.choice(sess_rows)
-        et = sess[2] + timedelta(seconds=random.randint(0, 7200))
+    for idx, i in enumerate(range(start, end)):
+        sess = sess_rows[sess_indices[idx]]
+        et = sess[2] + timedelta(seconds=int(seconds_offset[idx]))
         rows.append((
             i,
-            sess[0],
-            sess[1],
-            random.choice(etypes),
+            int(sess[0]),
+            int(sess[1]),
+            etypes[etype_indices[idx]],
             et,
-            random.randint(1, NLV) if NLV > 0 else 1,
-            round(random.uniform(0, 1000), 2),
+            int(level_ids[idx]),
+            round(float(values[idx]), 2),
             f"meta_{i}",
         ))
     return rows
 
 def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    player_ids = rng.integers(1, NPL + 1, size)
+    seconds_offset = rng.integers(0, 300 * 86400 + 1, size)
+    itype_indices = rng.integers(0, len(itypes), size)
+    item_ids = rng.integers(1, 51, size)
+    prices = rng.uniform(0.99, 99.99, size)
+    currency_indices = rng.integers(0, len(currencies), size)
+    refund_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NPL),
-            bts + timedelta(seconds=random.randint(0, 300 * 86400)),
-            random.choice(itypes),
-            f"Item_{random.randint(1, 50)}",
-            round(random.uniform(0.99, 99.99), 2),
-            random.choice(currencies),
-            random.random() < 0.03,
-        )
-        for i in range(start, end)
-    ]
+            int(player_ids[idx]),
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            itypes[itype_indices[idx]],
+            f"Item_{item_ids[idx]}",
+            round(float(prices[idx]), 2),
+            currencies[currency_indices[idx]],
+            bool(refund_probs[idx] < 0.03),
+        ))
+    return rows
 
 
 def main():

@@ -1,80 +1,120 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_categories_chunk(start, end, cats):
+    rng = np.random.default_rng(start)
+    size = end - start
+    parent_rand = rng.integers(1, np.maximum(2, np.arange(start, end)), size)
     return [
-        (i, cats[(i - 1) % len(cats)], random.randint(1, i - 1) if i > 4 else None, i)
+        (i, cats[(i - 1) % len(cats)], int(parent_rand[i - start]) if i > 4 else None, i)
         for i in range(start, end)
     ]
 
 def generate_customers_chunk(start, end, cn, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    cn_idx = rng.integers(0, len(cn), size)
+    days_rand = rng.integers(0, 2001, size)
+    active_rand = rng.random(size)
+    spend_rand = rng.uniform(0, 15000, size)
     return [
         (
             i,
             f"Cust {i}",
             f"u{i}@ex.com",
-            random.choice(cn),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.random() > 0.1,
-            round(random.uniform(0, 15000), 2),
+            cn[cn_idx[i - start]],
+            base + timedelta(days=int(days_rand[i - start])),
+            bool(active_rand[i - start] > 0.1),
+            round(float(spend_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 def generate_products_chunk(start, end, NCT, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    cat_rand = rng.integers(1, NCT + 1, size)
+    cost_rand = rng.uniform(1, 400, size)
+    price_mult = rng.uniform(1.1, 4, size)
+    weight_rand = rng.uniform(0.1, 20, size)
+    active_rand = rng.random(size)
+    stock_rand = rng.integers(0, 1001, size)
     return [
         (
             i,
-            random.randint(1, NCT),
+            int(cat_rand[i - start]),
             f"SKU-{i:06d}",
             f"Prod {i}",
-            round((c := round(random.uniform(1, 400), 2)) * random.uniform(1.1, 4), 2),
+            round((c := round(float(cost_rand[i - start]), 2)) * float(price_mult[i - start]), 2),
             c,
-            round(random.uniform(0.1, 20), 3),
-            random.random() > 0.05,
-            random.randint(0, 1000),
+            round(float(weight_rand[i - start]), 3),
+            bool(active_rand[i - start] > 0.05),
+            int(stock_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 def generate_orders_chunk(start, end, NC, st, ch, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    cust_rand = rng.integers(1, NC + 1, size)
+    days_rand = rng.integers(0, 2001, size)
+    st_idx = rng.integers(0, len(st), size)
+    ch_idx = rng.integers(0, len(ch), size)
+    disc_rand = rng.uniform(0, 30, size)
+    disc_prob = rng.random(size)
+    ship_rand = rng.uniform(0, 25, size)
     return [
         (
             i,
-            random.randint(1, NC),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.choice(st),
-            random.choice(ch),
-            round(random.uniform(0, 30), 2) if random.random() > 0.6 else 0,
-            round(random.uniform(0, 25), 2),
+            int(cust_rand[i - start]),
+            base + timedelta(days=int(days_rand[i - start])),
+            st[st_idx[i - start]],
+            ch[ch_idx[i - start]],
+            round(float(disc_rand[i - start]), 2) if disc_prob[i - start] > 0.6 else 0,
+            round(float(ship_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 def generate_order_items_chunk(start, end, NO, NP):
+    rng = np.random.default_rng(start)
+    size = end - start
+    ord_rand = rng.integers(1, NO + 1, size)
+    prod_rand = rng.integers(1, NP + 1, size)
+    qty_rand = rng.integers(1, 6, size)
+    price_rand = rng.uniform(5, 500, size)
     return [
         (
             i,
-            random.randint(1, NO),
-            random.randint(1, NP),
-            random.randint(1, 5),
-            round(random.uniform(5, 500), 2),
+            int(ord_rand[i - start]),
+            int(prod_rand[i - start]),
+            int(qty_rand[i - start]),
+            round(float(price_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 def generate_reviews_chunk(start, end, NP, NC, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    prod_rand = rng.integers(1, NP + 1, size)
+    cust_rand = rng.integers(1, NC + 1, size)
+    rat_rand = rng.integers(1, 6, size)
+    days_rand = rng.integers(0, 2001, size)
+    votes_rand = rng.integers(0, 201, size)
     return [
         (
             i,
-            random.randint(1, NP),
-            random.randint(1, NC),
-            random.randint(1, 5),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.randint(0, 200),
+            int(prod_rand[i - start]),
+            int(cust_rand[i - start]),
+            int(rat_rand[i - start]),
+            base + timedelta(days=int(days_rand[i - start])),
+            int(votes_rand[i - start]),
         )
         for i in range(start, end)
     ]

@@ -1,82 +1,131 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_suppliers_chunk(start, end, cats):
-    return [
-        (
-            i,
-            f"Supplier {i}",
-            random.choice(["CN", "IN", "DE", "US", "MX", "BR"]),
-            round(random.uniform(0.5, 1.0), 2),
-            random.randint(3, 60),
-            random.choice(cats),
-            random.random() > 0.5,
-        )
-        for i in range(start, end)
-    ]
-
-def generate_warehouses_chunk(start, end, regions):
-    return [
-        (
-            i,
-            f"WH-{i}",
-            random.choice(["US", "DE", "SG", "BR", "AU"]),
-            random.choice(regions),
-            random.randint(1000, 50000),
-            random.random() > 0.05,
-        )
-        for i in range(start, end)
-    ]
-
-def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
+    size = end - start
+    rng = np.random.default_rng(start)
+    countries = ["CN", "IN", "DE", "US", "MX", "BR"]
+    country_indices = rng.integers(0, len(countries), size)
+    scores = rng.uniform(0.5, 1.0, size)
+    lead_times = rng.integers(3, 61, size)
+    cat_indices = rng.integers(0, len(cats), size)
+    preferred_probs = rng.random(size)
+    
     rows = []
-    for i in range(start, end):
-        sd = base + timedelta(days=random.randint(0, 1000))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NSUP),
-            random.randint(1, NWH),
-            random.choice(skus),
-            random.randint(10, 10000),
-            round(random.uniform(1, 500), 2),
+            f"Supplier {i}",
+            countries[country_indices[idx]],
+            round(float(scores[idx]), 2),
+            int(lead_times[idx]),
+            cats[cat_indices[idx]],
+            bool(preferred_probs[idx] > 0.5),
+        ))
+    return rows
+
+def generate_warehouses_chunk(start, end, regions):
+    size = end - start
+    rng = np.random.default_rng(start)
+    countries = ["US", "DE", "SG", "BR", "AU"]
+    country_indices = rng.integers(0, len(countries), size)
+    region_indices = rng.integers(0, len(regions), size)
+    capacities = rng.integers(1000, 50001, size)
+    active_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            f"WH-{i}",
+            countries[country_indices[idx]],
+            regions[region_indices[idx]],
+            int(capacities[idx]),
+            bool(active_probs[idx] > 0.05),
+        ))
+    return rows
+
+def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
+    size = end - start
+    rng = np.random.default_rng(start)
+    supplier_ids = rng.integers(1, NSUP + 1, size)
+    wh_ids = rng.integers(1, NWH + 1, size)
+    sku_indices = rng.integers(0, len(skus), size)
+    quantities = rng.integers(10, 10001, size)
+    unit_costs = rng.uniform(1, 500, size)
+    days_offset = rng.integers(0, 1001, size)
+    transit_days = rng.integers(3, 46, size)
+    status_indices = rng.integers(0, len(statuses), size)
+    freight_costs = rng.uniform(50, 5000, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        sd = base + timedelta(days=int(days_offset[idx]))
+        rows.append((
+            i,
+            int(supplier_ids[idx]),
+            int(wh_ids[idx]),
+            skus[sku_indices[idx]],
+            int(quantities[idx]),
+            round(float(unit_costs[idx]), 2),
             sd,
-            sd + timedelta(days=random.randint(3, 45)),
-            random.choice(statuses),
-            round(random.uniform(50, 5000), 2),
+            sd + timedelta(days=int(transit_days[idx])),
+            statuses[status_indices[idx]],
+            round(float(freight_costs[idx]), 2),
         ))
     return rows
 
 def generate_inventory_chunk(start, end, NWH, skus, base):
-    return [
-        (
-            i,
-            random.randint(1, NWH),
-            random.choice(skus),
-            random.randint(0, 10000),
-            random.randint(0, 500),
-            random.randint(100, 1000),
-            base + timedelta(days=random.randint(800, 1000)),
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    wh_ids = rng.integers(1, NWH + 1, size)
+    sku_indices = rng.integers(0, len(skus), size)
+    qtys_on_hand = rng.integers(0, 10001, size)
+    qtys_reserved = rng.integers(0, 501, size)
+    reorder_points = rng.integers(100, 1001, size)
+    days_offset = rng.integers(800, 1001, size)
 
-def generate_purchase_orders_chunk(start, end, NSUP, skus, base, po_statuses):
     rows = []
-    for i in range(start, end):
-        od = base + timedelta(days=random.randint(0, 900))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NSUP),
-            random.choice(skus),
-            random.randint(100, 5000),
-            round(random.uniform(1, 500), 2),
+            int(wh_ids[idx]),
+            skus[sku_indices[idx]],
+            int(qtys_on_hand[idx]),
+            int(qtys_reserved[idx]),
+            int(reorder_points[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+        ))
+    return rows
+
+def generate_purchase_orders_chunk(start, end, NSUP, skus, base, po_statuses):
+    size = end - start
+    rng = np.random.default_rng(start)
+    supplier_ids = rng.integers(1, NSUP + 1, size)
+    sku_indices = rng.integers(0, len(skus), size)
+    ordered_qtys = rng.integers(100, 5001, size)
+    unit_prices = rng.uniform(1, 500, size)
+    days_offset = rng.integers(0, 901, size)
+    expected_days = rng.integers(7, 61, size)
+    received_qtys = rng.integers(0, 5001, size)
+    status_indices = rng.integers(0, len(po_statuses), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        od = base + timedelta(days=int(days_offset[idx]))
+        rows.append((
+            i,
+            int(supplier_ids[idx]),
+            skus[sku_indices[idx]],
+            int(ordered_qty := int(ordered_qtys[idx])),
+            round(float(unit_prices[idx]), 2),
             od,
-            od + timedelta(days=random.randint(7, 60)),
-            random.randint(0, 5000),
-            random.choice(po_statuses),
+            od + timedelta(days=int(expected_days[idx])),
+            int(received_qtys[idx]),
+            po_statuses[status_indices[idx]],
         ))
     return rows
 

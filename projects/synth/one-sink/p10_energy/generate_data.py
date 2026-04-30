@@ -1,64 +1,101 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_substations_chunk(start, end, regions):
-    return [
-        (
-            i,
-            f"SUB-{i:03d}",
-            random.choice(regions),
-            round(random.uniform(10, 500), 2),
-            random.choice([11, 33, 66, 110, 132, 220]),
-            round(random.uniform(25, 50), 4),
-            round(random.uniform(-120, -70), 4),
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    region_indices = rng.integers(0, len(regions), size)
+    capacities = rng.uniform(10, 500, size)
+    voltages = [11, 33, 66, 110, 132, 220]
+    voltage_indices = rng.integers(0, len(voltages), size)
+    lats = rng.uniform(25, 50, size)
+    lons = rng.uniform(-120, -70, size)
 
-def generate_meters_chunk(start, end, NSB, mtypes, tariffs, base):
-    return [
-        (
-            i,
-            random.randint(1, NSB),
-            random.randint(1, 1000 * 2), # Using a dummy max for customer_id if NMT not passed
-            random.choice(mtypes),
-            random.choice(tariffs),
-            base - timedelta(days=random.randint(0, 3650)),
-            random.random() > 0.3,
-            round(random.uniform(1, 1000), 2),
-        )
-        for i in range(start, end)
-    ]
-
-def generate_readings_chunk(start, end, NMT, bts):
-    return [
-        (
-            i,
-            random.randint(1, NMT),
-            bts + timedelta(seconds=random.randint(0, 364 * 86400)),
-            round(abs(random.gauss(5, 3)), 4),
-            round(random.gauss(230, 5), 2),
-            round(random.uniform(0.7, 1.0), 3),
-            random.random() < 0.02,
-        )
-        for i in range(start, end)
-    ]
-
-def generate_outages_chunk(start, end, NSB, causes, severities, bts):
     rows = []
-    for i in range(start, end):
-        st = bts + timedelta(seconds=random.randint(0, 364 * 86400))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NSB),
+            f"SUB-{i:03d}",
+            regions[region_indices[idx]],
+            round(float(capacities[idx]), 2),
+            int(voltages[voltage_indices[idx]]),
+            round(float(lats[idx]), 4),
+            round(float(lons[idx]), 4),
+        ))
+    return rows
+
+def generate_meters_chunk(start, end, NSB, mtypes, tariffs, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    sub_ids = rng.integers(1, NSB + 1, size)
+    customer_ids = rng.integers(1, 1000 * 2 + 1, size)
+    mtype_indices = rng.integers(0, len(mtypes), size)
+    tariff_indices = rng.integers(0, len(tariffs), size)
+    days_back = rng.integers(0, 3651, size)
+    smart_probs = rng.random(size)
+    rated_capacities = rng.uniform(1, 1000, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(sub_ids[idx]),
+            int(customer_ids[idx]),
+            mtypes[mtype_indices[idx]],
+            tariffs[tariff_indices[idx]],
+            base - timedelta(days=int(days_back[idx])),
+            bool(smart_probs[idx] > 0.3),
+            round(float(rated_capacities[idx]), 2),
+        ))
+    return rows
+
+def generate_readings_chunk(start, end, NMT, bts):
+    size = end - start
+    rng = np.random.default_rng(start)
+    meter_ids = rng.integers(1, NMT + 1, size)
+    seconds_offset = rng.integers(0, 364 * 86400 + 1, size)
+    kwhs = np.abs(rng.normal(5, 3, size))
+    voltages = rng.normal(230, 5, size)
+    power_factors = rng.uniform(0.7, 1.0, size)
+    estimated_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(meter_ids[idx]),
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            round(float(kwhs[idx]), 4),
+            round(float(voltages[idx]), 2),
+            round(float(power_factors[idx]), 3),
+            bool(estimated_probs[idx] < 0.02),
+        ))
+    return rows
+
+def generate_outages_chunk(start, end, NSB, causes, severities, bts):
+    size = end - start
+    rng = np.random.default_rng(start)
+    sub_ids = rng.integers(1, NSB + 1, size)
+    seconds_offset = rng.integers(0, 364 * 86400 + 1, size)
+    duration_minutes = rng.integers(5, 1441, size)
+    cause_indices = rng.integers(0, len(causes), size)
+    affected_meters = rng.integers(1, 501, size)
+    severity_indices = rng.integers(0, len(severities), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        st = bts + timedelta(seconds=int(seconds_offset[idx]))
+        rows.append((
+            i,
+            int(sub_ids[idx]),
             st,
-            st + timedelta(minutes=random.randint(5, 1440)),
-            random.choice(causes),
-            random.randint(1, 500),
-            random.choice(severities),
+            st + timedelta(minutes=int(duration_minutes[idx])),
+            causes[cause_indices[idx]],
+            int(affected_meters[idx]),
+            severities[severity_indices[idx]],
         ))
     return rows
 

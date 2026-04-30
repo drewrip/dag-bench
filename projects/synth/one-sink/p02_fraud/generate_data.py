@@ -1,66 +1,111 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_accounts_chunk(start, end, atypes, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    atype_indices = rng.integers(0, len(atypes), size)
+    country_indices = rng.integers(0, 5, size)
+    countries = ["US", "GB", "DE", "FR", "CA"]
+    limits = rng.uniform(500, 50000, size)
+    days_back = rng.integers(30, 3651, size)
+    frozen_probs = rng.random(size)
+    
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
             f"Holder {i}",
-            random.choice(atypes),
-            random.choice(["US", "GB", "DE", "FR", "CA"]),
-            round(random.uniform(500, 50000), 2),
-            (base - timedelta(days=random.randint(30, 3650))).date(),
-            random.random() < 0.03,
-        )
-        for i in range(start, end)
-    ]
+            atypes[atype_indices[idx]],
+            countries[country_indices[idx]],
+            round(float(limits[idx]), 2),
+            (base - timedelta(days=int(days_back[idx]))).date(),
+            bool(frozen_probs[idx] < 0.03),
+        ))
+    return rows
 
 def generate_merchants_chunk(start, end, cats, risks):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    cat_indices = rng.integers(0, len(cats), size)
+    country_indices = rng.integers(0, 5, size)
+    countries = ["US", "GB", "NG", "CN", "RU"]
+    risk_indices = rng.integers(0, len(risks), size)
+    avg_amounts = rng.uniform(5, 500, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
             f"Merchant {i}",
-            random.choice(cats),
-            random.choice(["US", "GB", "NG", "CN", "RU"]),
-            random.choice(risks),
-            round(random.uniform(5, 500), 2),
-        )
-        for i in range(start, end)
-    ]
+            cats[cat_indices[idx]],
+            countries[country_indices[idx]],
+            risks[risk_indices[idx]],
+            round(float(avg_amounts[idx]), 2),
+        ))
+    return rows
 
 def generate_transactions_chunk(start, end, NA, NM, base, chans, currs, rcodes):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    account_ids = rng.integers(1, NA + 1, size)
+    merchant_ids = rng.integers(1, NM + 1, size)
+    amounts = rng.uniform(1, 5000, size)
+    seconds_offset = rng.integers(0, 365 * 86400 + 1, size)
+    chan_indices = rng.integers(0, len(chans), size)
+    curr_indices = rng.integers(0, len(currs), size)
+    declined_probs = rng.random(size)
+    flagged_probs = rng.random(size)
+    rcode_indices = rng.integers(0, len(rcodes), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NA),
-            random.randint(1, NM),
-            round(random.uniform(1, 5000), 2),
-            base + timedelta(seconds=random.randint(0, 365 * 86400)),
-            random.choice(chans),
-            random.choice(currs),
-            random.random() < 0.05,
-            random.random() < 0.04,
-            random.choice(rcodes),
-        )
-        for i in range(start, end)
-    ]
+            int(account_ids[idx]),
+            int(merchant_ids[idx]),
+            round(float(amounts[idx]), 2),
+            base + timedelta(seconds=int(seconds_offset[idx])),
+            chans[chan_indices[idx]],
+            currs[curr_indices[idx]],
+            bool(declined_probs[idx] < 0.05),
+            bool(flagged_probs[idx] < 0.04),
+            rcodes[rcode_indices[idx]],
+        ))
+    return rows
 
 def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    
+    if flagged_ids:
+        flagged_indices = rng.integers(0, len(flagged_ids), size)
+    else:
+        random_txn_ids = rng.integers(1, NT + 1, size)
+        
+    atype2_indices = rng.integers(0, len(atypes2), size)
+    sev_indices = rng.integers(0, len(sevs), size)
+    seconds_offset = rng.integers(0, 365 * 86400 + 1, size)
+    resolved_probs = rng.random(size)
+    res_probs = rng.random(size)
+    res_indices = rng.integers(0, len(ress), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        txn_id = int(flagged_ids[flagged_indices[idx]]) if flagged_ids else int(random_txn_ids[idx])
+        rows.append((
             i,
-            random.choice(flagged_ids) if flagged_ids else random.randint(1, NT),
-            random.choice(atypes2),
-            random.choice(sevs),
-            base + timedelta(seconds=random.randint(0, 365 * 86400)),
-            random.random() > 0.4,
-            random.choice(ress) if random.random() > 0.4 else None,
-        )
-        for i in range(start, end)
-    ]
+            txn_id,
+            atypes2[atype2_indices[idx]],
+            sevs[sev_indices[idx]],
+            base + timedelta(seconds=int(seconds_offset[idx])),
+            bool(resolved_probs[idx] > 0.4),
+            ress[res_indices[idx]] if res_probs[idx] > 0.4 else None,
+        ))
+    return rows
 
 
 def main():

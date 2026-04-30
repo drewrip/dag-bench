@@ -1,49 +1,72 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_departments_chunk(start, end, divs, locs):
+    rng = np.random.default_rng(start)
+    size = end - start
+    div_idx = rng.integers(0, len(divs), size)
+    loc_idx = rng.integers(0, len(locs), size)
+    bud_rand = rng.uniform(100000, 10000000, size)
+    hc_rand = rng.integers(5, 101, size)
     return [
         (
             i,
             f"Dept-{i}",
-            random.choice(divs),
-            random.choice(locs),
-            round(random.uniform(100000, 10000000), 2),
-            random.randint(5, 100),
+            divs[div_idx[i - start]],
+            locs[loc_idx[i - start]],
+            round(float(bud_rand[i - start]), 2),
+            int(hc_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 
 def generate_employees_chunk(start, end, ND, mgrs, base, titles, etypes):
+    rng = np.random.default_rng(start)
+    size = end - start
+    dept_rand = rng.integers(1, ND + 1, size)
+    mgr_idx = rng.integers(0, len(mgrs), size)
+    gen_idx = rng.integers(0, 3, size)
+    days_rand = rng.integers(0, 3001, size)
+    title_idx = rng.integers(0, len(titles), size)
+    etype_idx = rng.integers(0, len(etypes), size)
+    active_rand = rng.random(size)
+    genders = ["M", "F", "NB"]
     return [
         (
             i,
-            random.randint(1, ND),
-            random.choice(mgrs) if i not in mgrs else None,
+            int(dept_rand[i - start]),
+            int(mgrs[mgr_idx[i - start]]) if i not in mgrs else None,
             f"First{i}",
             f"Last{i}",
-            random.choice(["M", "F", "NB"]),
-            base + timedelta(days=random.randint(0, 3000)),
-            random.choice(titles),
-            random.choice(etypes),
-            random.random() > 0.07,
+            genders[gen_idx[i - start]],
+            base + timedelta(days=int(days_rand[i - start])),
+            titles[title_idx[i - start]],
+            etypes[etype_idx[i - start]],
+            bool(active_rand[i - start] > 0.07),
         )
         for i in range(start, end)
     ]
 
 
 def generate_salaries_chunk(start, end, NE, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    emp_rand = rng.integers(1, NE + 1, size)
+    days_rand = rng.integers(0, 3001, size)
+    sal_rand = rng.uniform(30000, 300000, size)
+    bon_rand = rng.uniform(0, 50000, size)
     return [
         (
             i,
-            random.randint(1, NE),
-            base + timedelta(days=random.randint(0, 3000)),
-            round(random.uniform(30000, 300000), 2),
-            round(random.uniform(0, 50000), 2),
+            int(emp_rand[i - start]),
+            base + timedelta(days=int(days_rand[i - start])),
+            round(float(sal_rand[i - start]), 2),
+            round(float(bon_rand[i - start]), 2),
             "USD",
         )
         for i in range(start, end)
@@ -51,28 +74,42 @@ def generate_salaries_chunk(start, end, NE, base):
 
 
 def generate_performance_reviews_chunk(start, end, NE, base, cats):
+    rng = np.random.default_rng(start)
+    size = end - start
+    emp_rand = rng.integers(1, NE + 1, size)
+    days_rand = rng.integers(365, 3651, size)
+    reviewer_rand = rng.integers(1, NE + 1, size)
+    score_rand = rng.uniform(1, 5, size)
+    cat_idx = rng.integers(0, len(cats), size)
     return [
         (
             i,
-            random.randint(1, NE),
-            base + timedelta(days=random.randint(365, 3650)),
-            random.randint(1, NE),
-            round(random.uniform(1, 5), 2),
-            random.choice(cats),
+            int(emp_rand[i - start]),
+            base + timedelta(days=int(days_rand[i - start])),
+            int(reviewer_rand[i - start]),
+            round(float(score_rand[i - start]), 2),
+            cats[cat_idx[i - start]],
         )
         for i in range(start, end)
     ]
 
 
 def generate_leave_requests_chunk(start, end, NE, base, ltypes):
+    rng = np.random.default_rng(start)
+    size = end - start
+    emp_rand = rng.integers(1, NE + 1, size)
+    type_idx = rng.integers(0, len(ltypes), size)
+    sd_days = rng.integers(0, 3001, size)
+    len_days = rng.integers(1, 31, size)
+    app_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NE),
-            random.choice(ltypes),
-            sd := base + timedelta(days=random.randint(0, 3000)),
-            sd + timedelta(days=random.randint(1, 30)),
-            random.random() > 0.1,
+            int(emp_rand[i - start]),
+            ltypes[type_idx[i - start]],
+            (sd := base + timedelta(days=int(sd_days[i - start]))),
+            sd + timedelta(days=int(len_days[i - start])),
+            bool(app_rand[i - start] > 0.1),
         )
         for i in range(start, end)
     ]

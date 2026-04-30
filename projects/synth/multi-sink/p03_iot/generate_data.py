@@ -1,60 +1,95 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_sites_chunk(start, end, regions):
+    rng = np.random.default_rng(start)
+    size = end - start
+    reg_idx = rng.integers(0, len(regions), size)
+    lat_rand = rng.uniform(-60, 60, size)
+    lon_rand = rng.uniform(-180, 180, size)
+    tz_idx = rng.integers(0, 4, size)
+    timezones = ["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"]
     return [
         (
             i,
             f"Site-{i}",
-            random.choice(regions),
-            round(random.uniform(-60, 60), 4),
-            round(random.uniform(-180, 180), 4),
-            random.choice(["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"]),
+            regions[reg_idx[i - start]],
+            round(float(lat_rand[i - start]), 4),
+            round(float(lon_rand[i - start]), 4),
+            timezones[tz_idx[i - start]],
         )
         for i in range(start, end)
     ]
 
 def generate_devices_chunk(start, end, NS, dtypes, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    site_rand = rng.integers(1, NS + 1, size)
+    dtype_idx = rng.integers(0, len(dtypes), size)
+    model_abc = rng.integers(0, 3, size)
+    model_num = rng.integers(1, 6, size)
+    firm_maj = rng.integers(1, 5, size)
+    firm_min = rng.integers(0, 10, size)
+    days_rand = rng.integers(0, 731, size)
+    active_rand = rng.random(size)
+    abc = "ABC"
     return [
         (
             i,
-            random.randint(1, NS),
-            random.choice(dtypes),
-            f"Model-{random.choice('ABC')}{random.randint(1, 5)}",
-            f"v{random.randint(1, 4)}.{random.randint(0, 9)}",
-            (base - timedelta(days=random.randint(0, 730))).date(),
-            random.random() > 0.05,
+            int(site_rand[i - start]),
+            dtypes[dtype_idx[i - start]],
+            f"Model-{abc[model_abc[i - start]]}{model_num[i - start]}",
+            f"v{firm_maj[i - start]}.{firm_min[i - start]}",
+            (base - timedelta(days=int(days_rand[i - start]))).date(),
+            bool(active_rand[i - start] > 0.05),
         )
         for i in range(start, end)
     ]
 
 def generate_readings_chunk(start, end, ND, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    dev_rand = rng.integers(1, ND + 1, size)
+    sec_rand = rng.integers(0, 180 * 86400 + 1, size)
+    temp_rand = rng.normal(20, 8, size)
+    hum_rand = rng.uniform(20, 95, size)
+    pres_rand = rng.normal(1013, 15, size)
+    bat_rand = rng.integers(5, 101, size)
+    rssi_rand = rng.integers(-90, -29, size)
+    err_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, ND),
-            base + timedelta(seconds=random.randint(0, 180 * 86400)),
-            round(random.gauss(20, 8), 2),
-            round(random.uniform(20, 95), 2),
-            round(random.gauss(1013, 15), 2),
-            random.randint(5, 100),
-            random.randint(-90, -30),
-            random.random() < 0.02,
+            int(dev_rand[i - start]),
+            base + timedelta(seconds=int(sec_rand[i - start])),
+            round(float(temp_rand[i - start]), 2),
+            round(float(hum_rand[i - start]), 2),
+            round(float(pres_rand[i - start]), 2),
+            int(bat_rand[i - start]),
+            int(rssi_rand[i - start]),
+            bool(err_rand[i - start] < 0.02),
         )
         for i in range(start, end)
     ]
 
 def generate_maintenance_logs_chunk(start, end, ND, base, actions):
+    rng = np.random.default_rng(start)
+    size = end - start
+    dev_rand = rng.integers(1, ND + 1, size)
+    hour_rand = rng.integers(0, 4321, size)
+    act_idx = rng.integers(0, len(actions), size)
+    tech_rand = rng.integers(1, 21, size)
     return [
         (
             i,
-            random.randint(1, ND),
-            base + timedelta(hours=random.randint(0, 4320)),
-            random.choice(actions),
-            f"Tech-{random.randint(1, 20)}",
+            int(dev_rand[i - start]),
+            base + timedelta(hours=int(hour_rand[i - start])),
+            actions[act_idx[i - start]],
+            f"Tech-{tech_rand[i - start]}",
         )
         for i in range(start, end)
     ]

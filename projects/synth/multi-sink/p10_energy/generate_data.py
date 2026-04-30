@@ -1,65 +1,99 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_substations_chunk(start, end, regions):
+    rng = np.random.default_rng(start)
+    size = end - start
+    reg_idx = rng.integers(0, len(regions), size)
+    cap_rand = rng.uniform(10, 500, size)
+    volt_idx = rng.integers(0, 5, size)
+    lat_rand = rng.uniform(25, 50, size)
+    lon_rand = rng.uniform(-120, -70, size)
+    voltages = [11, 33, 66, 110, 132]
     return [
         (
             i,
             f"SUB-{i:03d}",
-            random.choice(regions),
-            round(random.uniform(10, 500), 2),
-            random.choice([11, 33, 66, 110, 132]),
-            round(random.uniform(25, 50), 4),
-            round(random.uniform(-120, -70), 4),
+            regions[reg_idx[i - start]],
+            round(float(cap_rand[i - start]), 2),
+            voltages[volt_idx[i - start]],
+            round(float(lat_rand[i - start]), 4),
+            round(float(lon_rand[i - start]), 4),
         )
         for i in range(start, end)
     ]
 
 
 def generate_meters_chunk(start, end, NSB, NMT, mtypes, tariffs, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    sub_rand = rng.integers(1, NSB + 1, size)
+    cust_rand = rng.integers(1, NMT * 2 + 1, size)
+    type_idx = rng.integers(0, len(mtypes), size)
+    tar_idx = rng.integers(0, len(tariffs), size)
+    days_rand = rng.integers(0, 3651, size)
+    smart_rand = rng.random(size)
+    cap_rand = rng.uniform(1, 1000, size)
     return [
         (
             i,
-            random.randint(1, NSB),
-            random.randint(1, NMT * 2),
-            random.choice(mtypes),
-            random.choice(tariffs),
-            base - timedelta(days=random.randint(0, 3650)),
-            random.random() > 0.3,
-            round(random.uniform(1, 1000), 2),
+            int(sub_rand[i - start]),
+            int(cust_rand[i - start]),
+            mtypes[type_idx[i - start]],
+            tariffs[tar_idx[i - start]],
+            base - timedelta(days=int(days_rand[i - start])),
+            bool(smart_rand[i - start] > 0.3),
+            round(float(cap_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 
 def generate_consumption_readings_chunk(start, end, NMT, bts):
+    rng = np.random.default_rng(start)
+    size = end - start
+    meter_rand = rng.integers(1, NMT + 1, size)
+    sec_rand = rng.integers(0, 364 * 86400 + 1, size)
+    kwh_rand = rng.normal(5, 3, size)
+    volt_rand = rng.normal(230, 5, size)
+    pf_rand = rng.uniform(0.7, 1, size)
+    est_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NMT),
-            bts + timedelta(seconds=random.randint(0, 364 * 86400)),
-            round(abs(random.gauss(5, 3)), 4),
-            round(random.gauss(230, 5), 2),
-            round(random.uniform(0.7, 1), 3),
-            random.random() < 0.02,
+            int(meter_rand[i - start]),
+            bts + timedelta(seconds=int(sec_rand[i - start])),
+            round(float(abs(kwh_rand[i - start])), 4),
+            round(float(volt_rand[i - start]), 2),
+            round(float(pf_rand[i - start]), 3),
+            bool(est_rand[i - start] < 0.02),
         )
         for i in range(start, end)
     ]
 
 
 def generate_outage_events_chunk(start, end, NSB, bts, causes, sevs):
+    rng = np.random.default_rng(start)
+    size = end - start
+    sub_rand = rng.integers(1, NSB + 1, size)
+    start_sec = rng.integers(0, 364 * 86400 + 1, size)
+    dur_min = rng.integers(5, 1441, size)
+    cause_idx = rng.integers(0, len(causes), size)
+    aff_rand = rng.integers(1, 501, size)
+    sev_idx = rng.integers(0, len(sevs), size)
     return [
         (
             i,
-            random.randint(1, NSB),
-            st := bts + timedelta(seconds=random.randint(0, 364 * 86400)),
-            st + timedelta(minutes=random.randint(5, 1440)),
-            random.choice(causes),
-            random.randint(1, 500),
-            random.choice(sevs),
+            int(sub_rand[i - start]),
+            (st := bts + timedelta(seconds=int(start_sec[i - start]))),
+            st + timedelta(minutes=int(dur_min[i - start])),
+            causes[cause_idx[i - start]],
+            int(aff_rand[i - start]),
+            sevs[sev_idx[i - start]],
         )
         for i in range(start, end)
     ]

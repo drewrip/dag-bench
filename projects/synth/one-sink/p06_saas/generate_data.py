@@ -1,81 +1,131 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_accounts_chunk(start, end, industries, base):
-    return [
-        (
-            i,
-            f"Account {i}",
-            random.choice(industries),
-            random.choice(["US", "UK", "DE", "FR", "CA", "AU"]),
-            round(random.uniform(5000, 500000), 2),
-            base + timedelta(days=random.randint(0, 700)),
-            random.randint(1, 20),
-            random.randint(1, 100),
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    industry_indices = rng.integers(0, len(industries), size)
+    countries = ["US", "UK", "DE", "FR", "CA", "AU"]
+    country_indices = rng.integers(0, len(countries), size)
+    arrs = rng.uniform(5000, 500000, size)
+    days_offset = rng.integers(0, 701, size)
+    csm_ids = rng.integers(1, 21, size)
+    health_scores = rng.integers(1, 101, size)
 
-def generate_subscriptions_chunk(start, end, NAC, plans, base):
     rows = []
-    for i in range(start, end):
-        sd = base + timedelta(days=random.randint(0, 600))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NAC),
-            random.choice(plans),
-            random.randint(1, 200),
-            round(random.uniform(99, 9999), 2),
+            f"Account {i}",
+            industries[industry_indices[idx]],
+            countries[country_indices[idx]],
+            round(float(arrs[idx]), 2),
+            base + timedelta(days=int(days_offset[idx])),
+            int(csm_ids[idx]),
+            int(health_scores[idx]),
+        ))
+    return rows
+
+def generate_subscriptions_chunk(start, end, NAC, plans, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    account_ids = rng.integers(1, NAC + 1, size)
+    plan_indices = rng.integers(0, len(plans), size)
+    seats = rng.integers(1, 201, size)
+    mrrs = rng.uniform(99, 9999, size)
+    days_offset = rng.integers(0, 601, size)
+    active_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        sd = base + timedelta(days=int(days_offset[idx]))
+        rows.append((
+            i,
+            int(account_ids[idx]),
+            plans[plan_indices[idx]],
+            int(seats[idx]),
+            round(float(mrrs[idx]), 2),
             sd,
             sd + timedelta(days=365),
-            random.random() > 0.1,
+            bool(active_probs[idx] > 0.1),
             sd + timedelta(days=365),
         ))
     return rows
 
 def generate_events_chunk(start, end, NAC, etypes, bts):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    account_ids = rng.integers(1, NAC + 1, size)
+    user_ids = rng.integers(1, NAC * 5 + 1, size)
+    etype_indices = rng.integers(0, len(etypes), size)
+    seconds_offset = rng.integers(0, 700 * 86400 + 1, size)
+    session_ids = rng.integers(1, NAC * 20 + 1, size)
+    platforms = ["web", "mobile", "api"]
+    platform_indices = rng.integers(0, len(platforms), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NAC),
-            random.randint(1, NAC * 5),
-            random.choice(etypes),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
-            f"sess_{random.randint(1, NAC * 20)}",
-            random.choice(["web", "mobile", "api"]),
-        )
-        for i in range(start, end)
-    ]
+            int(account_ids[idx]),
+            int(user_ids[idx]),
+            etypes[etype_indices[idx]],
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            f"sess_{session_ids[idx]}",
+            platforms[platform_indices[idx]],
+        ))
+    return rows
 
 def generate_feature_usage_chunk(start, end, NAC, features, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    account_ids = rng.integers(1, NAC + 1, size)
+    feature_indices = rng.integers(0, len(features), size)
+    days_offset = rng.integers(0, 701, size)
+    usage_counts = rng.integers(1, 1001, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NAC),
-            random.choice(features),
-            base + timedelta(days=random.randint(0, 700)),
-            random.randint(1, 1000),
-        )
-        for i in range(start, end)
-    ]
+            int(account_ids[idx]),
+            features[feature_indices[idx]],
+            base + timedelta(days=int(days_offset[idx])),
+            int(usage_counts[idx]),
+        ))
+    return rows
 
 def generate_support_tickets_chunk(start, end, NAC, bts, priorities, ticket_cats):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    account_ids = rng.integers(1, NAC + 1, size)
+    created_offsets = rng.integers(0, 700 * 86400 + 1, size)
+    resolved_offsets = rng.integers(0, 700 * 86400 + 1, size)
+    resolved_probs = rng.random(size)
+    priority_indices = rng.integers(0, len(priorities), size)
+    cat_indices = rng.integers(0, len(ticket_cats), size)
+    csat_scores = rng.integers(1, 6, size)
+    csat_probs = rng.random(size)
+    is_resolved_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        created_ts = bts + timedelta(seconds=int(created_offsets[idx]))
+        resolved_ts = bts + timedelta(seconds=int(resolved_offsets[idx])) if resolved_probs[idx] > 0.2 else None
+        rows.append((
             i,
-            random.randint(1, NAC),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400)),
-            bts + timedelta(seconds=random.randint(0, 700 * 86400)) if random.random() > 0.2 else None,
-            random.choice(priorities),
-            random.choice(ticket_cats),
-            random.randint(1, 5) if random.random() > 0.3 else None,
-            random.random() > 0.2,
-        )
-        for i in range(start, end)
-    ]
+            int(account_ids[idx]),
+            created_ts,
+            resolved_ts,
+            priorities[priority_indices[idx]],
+            ticket_cats[cat_indices[idx]],
+            int(csat_scores[idx]) if csat_probs[idx] > 0.3 else None,
+            bool(is_resolved_probs[idx] > 0.2),
+        ))
+    return rows
 
 
 def main():
