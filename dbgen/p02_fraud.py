@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_accounts_chunk(start, end, atypes, base):
@@ -149,23 +155,43 @@ def main():
     sevs = ["info", "warning", "critical"]
     ress = ["confirmed_fraud", "false_positive", "under_review"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p02_fraud", 4)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("accounts")
         batched_insert(con, "accounts", ['account_id', 'holder_name', 'account_type', 'country', 'credit_limit', 'opened_date', 'is_frozen'],
                        run_parallel(executor, generate_accounts_chunk, NA, atypes, base))
+        progress.advance("merchants")
         batched_insert(con, "merchants", ['merchant_id', 'name', 'category', 'country', 'risk_tier', 'avg_txn_amount'],
                        run_parallel(executor, generate_merchants_chunk, NM, cats, risks))
         
+        progress.advance("transactions")
         txns = run_parallel(executor, generate_transactions_chunk, NT, NA, NM, base, chans, currs, rcodes)
         batched_insert(con, "transactions", ['txn_id', 'account_id', 'merchant_id', 'amount', 'txn_ts', 'channel', 'currency', 'is_declined', 'is_flagged', 'response_code'], txns)
 
-        flagged_ids = [t[0] for t in txns if t[8]][:NAL]
+        flagged_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT txn_id FROM transactions WHERE is_flagged ORDER BY txn_id LIMIT ?",
+                [NAL],
+            ).fetchall()
+        ]
+        progress.advance("alerts")
         batched_insert(con, "alerts", ['alert_id', 'txn_id', 'alert_type', 'severity', 'created_ts', 'resolved', 'resolution'],
                        run_parallel(executor, generate_alerts_chunk, NAL, flagged_ids, NT, atypes2, sevs, base, ress))
 
 
     con.close()
-    print(f"p02 done: accounts={NA} txns={NT} alerts={NAL}")
+    print_generation_summary(
+        "p02_fraud",
+        sf,
+        {
+            "accounts": NA,
+            "merchants": NM,
+            "transactions": NT,
+            "alerts": NAL,
+        },
+    )
 
 if __name__ == "__main__":
     main()

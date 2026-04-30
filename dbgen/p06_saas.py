@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_accounts_chunk(start, end, industries, base):
@@ -170,22 +176,38 @@ def main():
     priorities = ["low", "medium", "high", "critical"]
     ticket_cats = ["billing", "technical", "feature_request", "onboarding", "other"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p06_saas", 5)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("accounts")
         batched_insert(con, "accounts", ['account_id', 'name', 'industry', 'country', 'arr', 'created_date', 'csm_id', 'health_score'],
                        run_parallel(executor, generate_accounts_chunk, NAC, industries, base))
+        progress.advance("subscriptions")
         batched_insert(con, "subscriptions", ['sub_id', 'account_id', 'plan', 'seats', 'mrr', 'start_date', 'end_date', 'is_active', 'renewal_date'],
                        run_parallel(executor, generate_subscriptions_chunk, NSB, NAC, plans, base))
+        progress.advance("events")
         batched_insert(con, "events", ['event_id', 'account_id', 'user_id', 'event_type', 'event_ts', 'session_id', 'platform'],
                        run_parallel(executor, generate_events_chunk, NEV, NAC, etypes, bts))
+        progress.advance("feature_usage")
         batched_insert(con, "feature_usage", ['fu_id', 'account_id', 'feature_name', 'usage_date', 'usage_count'],
                        run_parallel(executor, generate_feature_usage_chunk, NFU, NAC, features, base))
+        progress.advance("support_tickets")
         batched_insert(con, "support_tickets", ['ticket_id', 'account_id', 'created_ts', 'resolved_ts', 'priority', 'category', 'csat_score', 'is_resolved'],
                        run_parallel(executor, generate_support_tickets_chunk, NST, NAC, bts, priorities, ticket_cats))
 
 
     con.close()
-    print(f"p06 done: accounts={NAC} events={NEV} tickets={NST}")
+    print_generation_summary(
+        "p06_saas",
+        sf,
+        {
+            "accounts": NAC,
+            "subscriptions": NSB,
+            "events": NEV,
+            "feature_usage": NFU,
+            "support_tickets": NST,
+        },
+    )
 
 if __name__ == "__main__":
     main()

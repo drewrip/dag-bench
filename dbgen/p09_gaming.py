@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_players_chunk(start, end, countries, platforms, bts, age_groups):
@@ -76,30 +82,35 @@ def generate_sessions_chunk(start, end, NPL, bts, platforms):
         ))
     return rows
 
-def generate_events_chunk(start, end, sess_rows, etypes, NLV):
+def generate_events_chunk(start, end, session_ids, player_ids, session_starts, etypes, NLV):
     size = end - start
     rng = np.random.default_rng(start)
-    sess_indices = rng.integers(0, len(sess_rows), size)
+    sess_indices = rng.integers(0, len(session_ids), size)
     etype_indices = rng.integers(0, len(etypes), size)
     seconds_offset = rng.integers(0, 7201, size)
     level_ids = rng.integers(1, NLV + 1, size) if NLV > 0 else np.ones(size, dtype=int)
     values = rng.uniform(0, 1000, size)
+    event_ids = range(start, end)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        sess = sess_rows[sess_indices[idx]]
-        et = sess[2] + timedelta(seconds=int(seconds_offset[idx]))
-        rows.append((
-            i,
-            int(sess[0]),
-            int(sess[1]),
-            etypes[etype_indices[idx]],
-            et,
-            int(level_ids[idx]),
-            round(float(values[idx]), 2),
-            f"meta_{i}",
-        ))
-    return rows
+    selected_session_ids = np.take(session_ids, sess_indices)
+    selected_player_ids = np.take(player_ids, sess_indices)
+    selected_starts = np.take(session_starts, sess_indices)
+    event_ts = (selected_starts + seconds_offset.astype("timedelta64[s]")).tolist()
+    event_types = np.take(etypes, etype_indices)
+    rounded_values = np.round(values, 2)
+
+    return list(
+        zip(
+            event_ids,
+            selected_session_ids.tolist(),
+            selected_player_ids.tolist(),
+            event_types.tolist(),
+            event_ts,
+            level_ids.tolist(),
+            rounded_values.tolist(),
+            [f"meta_{i}" for i in event_ids],
+        )
+    )
 
 def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
     size = end - start
@@ -129,7 +140,7 @@ def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 10.0
+    sf_adj = sf * 400.0
     NPL = max(20, int(2000 * sf_adj))
     NSS = max(50, int(10000 * sf_adj))
     NEV = max(200, int(80000 * sf_adj))
@@ -171,25 +182,50 @@ def main():
     itypes = ["coin_pack", "skin", "level_skip", "power_up", "subscription", "loot_box"]
     currencies = ["USD", "EUR", "GBP", "JPY", "BRL"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p09_gaming", 5)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("players")
         batched_insert(con, "players", ['player_id', 'username', 'country', 'platform', 'created_ts', 'age_group', 'is_paid_user'],
                        run_parallel(executor, generate_players_chunk, NPL, countries, platforms, bts, age_groups))
+        progress.advance("levels")
         batched_insert(con, "levels", ['level_id', 'level_name', 'world', 'difficulty', 'par_time_sec', 'reward_coins', 'unlock_level'],
                        run_parallel(executor, generate_levels_chunk, NLV, worlds, difficulties))
         
+        progress.advance("sessions")
         sess_rows = run_parallel(executor, generate_sessions_chunk, NSS, NPL, bts, platforms)
         batched_insert(con, "sessions", ['session_id', 'player_id', 'session_start', 'session_end', 'platform', 'version', 'levels_attempted', 'coins_earned'], sess_rows)
-
+        session_refs = con.execute(
+            f"""
+            SELECT session_id, player_id, session_start
+            FROM sessions
+            USING SAMPLE {max(NEV, 1)} ROWS
+            """
+        ).fetchall()
+        session_ids = np.array([row[0] for row in session_refs], dtype=np.int64)
+        player_ids = np.array([row[1] for row in session_refs], dtype=np.int64)
+        session_starts = np.array([row[2] for row in session_refs], dtype="datetime64[us]")
+        progress.advance("events")
         batched_insert(con, "events", ['event_id', 'session_id', 'player_id', 'event_type', 'event_ts', 'level_id', 'value', 'metadata'],
-                       run_parallel(executor, generate_events_chunk, NEV, sess_rows, etypes, NLV))
+                       run_parallel(executor, generate_events_chunk, NEV, session_ids, player_ids, session_starts, np.array(etypes, dtype=object), NLV))
         
+        progress.advance("purchases")
         batched_insert(con, "purchases", ['purchase_id', 'player_id', 'purchase_ts', 'item_type', 'item_name', 'price_usd', 'currency', 'is_refunded'],
                        run_parallel(executor, generate_purchases_chunk, NPU, NPL, bts, itypes, currencies))
 
 
     con.close()
-    print(f"p09 done: players={NPL} sessions={NSS} events={NEV} purchases={NPU}")
+    print_generation_summary(
+        "p09_gaming",
+        sf,
+        {
+            "players": NPL,
+            "levels": NLV,
+            "sessions": NSS,
+            "events": NEV,
+            "purchases": NPU,
+        },
+    )
 
 if __name__ == "__main__":
     main()

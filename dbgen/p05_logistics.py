@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_suppliers_chunk(start, end, cats):
@@ -172,22 +178,38 @@ def main():
     po_statuses = ["open", "partial", "complete", "cancelled"]
     skus = [f"SKU-{i:05d}" for i in range(1, 51)]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p05_logistics", 5)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("suppliers")
         batched_insert(con, "suppliers", ['supplier_id', 'name', 'country', 'reliability_score', 'lead_time_days', 'category', 'is_preferred'],
                        run_parallel(executor, generate_suppliers_chunk, NSUP, cats))
+        progress.advance("warehouses")
         batched_insert(con, "warehouses", ['wh_id', 'name', 'country', 'region', 'capacity_m3', 'is_active'],
                        run_parallel(executor, generate_warehouses_chunk, NWH, regions))
+        progress.advance("shipments")
         batched_insert(con, "shipments", ['shipment_id', 'supplier_id', 'wh_id', 'sku', 'quantity', 'unit_cost', 'shipped_date', 'received_date', 'status', 'freight_cost'],
                        run_parallel(executor, generate_shipments_chunk, NSH, NSUP, NWH, skus, base, statuses))
+        progress.advance("inventory")
         batched_insert(con, "inventory", ['inv_id', 'wh_id', 'sku', 'qty_on_hand', 'qty_reserved', 'reorder_point', 'snapshot_date'],
                        run_parallel(executor, generate_inventory_chunk, NIN, NWH, skus, base))
+        progress.advance("purchase_orders")
         batched_insert(con, "purchase_orders", ['po_id', 'supplier_id', 'sku', 'ordered_qty', 'unit_price', 'order_date', 'expected_date', 'received_qty', 'status'],
                        run_parallel(executor, generate_purchase_orders_chunk, NPO, NSUP, skus, base, po_statuses))
 
 
     con.close()
-    print(f"p05 done: suppliers={NSUP} shipments={NSH} pos={NPO}")
+    print_generation_summary(
+        "p05_logistics",
+        sf,
+        {
+            "suppliers": NSUP,
+            "warehouses": NWH,
+            "shipments": NSH,
+            "inventory": NIN,
+            "purchase_orders": NPO,
+        },
+    )
 
 if __name__ == "__main__":
     main()
