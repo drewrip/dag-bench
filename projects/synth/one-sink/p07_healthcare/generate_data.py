@@ -120,7 +120,7 @@ def main():
     icd_codes = [f"ICD{i:04d}" for i in range(1, 101)]
     states = ["CA", "TX", "NY", "FL", "IL", "WA", "OH", "GA"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "patients", ['patient_id', 'dob', 'gender', 'zip_code', 'plan_type', 'state'],
                        run_parallel(executor, generate_patients_chunk, NPA, genders, plans, states, base))

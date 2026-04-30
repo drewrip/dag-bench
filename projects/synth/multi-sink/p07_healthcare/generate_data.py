@@ -125,7 +125,7 @@ def main():
     icds = [f"ICD{i:04d}" for i in range(1, 101)]
     states = ["CA", "TX", "NY", "FL", "IL", "WA"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

@@ -112,7 +112,7 @@ def main():
     cats = ["technical", "leadership", "communication", "teamwork", "delivery"]
 
     mgrs = list(range(1, max(2, NE // 10) + 1))
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

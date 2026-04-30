@@ -88,7 +88,7 @@ def main():
     dtypes = ["temperature", "humidity", "pressure", "multi", "air_quality"]
     actions = ["calibrate", "replace_battery", "firmware_update", "repair", "inspect"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "sites", ['site_id', 'name', 'region', 'latitude', 'longitude', 'timezone'], 

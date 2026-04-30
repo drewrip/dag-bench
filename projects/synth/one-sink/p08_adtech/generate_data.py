@@ -105,7 +105,7 @@ def main():
     placements = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
     ctypes = ["purchase", "lead", "signup", "download", "call"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'],
                        run_parallel(executor, generate_campaigns_chunk, NCA, channels, objectives, base))

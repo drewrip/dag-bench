@@ -100,7 +100,7 @@ def main():
     causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
     severities = ["minor", "moderate", "major", "critical"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'],
                        run_parallel(executor, generate_substations_chunk, NSB, regions))

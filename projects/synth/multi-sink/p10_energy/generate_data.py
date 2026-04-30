@@ -96,7 +96,7 @@ def main():
     causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
     sevs = ["minor", "moderate", "major", "critical"]
 
-    cpu_count = min(4, os.cpu_count() or 1)
+    cpu_count = os.cpu_count()
 
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(

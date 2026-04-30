@@ -119,7 +119,7 @@ def main():
         "Travel", "Pets", "Tools", "Baby",
     ]
 
-    cpu_count = os.cpu_count() or 1
+    cpu_count = os.cpu_count()
     
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
         batched_insert(con, "categories", ['category_id', 'name', 'parent_id', 'display_rank'], 
