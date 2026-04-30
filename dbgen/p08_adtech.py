@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_campaigns_chunk(start, end, channels, objectives, base):
@@ -55,46 +61,44 @@ def generate_impressions_chunk(start, end, NCA, bts, devices, geos, placements):
         ))
     return rows
 
-def generate_clicks_chunk(start, end, imp_rows, imp_ids):
+def generate_clicks_chunk(start, end, imp_refs):
     size = end - start
     rng = np.random.default_rng(start)
-    imp_indices = rng.integers(0, len(imp_ids), size)
+    imp_indices = rng.integers(0, len(imp_refs), size)
     seconds_offset = rng.integers(1, 3601, size)
     landing_url_ids = rng.integers(1, 21, size)
 
     rows = []
     for idx, i in enumerate(range(start, end)):
-        imp_id = imp_ids[imp_indices[idx]]
-        imp_row = imp_rows[imp_id - 1]
-        ct = imp_row[3] + timedelta(seconds=int(seconds_offset[idx]))
+        imp_id, campaign_id, user_id, imp_ts, device = imp_refs[imp_indices[idx]]
+        ct = imp_ts + timedelta(seconds=int(seconds_offset[idx]))
         rows.append((
             i,
             int(imp_id),
-            int(imp_row[1]),
-            int(imp_row[2]),
+            int(campaign_id),
+            int(user_id),
             ct,
             f"https://brand.com/lp/{landing_url_ids[idx]}",
-            imp_row[4],
+            device,
         ))
     return rows
 
-def generate_conversions_chunk(start, end, click_ids, NCA, NIMP, bts, ctypes):
+def generate_conversions_chunk(start, end, click_refs, bts, ctypes):
     size = end - start
     rng = np.random.default_rng(start)
-    click_id_indices = rng.integers(0, len(click_ids), size)
-    campaign_ids = rng.integers(1, NCA + 1, size)
-    user_ids = rng.integers(1, NIMP * 10 + 1, size)
+    click_indices = rng.integers(0, len(click_refs), size)
     seconds_offset = rng.integers(0, 300 * 86400 + 1, size)
     ctype_indices = rng.integers(0, len(ctypes), size)
     revenues = rng.uniform(0, 500, size)
 
     rows = []
     for idx, i in enumerate(range(start, end)):
+        click_id, campaign_id, user_id = click_refs[click_indices[idx]]
         rows.append((
             i,
-            int(click_ids[click_id_indices[idx]]),
-            int(campaign_ids[idx]),
-            int(user_ids[idx]),
+            int(click_id),
+            int(campaign_id),
+            int(user_id),
             bts + timedelta(seconds=int(seconds_offset[idx])),
             ctypes[ctype_indices[idx]],
             round(float(revenues[idx]), 2),
@@ -140,25 +144,49 @@ def main():
     placements = ["header", "sidebar", "feed", "pre-roll", "interstitial", "sponsored"]
     ctypes = ["purchase", "lead", "signup", "download", "call"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p08_adtech", 4)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("campaigns")
         batched_insert(con, "campaigns", ['campaign_id', 'name', 'advertiser', 'channel', 'objective', 'start_date', 'end_date', 'budget', 'cpm_target'],
                        run_parallel(executor, generate_campaigns_chunk, NCA, channels, objectives, base))
         
+        progress.advance("impressions")
         imp_rows = run_parallel(executor, generate_impressions_chunk, NIMP, NCA, bts, devices, geos, placements)
         batched_insert(con, "impressions", ['imp_id', 'campaign_id', 'user_id', 'imp_ts', 'device', 'geo', 'placement', 'cost_usd'], imp_rows)
-
-        imp_ids = [r[0] for r in imp_rows]
-        click_rows = run_parallel(executor, generate_clicks_chunk, NCL, imp_rows, imp_ids)
+        imp_refs = con.execute(
+            f"""
+            SELECT imp_id, campaign_id, user_id, imp_ts, device
+            FROM impressions
+            USING SAMPLE {max(NCL, 1)} ROWS
+            """
+        ).fetchall()
+        progress.advance("clicks")
+        click_rows = run_parallel(executor, generate_clicks_chunk, NCL, imp_refs)
         batched_insert(con, "clicks", ['click_id', 'imp_id', 'campaign_id', 'user_id', 'click_ts', 'landing_url', 'device'], click_rows)
-
-        click_ids = [r[0] for r in click_rows]
+        click_refs = con.execute(
+            f"""
+            SELECT click_id, campaign_id, user_id
+            FROM clicks
+            USING SAMPLE {max(NCV, 1)} ROWS
+            """
+        ).fetchall()
+        progress.advance("conversions")
         batched_insert(con, "conversions", ['conv_id', 'click_id', 'campaign_id', 'user_id', 'conv_ts', 'conv_type', 'revenue'],
-                       run_parallel(executor, generate_conversions_chunk, NCV, click_ids, NCA, NIMP, bts, ctypes))
+                       run_parallel(executor, generate_conversions_chunk, NCV, click_refs, bts, ctypes))
 
 
     con.close()
-    print(f"p08 done: campaigns={NCA} impressions={NIMP} clicks={NCL} conversions={NCV}")
+    print_generation_summary(
+        "p08_adtech",
+        sf,
+        {
+            "campaigns": NCA,
+            "impressions": NIMP,
+            "clicks": NCL,
+            "conversions": NCV,
+        },
+    )
 
 if __name__ == "__main__":
     main()

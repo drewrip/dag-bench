@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os, math
 from datetime import datetime, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_sites_chunk(start, end, regions):
@@ -135,20 +141,34 @@ def main():
     dtypes = ["temperature", "humidity", "pressure", "multi", "air_quality"]
     actions = ["calibrate", "replace_battery", "firmware_update", "repair", "inspect"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p03_iot", 4)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("sites")
         batched_insert(con, "sites", ['site_id', 'name', 'region', 'latitude', 'longitude', 'timezone'],
                        run_parallel(executor, generate_sites_chunk, NS, regions))
+        progress.advance("devices")
         batched_insert(con, "devices", ['device_id', 'site_id', 'device_type', 'model', 'firmware', 'installed_date', 'is_active'],
                        run_parallel(executor, generate_devices_chunk, ND, NS, dtypes, base))
+        progress.advance("readings")
         batched_insert(con, "readings", ['reading_id', 'device_id', 'ts', 'temperature_c', 'humidity_pct', 'pressure_hpa', 'battery_pct', 'rssi_dbm', 'error_flag'],
                        run_parallel(executor, generate_readings_chunk, NR, ND, base))
+        progress.advance("maintenance_logs")
         batched_insert(con, "maintenance_logs", ['log_id', 'device_id', 'log_ts', 'action', 'technician', 'notes'],
                        run_parallel(executor, generate_maintenance_logs_chunk, NML, ND, base, actions))
 
 
     con.close()
-    print(f"p03 done: sites={NS} devices={ND} readings={NR}")
+    print_generation_summary(
+        "p03_iot",
+        sf,
+        {
+            "sites": NS,
+            "devices": ND,
+            "readings": NR,
+            "maintenance_logs": NML,
+        },
+    )
 
 if __name__ == "__main__":
     main()

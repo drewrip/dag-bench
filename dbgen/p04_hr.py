@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_departments_chunk(start, end, divs, locs):
@@ -163,22 +169,38 @@ def main():
 
     mgr_ids = list(range(1, max(2, NE // 10) + 1))
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p04_hr", 5)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("departments")
         batched_insert(con, "departments", ['dept_id', 'name', 'division', 'location', 'budget', 'headcount_target'],
                        run_parallel(executor, generate_departments_chunk, ND, divs, locs))
+        progress.advance("employees")
         batched_insert(con, "employees", ['emp_id', 'dept_id', 'manager_id', 'first_name', 'last_name', 'gender', 'hire_date', 'job_title', 'employment_type', 'is_active'],
                        run_parallel(executor, generate_employees_chunk, NE, ND, mgr_ids, base, ttitles, etypes))
+        progress.advance("salaries")
         batched_insert(con, "salaries", ['salary_id', 'emp_id', 'effective_date', 'base_salary', 'bonus', 'currency'],
                        run_parallel(executor, generate_salaries_chunk, NS, NE, base))
+        progress.advance("performance_reviews")
         batched_insert(con, "performance_reviews", ['review_id', 'emp_id', 'review_date', 'reviewer_id', 'score', 'category', 'notes'],
                        run_parallel(executor, generate_performance_reviews_chunk, NPR, NE, base, cats))
+        progress.advance("leave_requests")
         batched_insert(con, "leave_requests", ['leave_id', 'emp_id', 'leave_type', 'start_date', 'end_date', 'approved'],
                        run_parallel(executor, generate_leave_requests_chunk, NLR, NE, base, ltypes))
 
 
     con.close()
-    print(f"p04 done: depts={ND} emps={NE} salaries={NS}")
+    print_generation_summary(
+        "p04_hr",
+        sf,
+        {
+            "departments": ND,
+            "employees": NE,
+            "salaries": NS,
+            "performance_reviews": NPR,
+            "leave_requests": NLR,
+        },
+    )
 
 if __name__ == "__main__":
     main()

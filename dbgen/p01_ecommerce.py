@@ -1,7 +1,13 @@
 import duckdb, sys, os, numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_categories_chunk(start, end, cats):
@@ -198,14 +204,17 @@ def main():
         "Baby",
     ]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p01_ecommerce", 6)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("categories")
         batched_insert(
             con,
             "categories",
             ["category_id", "name", "parent_id", "display_rank"],
             run_parallel(executor, generate_categories_chunk, NCT, cats),
         )
+        progress.advance("customers")
         batched_insert(
             con,
             "customers",
@@ -220,6 +229,7 @@ def main():
             ],
             run_parallel(executor, generate_customers_chunk, NC, cn, base),
         )
+        progress.advance("products")
         batched_insert(
             con,
             "products",
@@ -236,6 +246,7 @@ def main():
             ],
             run_parallel(executor, generate_products_chunk, NP, NCT, base),
         )
+        progress.advance("orders")
         batched_insert(
             con,
             "orders",
@@ -250,12 +261,14 @@ def main():
             ],
             run_parallel(executor, generate_orders_chunk, NO, NC, st, ch, base),
         )
+        progress.advance("order_items")
         batched_insert(
             con,
             "order_items",
             ["item_id", "order_id", "product_id", "quantity", "unit_price"],
             run_parallel(executor, generate_order_items_chunk, NI, NO, NP),
         )
+        progress.advance("reviews")
         batched_insert(
             con,
             "reviews",
@@ -271,7 +284,18 @@ def main():
         )
 
     con.close()
-    print(f"p01 done: sf={sf} customers={NC} orders={NO} items={NI}")
+    print_generation_summary(
+        "p01_ecommerce",
+        sf,
+        {
+            "categories": NCT,
+            "customers": NC,
+            "products": NP,
+            "orders": NO,
+            "order_items": NI,
+            "reviews": NR,
+        },
+    )
 
 
 if __name__ == "__main__":

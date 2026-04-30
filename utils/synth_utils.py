@@ -2,12 +2,38 @@ import atexit
 import os
 import shutil
 import tempfile
+from concurrent.futures import as_completed
+from typing import Mapping
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 
 _TEMP_BATCH_DIRS = set()
+_DEFAULT_MAX_ROWS_PER_CHUNK = 50_000
+_DEFAULT_MAX_WORKERS = 8
+
+
+class GenerationProgress:
+    def __init__(self, project_name, total_steps):
+        self.project_name = project_name
+        self.total_steps = max(1, total_steps)
+        self.current_step = 0
+
+    def advance(self, step_name):
+        self.current_step += 1
+        filled = int(24 * self.current_step / self.total_steps)
+        bar = "#" * filled + "-" * (24 - filled)
+        print(
+            f"[{self.project_name}] [{bar}] "
+            f"{self.current_step}/{self.total_steps} {step_name}",
+            flush=True,
+        )
+
+
+def print_generation_summary(project_name: str, sf: float, counts: Mapping[str, int]):
+    count_summary = " | ".join(f"{name}={value}" for name, value in counts.items())
+    print(f"[{project_name}] complete | sf={sf} | {count_summary}", flush=True)
 
 
 def _cleanup_temp_batch_dirs():
@@ -50,6 +76,21 @@ class ParquetBackedRows:
             self._rows = rows
         return self._rows
 
+    def iter_column(self, column_index):
+        column_name = f"col_{column_index}"
+        for parquet_path in self.parquet_paths:
+            column = pq.read_table(parquet_path, columns=[column_name])[column_name].to_pylist()
+            yield from column
+
+    def iter_rows(self, columns=None):
+        column_names = None if columns is None else [f"col_{column}" for column in columns]
+        for parquet_path in self.parquet_paths:
+            table = pq.read_table(parquet_path, columns=column_names)
+            yield from (
+                tuple(record[name] for name in table.column_names)
+                for record in table.to_pylist()
+            )
+
 
 def _write_rows_to_parquet(rows, parquet_path):
     if not rows:
@@ -87,9 +128,14 @@ def batched_insert(con, table_name, columns, rows):
     con.execute(f"INSERT INTO {table_name} SELECT * FROM arrow_table")
 
 
+def get_worker_count():
+    return max(1, min(os.cpu_count() or 1, _DEFAULT_MAX_WORKERS))
+
+
 def run_parallel(executor, gen_func, total, *args):
-    cpu_count = executor._max_workers
-    chunk_size = max(1, total // cpu_count)
+    worker_count = executor._max_workers
+    chunk_size = max(1, total // worker_count)
+    chunk_size = min(chunk_size, _DEFAULT_MAX_ROWS_PER_CHUNK)
     temp_dir = tempfile.mkdtemp(prefix="synth-parquet-")
     _TEMP_BATCH_DIRS.add(temp_dir)
 
@@ -100,5 +146,10 @@ def run_parallel(executor, gen_func, total, *args):
         parquet_path = os.path.join(temp_dir, f"chunk_{start}_{end - 1}.parquet")
         futures.append(executor.submit(_generate_parquet_chunk, gen_func, parquet_path, start, end, args))
 
-    parquet_paths = [parquet_path for parquet_path in (future.result() for future in futures) if parquet_path]
+    parquet_paths = []
+    for future in as_completed(futures):
+        parquet_path = future.result()
+        if parquet_path:
+            parquet_paths.append(parquet_path)
+    parquet_paths.sort()
     return ParquetBackedRows(parquet_paths, temp_dir)

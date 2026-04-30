@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_substations_chunk(start, end, regions):
@@ -137,20 +143,34 @@ def main():
     causes = ["equipment_failure", "weather", "third_party", "maintenance", "unknown"]
     severities = ["minor", "moderate", "major", "critical"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p10_energy", 4)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("substations")
         batched_insert(con, "substations", ['sub_id', 'name', 'region', 'capacity_mw', 'voltage_kv', 'lat', 'lon'],
                        run_parallel(executor, generate_substations_chunk, NSB, regions))
+        progress.advance("meters")
         batched_insert(con, "meters", ['meter_id', 'sub_id', 'customer_id', 'meter_type', 'tariff_class', 'install_date', 'is_smart', 'rated_capacity_kw'],
                        run_parallel(executor, generate_meters_chunk, NMT, NSB, mtypes, tariffs, base))
+        progress.advance("consumption_readings")
         batched_insert(con, "consumption_readings", ['reading_id', 'meter_id', 'read_ts', 'kwh', 'voltage_v', 'power_factor', 'is_estimated'],
                        run_parallel(executor, generate_readings_chunk, NCR, NMT, bts))
+        progress.advance("outage_events")
         batched_insert(con, "outage_events", ['outage_id', 'sub_id', 'start_ts', 'end_ts', 'cause', 'affected_meters', 'severity'],
                        run_parallel(executor, generate_outages_chunk, NOE, NSB, causes, severities, bts))
 
 
     con.close()
-    print(f"p10 done: substations={NSB} meters={NMT} readings={NCR} outages={NOE}")
+    print_generation_summary(
+        "p10_energy",
+        sf,
+        {
+            "substations": NSB,
+            "meters": NMT,
+            "consumption_readings": NCR,
+            "outage_events": NOE,
+        },
+    )
 
 if __name__ == "__main__":
     main()

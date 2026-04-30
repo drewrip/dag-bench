@@ -1,7 +1,13 @@
 import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
-from utils.synth_utils import batched_insert, run_parallel
+from utils.synth_utils import (
+    GenerationProgress,
+    batched_insert,
+    get_worker_count,
+    print_generation_summary,
+    run_parallel,
+)
 
 
 def generate_patients_chunk(start, end, genders, plans, states, base):
@@ -163,22 +169,38 @@ def main():
     icd_codes = [f"ICD{i:04d}" for i in range(1, 101)]
     states = ["CA", "TX", "NY", "FL", "IL", "WA", "OH", "GA"]
 
-    cpu_count = os.cpu_count()
+    cpu_count = get_worker_count()
+    progress = GenerationProgress("p07_healthcare", 5)
     with ProcessPoolExecutor(max_workers=cpu_count) as executor:
+        progress.advance("patients")
         batched_insert(con, "patients", ['patient_id', 'dob', 'gender', 'zip_code', 'plan_type', 'state'],
                        run_parallel(executor, generate_patients_chunk, NPA, genders, plans, states, base))
+        progress.advance("providers")
         batched_insert(con, "providers", ['provider_id', 'name', 'specialty', 'state', 'is_in_network', 'npi'],
                        run_parallel(executor, generate_providers_chunk, NPR, specialties, states))
+        progress.advance("claims")
         batched_insert(con, "claims", ['claim_id', 'patient_id', 'provider_id', 'service_date', 'claim_type', 'total_billed', 'total_allowed', 'total_paid', 'status', 'denial_reason'],
                        run_parallel(executor, generate_claims_chunk, NCL, NPA, NPR, base, ctypes, cstatuses, denial_reasons))
+        progress.advance("claim_lines")
         batched_insert(con, "claim_lines", ['line_id', 'claim_id', 'cpt_code', 'quantity', 'unit_cost', 'allowed_amount', 'paid_amount'],
                        run_parallel(executor, generate_claim_lines_chunk, NCLL, NCL, cpt_codes))
+        progress.advance("diagnoses")
         batched_insert(con, "diagnoses", ['diag_id', 'claim_id', 'icd_code', 'is_primary', 'chronic_flag'],
                        run_parallel(executor, generate_diagnoses_chunk, NDX, NCL, icd_codes))
 
 
     con.close()
-    print(f"p07 done: patients={NPA} claims={NCL} lines={NCLL}")
+    print_generation_summary(
+        "p07_healthcare",
+        sf,
+        {
+            "patients": NPA,
+            "providers": NPR,
+            "claims": NCL,
+            "claim_lines": NCLL,
+            "diagnoses": NDX,
+        },
+    )
 
 if __name__ == "__main__":
     main()
