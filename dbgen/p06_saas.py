@@ -136,7 +136,7 @@ def generate_support_tickets_chunk(start, end, NAC, bts, priorities, ticket_cats
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 100.0
+    sf_adj = sf * 800.0
     NAC = max(10, int(500 * sf_adj))
     NSB = max(10, int(700 * sf_adj))
     NEV = max(100, int(50000 * sf_adj))

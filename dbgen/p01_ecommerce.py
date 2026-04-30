@@ -145,7 +145,7 @@ def generate_reviews_chunk(start, end, NP, NC, base):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 50.0
+    sf_adj = sf * 1550.0
     NC = max(10, int(2000 * sf_adj))
     NCT = max(5, int(20 * sf_adj))
     NP = max(20, int(500 * sf_adj))

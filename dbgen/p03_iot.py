@@ -110,7 +110,7 @@ def generate_maintenance_logs_chunk(start, end, ND, base, actions):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 20.0
+    sf_adj = sf * 220.0
     NS = max(3, int(30 * sf_adj))
     ND = max(10, int(150 * sf_adj))
     NR = max(100, int(200000 * sf_adj))
