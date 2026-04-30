@@ -21,20 +21,18 @@ def generate_campaigns_chunk(start, end, channels, objectives, base):
     budgets = rng.uniform(5000, 500000, size)
     cpm_targets = rng.uniform(0.5, 15, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Campaign {i}",
-            f"Brand {advertiser_ids[idx]}",
-            channels[channel_indices[idx]],
-            objectives[objective_indices[idx]],
-            base + timedelta(days=int(start_days_offset[idx])),
-            base + timedelta(days=int(end_days_offset[idx])),
-            round(float(budgets[idx]), 2),
-            round(float(cpm_targets[idx]), 2),
-        ))
-    return rows
+    campaign_ids = range(start, end)
+    campaign_names = [f"Campaign {i}" for i in campaign_ids]
+    advertisers = [f"Brand {aid}" for aid in advertiser_ids]
+    selected_channels = np.take(channels, channel_indices).tolist()
+    selected_objectives = np.take(objectives, objective_indices).tolist()
+    start_dates = (np.datetime64(base) + start_days_offset.astype("timedelta64[D]")).tolist()
+    end_dates = (np.datetime64(base) + end_days_offset.astype("timedelta64[D]")).tolist()
+    budgets_rounded = np.round(budgets, 2).tolist()
+    cpm_targets_rounded = np.round(cpm_targets, 2).tolist()
+    
+    return list(zip(campaign_ids, campaign_names, advertisers, selected_channels, selected_objectives, start_dates, end_dates, budgets_rounded, cpm_targets_rounded))
+
 
 def generate_impressions_chunk(start, end, NCA, bts, devices, geos, placements):
     size = end - start
@@ -47,19 +45,17 @@ def generate_impressions_chunk(start, end, NCA, bts, devices, geos, placements):
     placement_indices = rng.integers(0, len(placements), size)
     costs = rng.uniform(0.0001, 0.05, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(campaign_ids[idx]),
-            int(user_ids[idx]),
-            bts + timedelta(seconds=int(seconds_offset[idx])),
-            devices[device_indices[idx]],
-            geos[geo_indices[idx]],
-            placements[placement_indices[idx]],
-            round(float(costs[idx]), 6),
-        ))
-    return rows
+    imp_ids = range(start, end)
+    selected_campaign_ids = campaign_ids.tolist()
+    selected_user_ids = user_ids.tolist()
+    imp_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    selected_devices = np.take(devices, device_indices).tolist()
+    selected_geos = np.take(geos, geo_indices).tolist()
+    selected_placements = np.take(placements, placement_indices).tolist()
+    costs_rounded = np.round(costs, 6).tolist()
+    
+    return list(zip(imp_ids, selected_campaign_ids, selected_user_ids, imp_tss, selected_devices, selected_geos, selected_placements, costs_rounded))
+
 
 def generate_clicks_chunk(start, end, imp_refs):
     size = end - start
@@ -68,20 +64,26 @@ def generate_clicks_chunk(start, end, imp_refs):
     seconds_offset = rng.integers(1, 3601, size)
     landing_url_ids = rng.integers(1, 21, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        imp_id, campaign_id, user_id, imp_ts, device = imp_refs[imp_indices[idx]]
-        ct = imp_ts + timedelta(seconds=int(seconds_offset[idx]))
-        rows.append((
-            i,
-            int(imp_id),
-            int(campaign_id),
-            int(user_id),
-            ct,
-            f"https://brand.com/lp/{landing_url_ids[idx]}",
-            device,
-        ))
-    return rows
+    click_ids = range(start, end)
+    
+    # imp_refs is list of tuples: (imp_id, campaign_id, user_id, imp_ts, device)
+    selected_refs = [imp_refs[idx] for idx in imp_indices]
+    
+    imp_ids = [ref[0] for ref in selected_refs]
+    campaign_ids = [ref[1] for ref in selected_refs]
+    user_ids = [ref[2] for ref in selected_refs]
+    imp_tss = [ref[3] for ref in selected_refs]
+    devices = [ref[4] for ref in selected_refs]
+    
+    click_tss = [
+        imp_ts + np.timedelta64(int(off), 's') 
+        for imp_ts, off in zip(imp_tss, seconds_offset)
+    ]
+    
+    landing_urls = [f"https://brand.com/lp/{uid}" for uid in landing_url_ids]
+    
+    return list(zip(click_ids, imp_ids, campaign_ids, user_ids, click_tss, landing_urls, devices))
+
 
 def generate_conversions_chunk(start, end, click_refs, bts, ctypes):
     size = end - start
@@ -91,19 +93,20 @@ def generate_conversions_chunk(start, end, click_refs, bts, ctypes):
     ctype_indices = rng.integers(0, len(ctypes), size)
     revenues = rng.uniform(0, 500, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        click_id, campaign_id, user_id = click_refs[click_indices[idx]]
-        rows.append((
-            i,
-            int(click_id),
-            int(campaign_id),
-            int(user_id),
-            bts + timedelta(seconds=int(seconds_offset[idx])),
-            ctypes[ctype_indices[idx]],
-            round(float(revenues[idx]), 2),
-        ))
-    return rows
+    conv_ids = range(start, end)
+    
+    # click_refs is list of tuples: (click_id, campaign_id, user_id)
+    selected_refs = [click_refs[idx] for idx in click_indices]
+    
+    click_ids = [ref[0] for ref in selected_refs]
+    campaign_ids = [ref[1] for ref in selected_refs]
+    user_ids = [ref[2] for ref in selected_refs]
+    
+    conv_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    selected_ctypes = np.take(ctypes, ctype_indices).tolist()
+    revenues_rounded = np.round(revenues, 2).tolist()
+    
+    return list(zip(conv_ids, click_ids, campaign_ids, user_ids, conv_tss, selected_ctypes, revenues_rounded))
 
 
 def main():

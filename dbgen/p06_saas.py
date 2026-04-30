@@ -20,20 +20,18 @@ def generate_accounts_chunk(start, end, industries, base):
     days_offset = rng.integers(0, 701, size)
     csm_ids = rng.integers(1, 21, size)
     health_scores = rng.integers(1, 101, size)
+    
+    account_ids = range(start, end)
+    account_names = [f"Account {i}" for i in account_ids]
+    selected_industries = np.take(industries, industry_indices).tolist()
+    selected_countries = np.take(countries, country_indices).tolist()
+    arrs_rounded = np.round(arrs, 2).tolist()
+    created_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_csm_ids = csm_ids.tolist()
+    selected_health_scores = health_scores.tolist()
+    
+    return list(zip(account_ids, account_names, selected_industries, selected_countries, arrs_rounded, created_dates, selected_csm_ids, selected_health_scores))
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Account {i}",
-            industries[industry_indices[idx]],
-            countries[country_indices[idx]],
-            round(float(arrs[idx]), 2),
-            base + timedelta(days=int(days_offset[idx])),
-            int(csm_ids[idx]),
-            int(health_scores[idx]),
-        ))
-    return rows
 
 def generate_subscriptions_chunk(start, end, NAC, plans, base):
     size = end - start
@@ -45,21 +43,29 @@ def generate_subscriptions_chunk(start, end, NAC, plans, base):
     days_offset = rng.integers(0, 601, size)
     active_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        sd = base + timedelta(days=int(days_offset[idx]))
-        rows.append((
-            i,
-            int(account_ids[idx]),
-            plans[plan_indices[idx]],
-            int(seats[idx]),
-            round(float(mrrs[idx]), 2),
-            sd,
-            sd + timedelta(days=365),
-            bool(active_probs[idx] > 0.1),
-            sd + timedelta(days=365),
-        ))
-    return rows
+    sub_ids = range(start, end)
+    selected_account_ids = account_ids.tolist()
+    selected_plans = np.take(plans, plan_indices).tolist()
+    selected_seats = seats.tolist()
+    mrrs_rounded = np.round(mrrs, 2).tolist()
+    
+    start_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]"))
+    end_dates = start_dates + np.timedelta64(365, 'D')
+    
+    is_active = (active_probs > 0.1).tolist()
+    
+    return list(zip(
+        sub_ids,
+        selected_account_ids,
+        selected_plans,
+        selected_seats,
+        mrrs_rounded,
+        start_dates.tolist(),
+        end_dates.tolist(),
+        is_active,
+        end_dates.tolist()
+    ))
+
 
 def generate_events_chunk(start, end, NAC, etypes, bts):
     size = end - start
@@ -68,22 +74,20 @@ def generate_events_chunk(start, end, NAC, etypes, bts):
     user_ids = rng.integers(1, NAC * 5 + 1, size)
     etype_indices = rng.integers(0, len(etypes), size)
     seconds_offset = rng.integers(0, 700 * 86400 + 1, size)
-    session_ids = rng.integers(1, NAC * 20 + 1, size)
+    session_ids_raw = rng.integers(1, NAC * 20 + 1, size)
     platforms = ["web", "mobile", "api"]
     platform_indices = rng.integers(0, len(platforms), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(account_ids[idx]),
-            int(user_ids[idx]),
-            etypes[etype_indices[idx]],
-            bts + timedelta(seconds=int(seconds_offset[idx])),
-            f"sess_{session_ids[idx]}",
-            platforms[platform_indices[idx]],
-        ))
-    return rows
+    event_ids = range(start, end)
+    selected_account_ids = account_ids.tolist()
+    selected_user_ids = user_ids.tolist()
+    selected_etypes = np.take(etypes, etype_indices).tolist()
+    event_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    session_ids = [f"sess_{sid}" for sid in session_ids_raw]
+    selected_platforms = np.take(platforms, platform_indices).tolist()
+    
+    return list(zip(event_ids, selected_account_ids, selected_user_ids, selected_etypes, event_tss, session_ids, selected_platforms))
+
 
 def generate_feature_usage_chunk(start, end, NAC, features, base):
     size = end - start
@@ -93,16 +97,14 @@ def generate_feature_usage_chunk(start, end, NAC, features, base):
     days_offset = rng.integers(0, 701, size)
     usage_counts = rng.integers(1, 1001, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(account_ids[idx]),
-            features[feature_indices[idx]],
-            base + timedelta(days=int(days_offset[idx])),
-            int(usage_counts[idx]),
-        ))
-    return rows
+    fu_ids = range(start, end)
+    selected_account_ids = account_ids.tolist()
+    selected_features = np.take(features, feature_indices).tolist()
+    usage_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_usage_counts = usage_counts.tolist()
+    
+    return list(zip(fu_ids, selected_account_ids, selected_features, usage_dates, selected_usage_counts))
+
 
 def generate_support_tickets_chunk(start, end, NAC, bts, priorities, ticket_cats):
     size = end - start
@@ -117,21 +119,31 @@ def generate_support_tickets_chunk(start, end, NAC, bts, priorities, ticket_cats
     csat_probs = rng.random(size)
     is_resolved_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        created_ts = bts + timedelta(seconds=int(created_offsets[idx]))
-        resolved_ts = bts + timedelta(seconds=int(resolved_offsets[idx])) if resolved_probs[idx] > 0.2 else None
-        rows.append((
-            i,
-            int(account_ids[idx]),
-            created_ts,
-            resolved_ts,
-            priorities[priority_indices[idx]],
-            ticket_cats[cat_indices[idx]],
-            int(csat_scores[idx]) if csat_probs[idx] > 0.3 else None,
-            bool(is_resolved_probs[idx] > 0.2),
-        ))
-    return rows
+    ticket_ids = range(start, end)
+    selected_account_ids = account_ids.tolist()
+    created_tss = (np.datetime64(bts) + created_offsets.astype("timedelta64[s]")).tolist()
+    
+    resolved_tss = [
+        (np.datetime64(bts) + np.timedelta64(off, 's')).tolist() if prob > 0.2 else None 
+        for off, prob in zip(resolved_offsets, resolved_probs)
+    ]
+    # Correction on resolved_tss:’tolist()’ on numpy.datetime64 is fine, but here we are in a list comprehension.
+    # Just use the numpy datetime64 and it will be converted to python datetime by duckdb
+    resolved_tss = [
+        (np.datetime64(bts) + np.timedelta64(int(off), 's')) if prob > 0.2 else None 
+        for off, prob in zip(resolved_offsets, resolved_probs)
+    ]
+    
+    selected_priorities = np.take(priorities, priority_indices).tolist()
+    selected_cats = np.take(ticket_cats, cat_indices).tolist()
+    
+    csat_values = [
+        int(score) if prob > 0.3 else None 
+        for score, prob in zip(csat_scores, csat_probs)
+    ]
+    is_resolved = (is_resolved_probs > 0.2).tolist()
+    
+    return list(zip(ticket_ids, selected_account_ids, created_tss, resolved_tss, selected_priorities, selected_cats, csat_values, is_resolved))
 
 
 def main():

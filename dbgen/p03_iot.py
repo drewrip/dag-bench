@@ -19,17 +19,84 @@ def generate_sites_chunk(start, end, regions):
     tz_list = ["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"]
     tz_indices = rng.integers(0, len(tz_list), size)
     
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Site-{i}",
-            regions[region_indices[idx]],
-            round(float(lats[idx]), 4),
-            round(float(lons[idx]), 4),
-            tz_list[tz_indices[idx]],
-        ))
-    return rows
+    site_ids = range(start, end)
+    site_names = [f"Site-{i}" for i in site_ids]
+    selected_regions = np.take(regions, region_indices).tolist()
+    lats_rounded = np.round(lats, 4).tolist()
+    lons_rounded = np.round(lons, 4).tolist()
+    selected_tzs = np.take(tz_list, tz_indices).tolist()
+    
+    return list(zip(site_ids, site_names, selected_regions, lats_rounded, lons_rounded, selected_tzs))
+
+
+def generate_devices_chunk(start, end, NS, dtypes, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    site_ids = rng.integers(1, NS + 1, size)
+    dtype_indices = rng.integers(0, len(dtypes), size)
+    model_letters = ['A', 'B', 'C']
+    model_letter_indices = rng.integers(0, len(model_letters), size)
+    model_numbers = rng.integers(1, 6, size)
+    v_majors = rng.integers(1, 5, size)
+    v_minors = rng.integers(0, 10, size)
+    v_patches = rng.integers(0, 100, size)
+    days_back = rng.integers(0, 731, size)
+    active_probs = rng.random(size)
+
+    device_ids = range(start, end)
+    selected_site_ids = site_ids.tolist()
+    selected_dtypes = np.take(dtypes, dtype_indices).tolist()
+    
+    models = [f"Model-{model_letters[l]}{n}" for l, n in zip(model_letter_indices, model_numbers)]
+    firmwares = [f"v{ma}.{mi}.{p}" for ma, mi, p in zip(v_majors, v_minors, v_patches)]
+    installed_dates = (np.datetime64(base) - days_back.astype("timedelta64[D]")).astype("datetime64[D]").tolist()
+    is_active = (active_probs > 0.05).tolist()
+    
+    return list(zip(device_ids, selected_site_ids, selected_dtypes, models, firmwares, installed_dates, is_active))
+
+
+def generate_readings_chunk(start, end, ND, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    device_ids = rng.integers(1, ND + 1, size)
+    seconds_offset = rng.integers(0, 180 * 86400 + 1, size)
+    temps = rng.normal(20, 8, size)
+    humids = rng.uniform(20, 95, size)
+    pressures = rng.normal(1013, 15, size)
+    batteries = rng.integers(5, 101, size)
+    rssis = rng.integers(-90, -29, size)
+    error_probs = rng.random(size)
+
+    reading_ids = range(start, end)
+    selected_device_ids = device_ids.tolist()
+    tss = (np.datetime64(base) + seconds_offset.astype("timedelta64[s]")).tolist()
+    temps_rounded = np.round(temps, 2).tolist()
+    humids_rounded = np.round(humids, 2).tolist()
+    pressures_rounded = np.round(pressures, 2).tolist()
+    selected_batteries = batteries.tolist()
+    selected_rssis = rssis.tolist()
+    error_flags = (error_probs < 0.02).tolist()
+    
+    return list(zip(reading_ids, selected_device_ids, tss, temps_rounded, humids_rounded, pressures_rounded, selected_batteries, selected_rssis, error_flags))
+
+
+def generate_maintenance_logs_chunk(start, end, ND, base, actions):
+    size = end - start
+    rng = np.random.default_rng(start)
+    device_ids = rng.integers(1, ND + 1, size)
+    hours_offset = rng.integers(0, 4321, size)
+    action_indices = rng.integers(0, len(actions), size)
+    tech_ids = rng.integers(1, 21, size)
+    note_action_indices = rng.integers(0, len(actions), size)
+
+    log_ids = range(start, end)
+    selected_device_ids = device_ids.tolist()
+    log_tss = (np.datetime64(base) + hours_offset.astype("timedelta64[h]")).tolist()
+    selected_actions = np.take(actions, action_indices).tolist()
+    technicians = [f"Tech-{tid}" for tid in tech_ids]
+    notes = [f"Performed {actions[idx]} on device" for idx in note_action_indices]
+    
+    return list(zip(log_ids, selected_device_ids, log_tss, selected_actions, technicians, notes))
 
 def generate_devices_chunk(start, end, NS, dtypes, base):
     size = end - start

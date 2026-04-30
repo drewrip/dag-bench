@@ -20,18 +20,16 @@ def generate_suppliers_chunk(start, end, cats):
     cat_indices = rng.integers(0, len(cats), size)
     preferred_probs = rng.random(size)
     
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Supplier {i}",
-            countries[country_indices[idx]],
-            round(float(scores[idx]), 2),
-            int(lead_times[idx]),
-            cats[cat_indices[idx]],
-            bool(preferred_probs[idx] > 0.5),
-        ))
-    return rows
+    supplier_ids = range(start, end)
+    supplier_names = [f"Supplier {i}" for i in supplier_ids]
+    selected_countries = np.take(countries, country_indices).tolist()
+    scores_rounded = np.round(scores, 2).tolist()
+    selected_lead_times = lead_times.tolist()
+    selected_cats = np.take(cats, cat_indices).tolist()
+    is_preferred = (preferred_probs > 0.5).tolist()
+    
+    return list(zip(supplier_ids, supplier_names, selected_countries, scores_rounded, selected_lead_times, selected_cats, is_preferred))
+
 
 def generate_warehouses_chunk(start, end, regions):
     size = end - start
@@ -42,17 +40,15 @@ def generate_warehouses_chunk(start, end, regions):
     capacities = rng.integers(1000, 50001, size)
     active_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"WH-{i}",
-            countries[country_indices[idx]],
-            regions[region_indices[idx]],
-            int(capacities[idx]),
-            bool(active_probs[idx] > 0.05),
-        ))
-    return rows
+    wh_ids = range(start, end)
+    wh_names = [f"WH-{i}" for i in wh_ids]
+    selected_countries = np.take(countries, country_indices).tolist()
+    selected_regions = np.take(regions, region_indices).tolist()
+    selected_capacities = capacities.tolist()
+    is_active = (active_probs > 0.05).tolist()
+    
+    return list(zip(wh_ids, wh_names, selected_countries, selected_regions, selected_capacities, is_active))
+
 
 def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
     size = end - start
@@ -67,22 +63,32 @@ def generate_shipments_chunk(start, end, NSUP, NWH, skus, base, statuses):
     status_indices = rng.integers(0, len(statuses), size)
     freight_costs = rng.uniform(50, 5000, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        sd = base + timedelta(days=int(days_offset[idx]))
-        rows.append((
-            i,
-            int(supplier_ids[idx]),
-            int(wh_ids[idx]),
-            skus[sku_indices[idx]],
-            int(quantities[idx]),
-            round(float(unit_costs[idx]), 2),
-            sd,
-            sd + timedelta(days=int(transit_days[idx])),
-            statuses[status_indices[idx]],
-            round(float(freight_costs[idx]), 2),
-        ))
-    return rows
+    shipment_ids = range(start, end)
+    selected_supplier_ids = supplier_ids.tolist()
+    selected_wh_ids = wh_ids.tolist()
+    selected_skus = np.take(skus, sku_indices).tolist()
+    selected_quantities = quantities.tolist()
+    unit_costs_rounded = np.round(unit_costs, 2).tolist()
+    
+    shipped_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]"))
+    received_dates = shipped_dates + transit_days.astype("timedelta64[D]")
+    
+    selected_statuses = np.take(statuses, status_indices).tolist()
+    freight_costs_rounded = np.round(freight_costs, 2).tolist()
+    
+    return list(zip(
+        shipment_ids,
+        selected_supplier_ids,
+        selected_wh_ids,
+        selected_skus,
+        selected_quantities,
+        unit_costs_rounded,
+        shipped_dates.tolist(),
+        received_dates.tolist(),
+        selected_statuses,
+        freight_costs_rounded
+    ))
+
 
 def generate_inventory_chunk(start, end, NWH, skus, base):
     size = end - start
@@ -94,18 +100,16 @@ def generate_inventory_chunk(start, end, NWH, skus, base):
     reorder_points = rng.integers(100, 1001, size)
     days_offset = rng.integers(800, 1001, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(wh_ids[idx]),
-            skus[sku_indices[idx]],
-            int(qtys_on_hand[idx]),
-            int(qtys_reserved[idx]),
-            int(reorder_points[idx]),
-            base + timedelta(days=int(days_offset[idx])),
-        ))
-    return rows
+    inv_ids = range(start, end)
+    selected_wh_ids = wh_ids.tolist()
+    selected_skus = np.take(skus, sku_indices).tolist()
+    selected_on_hand = qtys_on_hand.tolist()
+    selected_reserved = qtys_reserved.tolist()
+    selected_reorder = reorder_points.tolist()
+    snapshot_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    
+    return list(zip(inv_ids, selected_wh_ids, selected_skus, selected_on_hand, selected_reserved, selected_reorder, snapshot_dates))
+
 
 def generate_purchase_orders_chunk(start, end, NSUP, skus, base, po_statuses):
     size = end - start
@@ -119,21 +123,29 @@ def generate_purchase_orders_chunk(start, end, NSUP, skus, base, po_statuses):
     received_qtys = rng.integers(0, 5001, size)
     status_indices = rng.integers(0, len(po_statuses), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        od = base + timedelta(days=int(days_offset[idx]))
-        rows.append((
-            i,
-            int(supplier_ids[idx]),
-            skus[sku_indices[idx]],
-            int(ordered_qty := int(ordered_qtys[idx])),
-            round(float(unit_prices[idx]), 2),
-            od,
-            od + timedelta(days=int(expected_days[idx])),
-            int(received_qtys[idx]),
-            po_statuses[status_indices[idx]],
-        ))
-    return rows
+    po_ids = range(start, end)
+    selected_supplier_ids = supplier_ids.tolist()
+    selected_skus = np.take(skus, sku_indices).tolist()
+    selected_ordered_qtys = ordered_qtys.tolist()
+    unit_prices_rounded = np.round(unit_prices, 2).tolist()
+    
+    order_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]"))
+    expected_dates = order_dates + expected_days.astype("timedelta64[D]")
+    
+    selected_received_qtys = received_qtys.tolist()
+    selected_statuses = np.take(po_statuses, status_indices).tolist()
+    
+    return list(zip(
+        po_ids,
+        selected_supplier_ids,
+        selected_skus,
+        selected_ordered_qtys,
+        unit_prices_rounded,
+        order_dates.tolist(),
+        expected_dates.tolist(),
+        selected_received_qtys,
+        selected_statuses
+    ))
 
 
 def main():

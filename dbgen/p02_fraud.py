@@ -20,18 +20,16 @@ def generate_accounts_chunk(start, end, atypes, base):
     days_back = rng.integers(30, 3651, size)
     frozen_probs = rng.random(size)
     
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Holder {i}",
-            atypes[atype_indices[idx]],
-            countries[country_indices[idx]],
-            round(float(limits[idx]), 2),
-            (base - timedelta(days=int(days_back[idx]))).date(),
-            bool(frozen_probs[idx] < 0.03),
-        ))
-    return rows
+    account_ids = range(start, end)
+    holder_names = [f"Holder {i}" for i in account_ids]
+    selected_atypes = np.take(atypes, atype_indices).tolist()
+    selected_countries = np.take(countries, country_indices).tolist()
+    limits_rounded = np.round(limits, 2).tolist()
+    opened_dates = (np.datetime64(base) - days_back.astype("timedelta64[D]")).astype("datetime64[D]").tolist()
+    is_frozen = (frozen_probs < 0.03).tolist()
+    
+    return list(zip(account_ids, holder_names, selected_atypes, selected_countries, limits_rounded, opened_dates, is_frozen))
+
 
 def generate_merchants_chunk(start, end, cats, risks):
     size = end - start
@@ -41,18 +39,16 @@ def generate_merchants_chunk(start, end, cats, risks):
     countries = ["US", "GB", "NG", "CN", "RU"]
     risk_indices = rng.integers(0, len(risks), size)
     avg_amounts = rng.uniform(5, 500, size)
+    
+    merchant_ids = range(start, end)
+    merchant_names = [f"Merchant {i}" for i in merchant_ids]
+    selected_cats = np.take(cats, cat_indices).tolist()
+    selected_countries = np.take(countries, country_indices).tolist()
+    selected_risks = np.take(risks, risk_indices).tolist()
+    avg_amounts_rounded = np.round(avg_amounts, 2).tolist()
+    
+    return list(zip(merchant_ids, merchant_names, selected_cats, selected_countries, selected_risks, avg_amounts_rounded))
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Merchant {i}",
-            cats[cat_indices[idx]],
-            countries[country_indices[idx]],
-            risks[risk_indices[idx]],
-            round(float(avg_amounts[idx]), 2),
-        ))
-    return rows
 
 def generate_transactions_chunk(start, end, NA, NM, base, chans, currs, rcodes):
     size = end - start
@@ -67,21 +63,19 @@ def generate_transactions_chunk(start, end, NA, NM, base, chans, currs, rcodes):
     flagged_probs = rng.random(size)
     rcode_indices = rng.integers(0, len(rcodes), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(account_ids[idx]),
-            int(merchant_ids[idx]),
-            round(float(amounts[idx]), 2),
-            base + timedelta(seconds=int(seconds_offset[idx])),
-            chans[chan_indices[idx]],
-            currs[curr_indices[idx]],
-            bool(declined_probs[idx] < 0.05),
-            bool(flagged_probs[idx] < 0.04),
-            rcodes[rcode_indices[idx]],
-        ))
-    return rows
+    txn_ids = range(start, end)
+    selected_account_ids = account_ids.tolist()
+    selected_merchant_ids = merchant_ids.tolist()
+    amounts_rounded = np.round(amounts, 2).tolist()
+    txn_tss = (np.datetime64(base) + seconds_offset.astype("timedelta64[s]")).tolist()
+    selected_chans = np.take(chans, chan_indices).tolist()
+    selected_currs = np.take(currs, curr_indices).tolist()
+    is_declined = (declined_probs < 0.05).tolist()
+    is_flagged = (flagged_probs < 0.04).tolist()
+    selected_rcodes = np.take(rcodes, rcode_indices).tolist()
+    
+    return list(zip(txn_ids, selected_account_ids, selected_merchant_ids, amounts_rounded, txn_tss, selected_chans, selected_currs, is_declined, is_flagged, selected_rcodes))
+
 
 def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress):
     size = end - start
@@ -89,8 +83,9 @@ def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress
     
     if flagged_ids:
         flagged_indices = rng.integers(0, len(flagged_ids), size)
+        txn_ids = np.take(flagged_ids, flagged_indices).tolist()
     else:
-        random_txn_ids = rng.integers(1, NT + 1, size)
+        txn_ids = rng.integers(1, NT + 1, size).tolist()
         
     atype2_indices = rng.integers(0, len(atypes2), size)
     sev_indices = rng.integers(0, len(sevs), size)
@@ -99,19 +94,18 @@ def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress
     res_probs = rng.random(size)
     res_indices = rng.integers(0, len(ress), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        txn_id = int(flagged_ids[flagged_indices[idx]]) if flagged_ids else int(random_txn_ids[idx])
-        rows.append((
-            i,
-            txn_id,
-            atypes2[atype2_indices[idx]],
-            sevs[sev_indices[idx]],
-            base + timedelta(seconds=int(seconds_offset[idx])),
-            bool(resolved_probs[idx] > 0.4),
-            ress[res_indices[idx]] if res_probs[idx] > 0.4 else None,
-        ))
-    return rows
+    alert_ids = range(start, end)
+    selected_atype2 = np.take(atypes2, atype2_indices).tolist()
+    selected_sevs = np.take(sevs, sev_indices).tolist()
+    created_tss = (np.datetime64(base) + seconds_offset.astype("timedelta64[s]")).tolist()
+    is_resolved = (resolved_probs > 0.4).tolist()
+    
+    resolutions = [
+        ress[res_indices[idx]] if res_probs[idx] > 0.4 else None 
+        for idx in range(size)
+    ]
+    
+    return list(zip(alert_ids, txn_ids, selected_atype2, selected_sevs, created_tss, is_resolved, resolutions))
 
 
 def main():

@@ -18,17 +18,116 @@ def generate_departments_chunk(start, end, divs, locs):
     budgets = rng.uniform(100000, 10000000, size)
     headcount_targets = rng.integers(5, 101, size)
     
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Dept-{i}",
-            divs[div_indices[idx]],
-            locs[loc_indices[idx]],
-            round(float(budgets[idx]), 2),
-            int(headcount_targets[idx]),
-        ))
-    return rows
+    dept_ids = range(start, end)
+    dept_names = [f"Dept-{i}" for i in dept_ids]
+    selected_divs = np.take(divs, div_indices).tolist()
+    selected_locs = np.take(locs, loc_indices).tolist()
+    budgets_rounded = np.round(budgets, 2).tolist()
+    selected_headcounts = headcount_targets.tolist()
+    
+    return list(zip(dept_ids, dept_names, selected_divs, selected_locs, budgets_rounded, selected_headcounts))
+
+
+def generate_employees_chunk(start, end, ND, mgr_ids, base, ttitles, etypes):
+    size = end - start
+    rng = np.random.default_rng(start)
+    dept_ids = rng.integers(1, ND + 1, size)
+    mgr_indices = rng.integers(0, len(mgr_ids), size)
+    genders = ["M", "F", "NB"]
+    gender_indices = rng.integers(0, len(genders), size)
+    days_offset = rng.integers(0, 3001, size)
+    ttitle_indices = rng.integers(0, len(ttitles), size)
+    etype_indices = rng.integers(0, len(etypes), size)
+    active_probs = rng.random(size)
+    
+    emp_ids = range(start, end)
+    selected_dept_ids = dept_ids.tolist()
+    
+    mgr_ids_arr = np.array(mgr_ids)
+    selected_mgr_ids_raw = np.take(mgr_ids_arr, mgr_indices)
+    
+    # Handle manager_id exclusion: if i is in mgr_ids, manager_id should be None
+    mgr_ids_set = set(mgr_ids)
+    selected_mgr_ids = [
+        int(mid) if i not in mgr_ids_set else None 
+        for i, mid in zip(emp_ids, selected_mgr_ids_raw)
+    ]
+    
+    first_names = [f"First{i}" for i in emp_ids]
+    last_names = [f"Last{i}" for i in emp_ids]
+    selected_genders = np.take(genders, gender_indices).tolist()
+    hire_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_ttitles = np.take(ttitles, ttitle_indices).tolist()
+    selected_etypes = np.take(etypes, etype_indices).tolist()
+    is_active = (active_probs > 0.07).tolist()
+    
+    return list(zip(emp_ids, selected_dept_ids, selected_mgr_ids, first_names, last_names, selected_genders, hire_dates, selected_ttitles, selected_etypes, is_active))
+
+
+def generate_salaries_chunk(start, end, NE, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    days_offset = rng.integers(0, 3001, size)
+    base_salaries = rng.uniform(30000, 300000, size)
+    bonuses = rng.uniform(0, 50000, size)
+
+    salary_ids = range(start, end)
+    selected_emp_ids = emp_ids.tolist()
+    effective_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    base_salaries_rounded = np.round(base_salaries, 2).tolist()
+    bonuses_rounded = np.round(bonuses, 2).tolist()
+    currencies = ["USD"] * size
+    
+    return list(zip(salary_ids, selected_emp_ids, effective_dates, base_salaries_rounded, bonuses_rounded, currencies))
+
+
+def generate_performance_reviews_chunk(start, end, NE, base, cats):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    days_offset = rng.integers(365, 3651, size)
+    reviewer_ids = rng.integers(1, NE + 1, size)
+    scores = rng.uniform(1, 5, size)
+    cat_indices = rng.integers(0, len(cats), size)
+
+    review_ids = range(start, end)
+    selected_emp_ids = emp_ids.tolist()
+    review_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_reviewer_ids = reviewer_ids.tolist()
+    scores_rounded = np.round(scores, 2).tolist()
+    selected_cats = np.take(cats, cat_indices).tolist()
+    notes = [f"Review notes for review {i}" for i in review_ids]
+    
+    return list(zip(review_ids, selected_emp_ids, review_dates, selected_reviewer_ids, scores_rounded, selected_cats, notes))
+
+
+def generate_leave_requests_chunk(start, end, NE, base, ltypes):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    ltype_indices = rng.integers(0, len(ltypes), size)
+    days_offset = rng.integers(0, 3001, size)
+    duration_days = rng.integers(1, 31, size)
+    approved_probs = rng.random(size)
+
+    leave_ids = range(start, end)
+    selected_emp_ids = emp_ids.tolist()
+    selected_ltypes = np.take(ltypes, ltype_indices).tolist()
+    
+    start_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]"))
+    end_dates = start_dates + duration_days.astype("timedelta64[D]")
+    
+    is_approved = (approved_probs > 0.1).tolist()
+    
+    return list(zip(
+        leave_ids,
+        selected_emp_ids,
+        selected_ltypes,
+        start_dates.tolist(),
+        end_dates.tolist(),
+        is_approved
+    ))
 
 def generate_employees_chunk(start, end, ND, mgr_ids, base, ttitles, etypes):
     size = end - start
