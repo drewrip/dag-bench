@@ -1,80 +1,123 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_patients_chunk(start, end, genders, plans, states, base):
-    return [
-        (
-            i,
-            base - timedelta(days=random.randint(365 * 5, 365 * 85)),
-            random.choice(genders),
-            f"{random.randint(10000, 99999)}",
-            random.choice(plans),
-            random.choice(states),
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    days_back = rng.integers(365 * 5, 365 * 85 + 1, size)
+    gender_indices = rng.integers(0, len(genders), size)
+    zip_codes = rng.integers(10000, 100000, size)
+    plan_indices = rng.integers(0, len(plans), size)
+    state_indices = rng.integers(0, len(states), size)
 
-def generate_providers_chunk(start, end, specialties, states):
-    return [
-        (
-            i,
-            f"Provider {i}",
-            random.choice(specialties),
-            random.choice(states),
-            random.random() > 0.2,
-            f"NPI{i:010d}",
-        )
-        for i in range(start, end)
-    ]
-
-def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstatuses, denial_reasons):
     rows = []
-    for i in range(start, end):
-        bill = round(random.uniform(100, 50000), 2)
-        allow = round(bill * random.uniform(0.4, 0.95), 2)
-        paid = round(allow * random.uniform(0.5, 1.0) if random.random() > 0.1 else 0, 2)
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NPA),
-            random.randint(1, NPR),
-            base + timedelta(days=random.randint(0, 1095)),
-            random.choice(ctypes),
+            base - timedelta(days=int(days_back[idx])),
+            genders[gender_indices[idx]],
+            str(zip_codes[idx]),
+            plans[plan_indices[idx]],
+            states[state_indices[idx]],
+        ))
+    return rows
+
+def generate_providers_chunk(start, end, specialties, states):
+    size = end - start
+    rng = np.random.default_rng(start)
+    spec_indices = rng.integers(0, len(specialties), size)
+    state_indices = rng.integers(0, len(states), size)
+    network_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            f"Provider {i}",
+            specialties[spec_indices[idx]],
+            states[state_indices[idx]],
+            bool(network_probs[idx] > 0.2),
+            f"NPI{i:010d}",
+        ))
+    return rows
+
+def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstatuses, denial_reasons):
+    size = end - start
+    rng = np.random.default_rng(start)
+    patient_ids = rng.integers(1, NPA + 1, size)
+    provider_ids = rng.integers(1, NPR + 1, size)
+    days_offset = rng.integers(0, 1096, size)
+    ctype_indices = rng.integers(0, len(ctypes), size)
+    bill_amounts = rng.uniform(100, 50000, size)
+    allow_mults = rng.uniform(0.4, 0.95, size)
+    paid_mults = rng.uniform(0.5, 1.0, size)
+    paid_probs = rng.random(size)
+    status_indices = rng.integers(0, len(cstatuses), size)
+    denial_indices = rng.integers(0, len(denial_reasons), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        bill = round(float(bill_amounts[idx]), 2)
+        allow = round(bill * float(allow_mults[idx]), 2)
+        paid = round(allow * float(paid_mults[idx]) if paid_probs[idx] > 0.1 else 0.0, 2)
+        rows.append((
+            i,
+            int(patient_ids[idx]),
+            int(provider_ids[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+            ctypes[ctype_indices[idx]],
             bill,
             allow,
             paid,
-            random.choice(cstatuses),
-            random.choice(denial_reasons),
+            cstatuses[status_indices[idx]],
+            denial_reasons[denial_indices[idx]],
         ))
     return rows
 
 def generate_claim_lines_chunk(start, end, NCL, cpt_codes):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    claim_ids = rng.integers(1, NCL + 1, size)
+    cpt_indices = rng.integers(0, len(cpt_codes), size)
+    quantities = rng.integers(1, 6, size)
+    unit_costs = rng.uniform(10, 5000, size)
+    allowed_amounts = rng.uniform(5, 4000, size)
+    paid_amounts = rng.uniform(0, 3500, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NCL),
-            random.choice(cpt_codes),
-            random.randint(1, 5),
-            round(random.uniform(10, 5000), 2),
-            round(random.uniform(5, 4000), 2),
-            round(random.uniform(0, 3500), 2),
-        )
-        for i in range(start, end)
-    ]
+            int(claim_ids[idx]),
+            cpt_codes[cpt_indices[idx]],
+            int(quantities[idx]),
+            round(float(unit_costs[idx]), 2),
+            round(float(allowed_amounts[idx]), 2),
+            round(float(paid_amounts[idx]), 2),
+        ))
+    return rows
 
 def generate_diagnoses_chunk(start, end, NCL, icd_codes):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    claim_ids = rng.integers(1, NCL + 1, size)
+    icd_indices = rng.integers(0, len(icd_codes), size)
+    primary_probs = rng.random(size)
+    chronic_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NCL),
-            random.choice(icd_codes),
-            random.random() > 0.3,
-            random.random() > 0.6,
-        )
-        for i in range(start, end)
-    ]
+            int(claim_ids[idx]),
+            icd_codes[icd_indices[idx]],
+            bool(primary_probs[idx] > 0.3),
+            bool(chronic_probs[idx] > 0.6),
+        ))
+    return rows
 
 
 def main():

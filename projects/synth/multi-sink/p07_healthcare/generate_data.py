@@ -1,31 +1,45 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_patients_chunk(start, end, plans, states, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    dob_days = rng.integers(365 * 5, 365 * 85 + 1, size)
+    gen_idx = rng.integers(0, 3, size)
+    zip_rand = rng.integers(10000, 100000, size)
+    plan_idx = rng.integers(0, len(plans), size)
+    state_idx = rng.integers(0, len(states), size)
+    genders = ["M", "F", "U"]
     return [
         (
             i,
-            base - timedelta(days=random.randint(365 * 5, 365 * 85)),
-            random.choice(["M", "F", "U"]),
-            f"{random.randint(10000, 99999)}",
-            random.choice(plans),
-            random.choice(states),
+            base - timedelta(days=int(dob_days[i - start])),
+            genders[gen_idx[i - start]],
+            f"{zip_rand[i - start]}",
+            plans[plan_idx[i - start]],
+            states[state_idx[i - start]],
         )
         for i in range(start, end)
     ]
 
 
 def generate_providers_chunk(start, end, specs, states):
+    rng = np.random.default_rng(start)
+    size = end - start
+    spec_idx = rng.integers(0, len(specs), size)
+    state_idx = rng.integers(0, len(states), size)
+    net_rand = rng.random(size)
     return [
         (
             i,
             f"Provider {i}",
-            random.choice(specs),
-            random.choice(states),
-            random.random() > 0.2,
+            specs[spec_idx[i - start]],
+            states[state_idx[i - start]],
+            bool(net_rand[i - start] > 0.2),
             f"NPI{i:010d}",
         )
         for i in range(start, end)
@@ -33,51 +47,79 @@ def generate_providers_chunk(start, end, specs, states):
 
 
 def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstats, dreasons):
+    rng = np.random.default_rng(start)
+    size = end - start
+    bill_rand = rng.uniform(100, 50000, size)
+    allow_mult = rng.uniform(0.4, 0.95, size)
+    paid_mult = rng.uniform(0.5, 1, size)
+    paid_prob = rng.random(size)
+    pat_rand = rng.integers(1, NPA + 1, size)
+    prov_rand = rng.integers(1, NPR + 1, size)
+    days_rand = rng.integers(0, 1096, size)
+    type_idx = rng.integers(0, len(ctypes), size)
+    stat_idx = rng.integers(0, len(cstats), size)
+    reason_idx = rng.integers(0, len(dreasons), size)
+    
     rows = []
     for i in range(start, end):
-        bill = round(random.uniform(100, 50000), 2)
-        allow = round(bill * random.uniform(0.4, 0.95), 2)
-        paid = round(allow * random.uniform(0.5, 1) if random.random() > 0.1 else 0, 2)
+        idx = i - start
+        bill = round(float(bill_rand[idx]), 2)
+        allow = round(bill * float(allow_mult[idx]), 2)
+        paid = round(allow * float(paid_mult[idx]) if paid_prob[idx] > 0.1 else 0, 2)
         rows.append(
             (
                 i,
-                random.randint(1, NPA),
-                random.randint(1, NPR),
-                base + timedelta(days=random.randint(0, 1095)),
-                random.choice(ctypes),
+                int(pat_rand[idx]),
+                int(prov_rand[idx]),
+                base + timedelta(days=int(days_rand[idx])),
+                ctypes[type_idx[idx]],
                 bill,
                 allow,
                 paid,
-                random.choice(cstats),
-                random.choice(dreasons),
+                cstats[stat_idx[idx]],
+                dreasons[reason_idx[idx]],
             )
         )
     return rows
 
 
 def generate_claim_lines_chunk(start, end, NCL, cpts):
+    rng = np.random.default_rng(start)
+    size = end - start
+    claim_rand = rng.integers(1, NCL + 1, size)
+    cpt_idx = rng.integers(0, len(cpts), size)
+    qty_rand = rng.integers(1, 6, size)
+    cost_rand = rng.uniform(10, 5000, size)
+    allow_rand = rng.uniform(5, 4000, size)
+    paid_rand = rng.uniform(0, 3500, size)
     return [
         (
             i,
-            random.randint(1, NCL),
-            random.choice(cpts),
-            random.randint(1, 5),
-            round(random.uniform(10, 5000), 2),
-            round(random.uniform(5, 4000), 2),
-            round(random.uniform(0, 3500), 2),
+            int(claim_rand[i - start]),
+            cpts[cpt_idx[i - start]],
+            int(qty_rand[i - start]),
+            round(float(cost_rand[i - start]), 2),
+            round(float(allow_rand[i - start]), 2),
+            round(float(paid_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 
 def generate_diagnoses_chunk(start, end, NCL, icds):
+    rng = np.random.default_rng(start)
+    size = end - start
+    claim_rand = rng.integers(1, NCL + 1, size)
+    icd_idx = rng.integers(0, len(icds), size)
+    prim_rand = rng.random(size)
+    chron_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NCL),
-            random.choice(icds),
-            random.random() > 0.3,
-            random.random() > 0.6,
+            int(claim_rand[i - start]),
+            icds[icd_idx[i - start]],
+            bool(prim_rand[i - start] > 0.3),
+            bool(chron_rand[i - start] > 0.6),
         )
         for i in range(start, end)
     ]

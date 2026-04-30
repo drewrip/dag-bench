@@ -1,70 +1,105 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_campaigns_chunk(start, end, channels, objectives, base):
-    return [
-        (
-            i,
-            f"Campaign {i}",
-            f"Brand {random.randint(1, 20)}",
-            random.choice(channels),
-            random.choice(objectives),
-            base + timedelta(days=random.randint(0, 200)),
-            base + timedelta(days=random.randint(200, 365)),
-            round(random.uniform(5000, 500000), 2),
-            round(random.uniform(0.5, 15), 2),
-        )
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    advertiser_ids = rng.integers(1, 21, size)
+    channel_indices = rng.integers(0, len(channels), size)
+    objective_indices = rng.integers(0, len(objectives), size)
+    start_days_offset = rng.integers(0, 201, size)
+    end_days_offset = rng.integers(200, 366, size)
+    budgets = rng.uniform(5000, 500000, size)
+    cpm_targets = rng.uniform(0.5, 15, size)
 
-def generate_impressions_chunk(start, end, NCA, bts, devices, geos, placements):
-    return [
-        (
-            i,
-            random.randint(1, NCA),
-            random.randint(1, (end - start) * 100), # Approximating user_id range
-            bts + timedelta(seconds=random.randint(0, 300 * 86400)),
-            random.choice(devices),
-            random.choice(geos),
-            random.choice(placements),
-            round(random.uniform(0.0001, 0.05), 6),
-        )
-        for i in range(start, end)
-    ]
-
-def generate_clicks_chunk(start, end, imp_rows, imp_ids):
     rows = []
-    for i in range(start, end):
-        imp_id = random.choice(imp_ids)
-        imp_row = imp_rows[imp_id - 1]
-        ct = imp_row[3] + timedelta(seconds=random.randint(1, 3600))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            imp_id,
-            imp_row[1],
-            imp_row[2],
+            f"Campaign {i}",
+            f"Brand {advertiser_ids[idx]}",
+            channels[channel_indices[idx]],
+            objectives[objective_indices[idx]],
+            base + timedelta(days=int(start_days_offset[idx])),
+            base + timedelta(days=int(end_days_offset[idx])),
+            round(float(budgets[idx]), 2),
+            round(float(cpm_targets[idx]), 2),
+        ))
+    return rows
+
+def generate_impressions_chunk(start, end, NCA, bts, devices, geos, placements):
+    size = end - start
+    rng = np.random.default_rng(start)
+    campaign_ids = rng.integers(1, NCA + 1, size)
+    user_ids = rng.integers(1, size * 100 + 1, size)
+    seconds_offset = rng.integers(0, 300 * 86400 + 1, size)
+    device_indices = rng.integers(0, len(devices), size)
+    geo_indices = rng.integers(0, len(geos), size)
+    placement_indices = rng.integers(0, len(placements), size)
+    costs = rng.uniform(0.0001, 0.05, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(campaign_ids[idx]),
+            int(user_ids[idx]),
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            devices[device_indices[idx]],
+            geos[geo_indices[idx]],
+            placements[placement_indices[idx]],
+            round(float(costs[idx]), 6),
+        ))
+    return rows
+
+def generate_clicks_chunk(start, end, imp_rows, imp_ids):
+    size = end - start
+    rng = np.random.default_rng(start)
+    imp_indices = rng.integers(0, len(imp_ids), size)
+    seconds_offset = rng.integers(1, 3601, size)
+    landing_url_ids = rng.integers(1, 21, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        imp_id = imp_ids[imp_indices[idx]]
+        imp_row = imp_rows[imp_id - 1]
+        ct = imp_row[3] + timedelta(seconds=int(seconds_offset[idx]))
+        rows.append((
+            i,
+            int(imp_id),
+            int(imp_row[1]),
+            int(imp_row[2]),
             ct,
-            f"https://brand.com/lp/{random.randint(1, 20)}",
+            f"https://brand.com/lp/{landing_url_ids[idx]}",
             imp_row[4],
         ))
     return rows
 
 def generate_conversions_chunk(start, end, click_ids, NCA, NIMP, bts, ctypes):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    click_id_indices = rng.integers(0, len(click_ids), size)
+    campaign_ids = rng.integers(1, NCA + 1, size)
+    user_ids = rng.integers(1, NIMP * 10 + 1, size)
+    seconds_offset = rng.integers(0, 300 * 86400 + 1, size)
+    ctype_indices = rng.integers(0, len(ctypes), size)
+    revenues = rng.uniform(0, 500, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.choice(click_ids),
-            random.randint(1, NCA),
-            random.randint(1, NIMP * 10),
-            bts + timedelta(seconds=random.randint(0, 300 * 86400)),
-            random.choice(ctypes),
-            round(random.uniform(0, 500), 2),
-        )
-        for i in range(start, end)
-    ]
+            int(click_ids[click_id_indices[idx]]),
+            int(campaign_ids[idx]),
+            int(user_ids[idx]),
+            bts + timedelta(seconds=int(seconds_offset[idx])),
+            ctypes[ctype_indices[idx]],
+            round(float(revenues[idx]), 2),
+        ))
+    return rows
 
 
 def main():

@@ -1,77 +1,121 @@
-import duckdb, random, sys, os
+import duckdb, numpy as np, sys, os
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_departments_chunk(start, end, divs, locs):
-    return [
-        (
-            i,
-            f"Dept-{i}",
-            random.choice(divs),
-            random.choice(locs),
-            round(random.uniform(100000, 10000000), 2),
-            random.randint(5, 100),
-        )
-        for i in range(start, end)
-    ]
-
-def generate_employees_chunk(start, end, ND, mgr_ids, base, ttitles, etypes):
-    return [
-        (
-            i,
-            random.randint(1, ND),
-            random.choice(mgr_ids) if i not in mgr_ids else None,
-            f"First{i}",
-            f"Last{i}",
-            random.choice(["M", "F", "NB"]),
-            base + timedelta(days=random.randint(0, 3000)),
-            random.choice(ttitles),
-            random.choice(etypes),
-            random.random() > 0.07,
-        )
-        for i in range(start, end)
-    ]
-
-def generate_salaries_chunk(start, end, NE, base):
-    return [
-        (
-            i,
-            random.randint(1, NE),
-            base + timedelta(days=random.randint(0, 3000)),
-            round(random.uniform(30000, 300000), 2),
-            round(random.uniform(0, 50000), 2),
-            "USD",
-        )
-        for i in range(start, end)
-    ]
-
-def generate_performance_reviews_chunk(start, end, NE, base, cats):
-    return [
-        (
-            i,
-            random.randint(1, NE),
-            base + timedelta(days=random.randint(365, 3650)),
-            random.randint(1, NE),
-            round(random.uniform(1, 5), 2),
-            random.choice(cats),
-            f"Review notes for review {i}",
-        )
-        for i in range(start, end)
-    ]
-
-def generate_leave_requests_chunk(start, end, NE, base, ltypes):
+    size = end - start
+    rng = np.random.default_rng(start)
+    div_indices = rng.integers(0, len(divs), size)
+    loc_indices = rng.integers(0, len(locs), size)
+    budgets = rng.uniform(100000, 10000000, size)
+    headcount_targets = rng.integers(5, 101, size)
+    
     rows = []
-    for i in range(start, end):
-        sd = base + timedelta(days=random.randint(0, 3000))
+    for idx, i in enumerate(range(start, end)):
         rows.append((
             i,
-            random.randint(1, NE),
-            random.choice(ltypes),
+            f"Dept-{i}",
+            divs[div_indices[idx]],
+            locs[loc_indices[idx]],
+            round(float(budgets[idx]), 2),
+            int(headcount_targets[idx]),
+        ))
+    return rows
+
+def generate_employees_chunk(start, end, ND, mgr_ids, base, ttitles, etypes):
+    size = end - start
+    rng = np.random.default_rng(start)
+    dept_ids = rng.integers(1, ND + 1, size)
+    mgr_indices = rng.integers(0, len(mgr_ids), size)
+    genders = ["M", "F", "NB"]
+    gender_indices = rng.integers(0, len(genders), size)
+    days_offset = rng.integers(0, 3001, size)
+    ttitle_indices = rng.integers(0, len(ttitles), size)
+    etype_indices = rng.integers(0, len(etypes), size)
+    active_probs = rng.random(size)
+    
+    # Pre-check for manager_id exclusion
+    mgr_ids_set = set(mgr_ids)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(dept_ids[idx]),
+            int(mgr_ids[mgr_indices[idx]]) if i not in mgr_ids_set else None,
+            f"First{i}",
+            f"Last{i}",
+            genders[gender_indices[idx]],
+            base + timedelta(days=int(days_offset[idx])),
+            ttitles[ttitle_indices[idx]],
+            etypes[etype_indices[idx]],
+            bool(active_probs[idx] > 0.07),
+        ))
+    return rows
+
+def generate_salaries_chunk(start, end, NE, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    days_offset = rng.integers(0, 3001, size)
+    base_salaries = rng.uniform(30000, 300000, size)
+    bonuses = rng.uniform(0, 50000, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(emp_ids[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+            round(float(base_salaries[idx]), 2),
+            round(float(bonuses[idx]), 2),
+            "USD",
+        ))
+    return rows
+
+def generate_performance_reviews_chunk(start, end, NE, base, cats):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    days_offset = rng.integers(365, 3651, size)
+    reviewer_ids = rng.integers(1, NE + 1, size)
+    scores = rng.uniform(1, 5, size)
+    cat_indices = rng.integers(0, len(cats), size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
+            i,
+            int(emp_ids[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+            int(reviewer_ids[idx]),
+            round(float(scores[idx]), 2),
+            cats[cat_indices[idx]],
+            f"Review notes for review {i}",
+        ))
+    return rows
+
+def generate_leave_requests_chunk(start, end, NE, base, ltypes):
+    size = end - start
+    rng = np.random.default_rng(start)
+    emp_ids = rng.integers(1, NE + 1, size)
+    ltype_indices = rng.integers(0, len(ltypes), size)
+    days_offset = rng.integers(0, 3001, size)
+    duration_days = rng.integers(1, 31, size)
+    approved_probs = rng.random(size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        sd = base + timedelta(days=int(days_offset[idx]))
+        rows.append((
+            i,
+            int(emp_ids[idx]),
+            ltypes[ltype_indices[idx]],
             sd,
-            sd + timedelta(days=random.randint(1, 30)),
-            random.random() > 0.1,
+            sd + timedelta(days=int(duration_days[idx])),
+            bool(approved_probs[idx] > 0.1),
         ))
     return rows
 

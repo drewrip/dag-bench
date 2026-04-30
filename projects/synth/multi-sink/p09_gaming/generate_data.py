@@ -1,81 +1,121 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_players_chunk(start, end, countries, platforms, bts, age_groups):
+    rng = np.random.default_rng(start)
+    size = end - start
+    country_idx = rng.integers(0, len(countries), size)
+    plat_idx = rng.integers(0, len(platforms), size)
+    sec_rand = rng.integers(0, 200 * 86400 + 1, size)
+    age_idx = rng.integers(0, len(age_groups), size)
+    paid_rand = rng.random(size)
     return [
         (
             i,
             f"Player_{i}",
-            random.choice(countries),
-            random.choice(platforms),
-            bts + timedelta(seconds=random.randint(0, 200 * 86400)),
-            random.choice(age_groups),
-            random.random() > 0.6,
+            countries[country_idx[i - start]],
+            platforms[plat_idx[i - start]],
+            bts + timedelta(seconds=int(sec_rand[i - start])),
+            age_groups[age_idx[i - start]],
+            bool(paid_rand[i - start] > 0.6),
         )
         for i in range(start, end)
     ]
 
 
 def generate_levels_chunk(start, end, worlds, diffs):
+    rng = np.random.default_rng(start)
+    size = end - start
+    world_idx = rng.integers(0, len(worlds), size)
+    diff_idx = rng.integers(0, len(diffs), size)
+    time_rand = rng.integers(60, 601, size)
+    coins_rand = rng.integers(10, 501, size)
     return [
         (
             i,
             f"Level_{i}",
-            random.choice(worlds),
-            random.choice(diffs),
-            random.randint(60, 600),
-            random.randint(10, 500),
+            worlds[world_idx[i - start]],
+            diffs[diff_idx[i - start]],
+            int(time_rand[i - start]),
+            int(coins_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 
 def generate_sessions_chunk(start, end, NPL, bts, platforms):
+    rng = np.random.default_rng(start)
+    size = end - start
+    player_rand = rng.integers(1, NPL + 1, size)
+    start_sec = rng.integers(0, 300 * 86400 + 1, size)
+    end_sec = rng.integers(60, 7201, size)
+    plat_idx = rng.integers(0, len(platforms), size)
+    vmaj_rand = rng.integers(1, 4, size)
+    vmin_rand = rng.integers(0, 10, size)
+    coins_rand = rng.integers(0, 1001, size)
     return [
         (
             i,
-            random.randint(1, NPL),
-            ss := bts + timedelta(seconds=random.randint(0, 300 * 86400)),
-            ss + timedelta(seconds=random.randint(60, 7200)),
-            random.choice(platforms),
-            f"v{random.randint(1, 3)}.{random.randint(0, 9)}",
-            random.randint(0, 1000),
+            int(player_rand[i - start]),
+            (ss := bts + timedelta(seconds=int(start_sec[i - start]))),
+            ss + timedelta(seconds=int(end_sec[i - start])),
+            platforms[plat_idx[i - start]],
+            f"v{vmaj_rand[i - start]}.{vmin_rand[i - start]}",
+            int(coins_rand[i - start]),
         )
         for i in range(start, end)
     ]
 
 
 def generate_events_chunk(start, end, sess, etypes, NLV):
+    rng = np.random.default_rng(start)
+    size = end - start
+    sess_idx = rng.integers(0, len(sess), size)
+    etype_idx = rng.integers(0, len(etypes), size)
+    sec_rand = rng.integers(0, 7201, size)
+    level_rand = rng.integers(1, max(2, NLV + 1), size)
+    val_rand = rng.uniform(0, 1000, size)
+    
     rows = []
     for i in range(start, end):
-        s = random.choice(sess)
+        idx = i - start
+        s = sess[sess_idx[idx]]
         rows.append(
             (
                 i,
                 s[0],
                 s[1],
-                random.choice(etypes),
-                s[2] + timedelta(seconds=random.randint(0, 7200)),
-                random.randint(1, NLV) if NLV > 0 else 1,
-                round(random.uniform(0, 1000), 2),
+                etypes[etype_idx[idx]],
+                s[2] + timedelta(seconds=int(sec_rand[idx])),
+                int(level_rand[idx]) if NLV > 0 else 1,
+                round(float(val_rand[idx]), 2),
             )
         )
     return rows
 
 
 def generate_purchases_chunk(start, end, NPL, bts, itypes):
+    rng = np.random.default_rng(start)
+    size = end - start
+    player_rand = rng.integers(1, NPL + 1, size)
+    sec_rand = rng.integers(0, 300 * 86400 + 1, size)
+    itype_idx = rng.integers(0, len(itypes), size)
+    item_rand = rng.integers(1, 51, size)
+    price_rand = rng.uniform(0.99, 99.99, size)
+    refund_rand = rng.random(size)
     return [
         (
             i,
-            random.randint(1, NPL),
-            bts + timedelta(seconds=random.randint(0, 300 * 86400)),
-            random.choice(itypes),
-            f"Item_{random.randint(1, 50)}",
-            round(random.uniform(0.99, 99.99), 2),
-            random.random() < 0.03,
+            int(player_rand[i - start]),
+            bts + timedelta(seconds=int(sec_rand[i - start])),
+            itypes[itype_idx[i - start]],
+            f"Item_{item_rand[i - start]}",
+            round(float(price_rand[i - start]), 2),
+            bool(refund_rand[i - start] < 0.03),
         )
         for i in range(start, end)
     ]

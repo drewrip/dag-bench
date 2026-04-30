@@ -1,63 +1,100 @@
-import duckdb, random, sys, os
+import duckdb, sys, os
+import numpy as np
 from datetime import datetime, timedelta, date
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_accounts_chunk(start, end, atypes, base):
+    rng = np.random.default_rng(start)
+    size = end - start
+    atypes_idx = rng.integers(0, len(atypes), size)
+    country_idx = rng.integers(0, 5, size)
+    limit_rand = rng.uniform(500, 50000, size)
+    days_rand = rng.integers(30, 3651, size)
+    frozen_rand = rng.random(size)
+    countries = ["US", "GB", "DE", "FR", "CA"]
     return [
         (
             i,
             f"Holder {i}",
-            random.choice(atypes),
-            random.choice(["US", "GB", "DE", "FR", "CA"]),
-            round(random.uniform(500, 50000), 2),
-            (base - timedelta(days=random.randint(30, 3650))).date(),
-            random.random() < 0.03,
+            atypes[atypes_idx[i - start]],
+            countries[country_idx[i - start]],
+            round(float(limit_rand[i - start]), 2),
+            (base - timedelta(days=int(days_rand[i - start]))).date(),
+            bool(frozen_rand[i - start] < 0.03),
         )
         for i in range(start, end)
     ]
 
 def generate_merchants_chunk(start, end, cats, risks):
+    rng = np.random.default_rng(start)
+    size = end - start
+    cats_idx = rng.integers(0, len(cats), size)
+    country_idx = rng.integers(0, 5, size)
+    risks_idx = rng.integers(0, len(risks), size)
+    amount_rand = rng.uniform(5, 500, size)
+    countries = ["US", "GB", "NG", "CN", "RU"]
     return [
         (
             i,
             f"Merchant {i}",
-            random.choice(cats),
-            random.choice(["US", "GB", "NG", "CN", "RU"]),
-            random.choice(risks),
-            round(random.uniform(5, 500), 2),
+            cats[cats_idx[i - start]],
+            countries[country_idx[i - start]],
+            risks[risks_idx[i - start]],
+            round(float(amount_rand[i - start]), 2),
         )
         for i in range(start, end)
     ]
 
 def generate_transactions_chunk(start, end, NA, NM, base, chans, currs, rcodes):
+    rng = np.random.default_rng(start)
+    size = end - start
+    acc_rand = rng.integers(1, NA + 1, size)
+    merch_rand = rng.integers(1, NM + 1, size)
+    amount_rand = rng.uniform(1, 5000, size)
+    sec_rand = rng.integers(0, 365 * 86400 + 1, size)
+    chan_idx = rng.integers(0, len(chans), size)
+    curr_idx = rng.integers(0, len(currs), size)
+    dec_rand = rng.random(size)
+    flag_rand = rng.random(size)
+    rcode_idx = rng.integers(0, len(rcodes), size)
     return [
         (
             i,
-            random.randint(1, NA),
-            random.randint(1, NM),
-            round(random.uniform(1, 5000), 2),
-            base + timedelta(seconds=random.randint(0, 365 * 86400)),
-            random.choice(chans),
-            random.choice(currs),
-            random.random() < 0.05,
-            random.random() < 0.04, # is_flagged
-            random.choice(rcodes),
+            int(acc_rand[i - start]),
+            int(merch_rand[i - start]),
+            round(float(amount_rand[i - start]), 2),
+            base + timedelta(seconds=int(sec_rand[i - start])),
+            chans[chan_idx[i - start]],
+            currs[curr_idx[i - start]],
+            bool(dec_rand[i - start] < 0.05),
+            bool(flag_rand[i - start] < 0.04), # is_flagged
+            rcodes[rcode_idx[i - start]],
         )
         for i in range(start, end)
     ]
 
 def generate_alerts_chunk(start, end, flagged_ids, atypes2, sevs, base, ress):
+    rng = np.random.default_rng(start)
+    size = end - start
+    if flagged_ids:
+        flag_idx = rng.integers(0, len(flagged_ids), size)
+    type2_idx = rng.integers(0, len(atypes2), size)
+    sev_idx = rng.integers(0, len(sevs), size)
+    sec_rand = rng.integers(0, 365 * 86400 + 1, size)
+    res_prob = rng.random(size)
+    res_idx = rng.integers(0, len(ress), size)
+    res_prob2 = rng.random(size)
     return [
         (
             i,
-            random.choice(flagged_ids) if flagged_ids else i,
-            random.choice(atypes2),
-            random.choice(sevs),
-            base + timedelta(seconds=random.randint(0, 365 * 86400)),
-            random.random() > 0.4,
-            random.choice(ress) if random.random() > 0.4 else None,
+            int(flagged_ids[flag_idx[i - start]]) if flagged_ids else i,
+            atypes2[type2_idx[i - start]],
+            sevs[sev_idx[i - start]],
+            base + timedelta(seconds=int(sec_rand[i - start])),
+            bool(res_prob[i - start] > 0.4),
+            ress[res_idx[i - start]] if res_prob2[i - start] > 0.4 else None,
         )
         for i in range(start, end)
     ]

@@ -1,88 +1,140 @@
-import duckdb, random, sys, os
+import duckdb, sys, os, numpy as np
 from datetime import date, timedelta
 from concurrent.futures import ProcessPoolExecutor
 from utils.synth_utils import batched_insert, run_parallel
 
 
 def generate_categories_chunk(start, end, cats):
-    return [
-        (i, cats[(i - 1) % len(cats)], random.randint(1, i - 1) if i > 4 else None, i)
-        for i in range(start, end)
-    ]
+    size = end - start
+    rng = np.random.default_rng(start)
+    ids = np.arange(start, end)
+    # parent_id needs to be less than i.
+    # Use 2 as a safe minimum high value for rng.integers to avoid errors when i <= 1.
+    p_ids_all = rng.integers(1, np.maximum(ids, 2))
+    
+    rows = []
+    for idx, i in enumerate(ids):
+        p_id = int(p_ids_all[idx]) if i > 4 else None
+        rows.append((int(i), cats[(i - 1) % len(cats)], p_id, int(i)))
+    return rows
 
 
 def generate_customers_chunk(start, end, cn, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    country_indices = rng.integers(0, len(cn), size)
+    days_offset = rng.integers(0, 2001, size)
+    active_probs = rng.random(size)
+    spendings = rng.uniform(0, 15000, size)
+    
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
             f"Cust {i}",
             f"u{i}@ex.com",
-            random.choice(cn),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.random() > 0.1,
-            round(random.uniform(0, 15000), 2),
-        )
-        for i in range(start, end)
-    ]
+            cn[country_indices[idx]],
+            base + timedelta(days=int(days_offset[idx])),
+            bool(active_probs[idx] > 0.1),
+            round(float(spendings[idx]), 2),
+        ))
+    return rows
 
 
 def generate_products_chunk(start, end, NCT, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    cat_ids = rng.integers(1, NCT + 1, size)
+    costs = rng.uniform(1, 400, size)
+    price_multipliers = rng.uniform(1.1, 4, size)
+    weights = rng.uniform(0.1, 20, size)
+    active_probs = rng.random(size)
+    stock_qtys = rng.integers(0, 1001, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        cost = round(float(costs[idx]), 2)
+        price = round(cost * float(price_multipliers[idx]), 2)
+        rows.append((
             i,
-            random.randint(1, NCT),
+            int(cat_ids[idx]),
             f"SKU-{i:06d}",
             f"Prod {i}",
-            round((c := round(random.uniform(1, 400), 2)) * random.uniform(1.1, 4), 2),
-            c,
-            round(random.uniform(0.1, 20), 3),
-            random.random() > 0.05,
-            random.randint(0, 1000),
-        )
-        for i in range(start, end)
-    ]
+            price,
+            cost,
+            round(float(weights[idx]), 3),
+            bool(active_probs[idx] > 0.05),
+            int(stock_qtys[idx]),
+        ))
+    return rows
 
 
 def generate_orders_chunk(start, end, NC, st, ch, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    cust_ids = rng.integers(1, NC + 1, size)
+    days_offset = rng.integers(0, 2001, size)
+    status_indices = rng.integers(0, len(st), size)
+    channel_indices = rng.integers(0, len(ch), size)
+    discount_probs = rng.random(size)
+    discounts = rng.uniform(0, 30, size)
+    shipping_costs = rng.uniform(0, 25, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        discount = round(float(discounts[idx]), 2) if discount_probs[idx] > 0.6 else 0.0
+        rows.append((
             i,
-            random.randint(1, NC),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.choice(st),
-            random.choice(ch),
-            round(random.uniform(0, 30), 2) if random.random() > 0.6 else 0,
-            round(random.uniform(0, 25), 2),
-        )
-        for i in range(start, end)
-    ]
+            int(cust_ids[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+            st[status_indices[idx]],
+            ch[channel_indices[idx]],
+            discount,
+            round(float(shipping_costs[idx]), 2),
+        ))
+    return rows
 
 
 def generate_order_items_chunk(start, end, NO, NP):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    order_ids = rng.integers(1, NO + 1, size)
+    product_ids = rng.integers(1, NP + 1, size)
+    quantities = rng.integers(1, 6, size)
+    unit_prices = rng.uniform(5, 500, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NO),
-            random.randint(1, NP),
-            random.randint(1, 5),
-            round(random.uniform(5, 500), 2),
-        )
-        for i in range(start, end)
-    ]
+            int(order_ids[idx]),
+            int(product_ids[idx]),
+            int(quantities[idx]),
+            round(float(unit_prices[idx]), 2),
+        ))
+    return rows
 
 
 def generate_reviews_chunk(start, end, NP, NC, base):
-    return [
-        (
+    size = end - start
+    rng = np.random.default_rng(start)
+    product_ids = rng.integers(1, NP + 1, size)
+    customer_ids = rng.integers(1, NC + 1, size)
+    ratings = rng.integers(1, 6, size)
+    days_offset = rng.integers(0, 2001, size)
+    votes = rng.integers(0, 201, size)
+
+    rows = []
+    for idx, i in enumerate(range(start, end)):
+        rows.append((
             i,
-            random.randint(1, NP),
-            random.randint(1, NC),
-            random.randint(1, 5),
-            base + timedelta(days=random.randint(0, 2000)),
-            random.randint(0, 200),
-        )
-        for i in range(start, end)
-    ]
+            int(product_ids[idx]),
+            int(customer_ids[idx]),
+            int(ratings[idx]),
+            base + timedelta(days=int(days_offset[idx])),
+            int(votes[idx]),
+        ))
+    return rows
 
 
 def main():
