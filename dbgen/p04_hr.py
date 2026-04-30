@@ -128,7 +128,7 @@ def generate_leave_requests_chunk(start, end, NE, base, ltypes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 1
+    sf_adj = sf * 8989
     ND = max(5, int(30 * sf_adj))
     NE = max(20, int(800 * sf_adj))
     NS = max(30, int(2000 * sf_adj))

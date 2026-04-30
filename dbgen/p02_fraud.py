@@ -116,7 +116,7 @@ def generate_alerts_chunk(start, end, flagged_ids, NT, atypes2, sevs, base, ress
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 200.0
+    sf_adj = sf * 2200.0
     NA = max(10, int(1000 * sf_adj))
     NM = max(10, int(300 * sf_adj))
     NT = max(50, int(20000 * sf_adj))

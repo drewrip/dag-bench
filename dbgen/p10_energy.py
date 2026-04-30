@@ -108,7 +108,7 @@ def generate_outages_chunk(start, end, NSB, causes, severities, bts):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 10.0
+    sf_adj = sf * 90.0
     NSB = max(5, int(50 * sf_adj))
     NMT = max(20, int(1000 * sf_adj))
     NCR = max(200, int(500000 * sf_adj))

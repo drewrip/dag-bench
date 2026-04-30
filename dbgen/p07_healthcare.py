@@ -128,7 +128,7 @@ def generate_diagnoses_chunk(start, end, NCL, icd_codes):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 1000.0
+    sf_adj = sf * 4000.0
     NPA = max(20, int(1000 * sf_adj))
     NPR = max(10, int(200 * sf_adj))
     NCL = max(30, int(3000 * sf_adj))

@@ -140,7 +140,7 @@ def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
 
 def main():
     sf = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
-    sf_adj = sf * 400.0
+    sf_adj = sf * 400
     NPL = max(20, int(2000 * sf_adj))
     NSS = max(50, int(10000 * sf_adj))
     NEV = max(200, int(80000 * sf_adj))
