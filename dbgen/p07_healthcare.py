@@ -19,17 +19,15 @@ def generate_patients_chunk(start, end, genders, plans, states, base):
     plan_indices = rng.integers(0, len(plans), size)
     state_indices = rng.integers(0, len(states), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            base - timedelta(days=int(days_back[idx])),
-            genders[gender_indices[idx]],
-            str(zip_codes[idx]),
-            plans[plan_indices[idx]],
-            states[state_indices[idx]],
-        ))
-    return rows
+    patient_ids = range(start, end)
+    dobs = (np.datetime64(base) - days_back.astype("timedelta64[D]")).tolist()
+    selected_genders = np.take(genders, gender_indices).tolist()
+    selected_zips = zip_codes.astype(str).tolist()
+    selected_plans = np.take(plans, plan_indices).tolist()
+    selected_states = np.take(states, state_indices).tolist()
+    
+    return list(zip(patient_ids, dobs, selected_genders, selected_zips, selected_plans, selected_states))
+
 
 def generate_providers_chunk(start, end, specialties, states):
     size = end - start
@@ -38,17 +36,15 @@ def generate_providers_chunk(start, end, specialties, states):
     state_indices = rng.integers(0, len(states), size)
     network_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Provider {i}",
-            specialties[spec_indices[idx]],
-            states[state_indices[idx]],
-            bool(network_probs[idx] > 0.2),
-            f"NPI{i:010d}",
-        ))
-    return rows
+    provider_ids = range(start, end)
+    provider_names = [f"Provider {i}" for i in provider_ids]
+    selected_specs = np.take(specialties, spec_indices).tolist()
+    selected_states = np.take(states, state_indices).tolist()
+    is_in_network = (network_probs > 0.2).tolist()
+    npis = [f"NPI{i:010d}" for i in provider_ids]
+    
+    return list(zip(provider_ids, provider_names, selected_specs, selected_states, is_in_network, npis))
+
 
 def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstatuses, denial_reasons):
     size = end - start
@@ -64,24 +60,32 @@ def generate_claims_chunk(start, end, NPA, NPR, base, ctypes, cstatuses, denial_
     status_indices = rng.integers(0, len(cstatuses), size)
     denial_indices = rng.integers(0, len(denial_reasons), size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        bill = round(float(bill_amounts[idx]), 2)
-        allow = round(bill * float(allow_mults[idx]), 2)
-        paid = round(allow * float(paid_mults[idx]) if paid_probs[idx] > 0.1 else 0.0, 2)
-        rows.append((
-            i,
-            int(patient_ids[idx]),
-            int(provider_ids[idx]),
-            base + timedelta(days=int(days_offset[idx])),
-            ctypes[ctype_indices[idx]],
-            bill,
-            allow,
-            paid,
-            cstatuses[status_indices[idx]],
-            denial_reasons[denial_indices[idx]],
-        ))
-    return rows
+    claim_ids = range(start, end)
+    selected_patients = patient_ids.tolist()
+    selected_providers = provider_ids.tolist()
+    service_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_ctypes = np.take(ctypes, ctype_indices).tolist()
+    
+    bills = np.round(bill_amounts, 2)
+    allows = np.round(bills * allow_mults, 2)
+    paid_vals = np.where(paid_probs > 0.1, np.round(allows * paid_mults, 2), 0.0)
+    
+    selected_statuses = np.take(cstatuses, status_indices).tolist()
+    selected_denials = np.take(denial_reasons, denial_indices).tolist()
+    
+    return list(zip(
+        claim_ids,
+        selected_patients,
+        selected_providers,
+        service_dates,
+        selected_ctypes,
+        bills.tolist(),
+        allows.tolist(),
+        paid_vals.tolist(),
+        selected_statuses,
+        selected_denials
+    ))
+
 
 def generate_claim_lines_chunk(start, end, NCL, cpt_codes):
     size = end - start
@@ -93,18 +97,16 @@ def generate_claim_lines_chunk(start, end, NCL, cpt_codes):
     allowed_amounts = rng.uniform(5, 4000, size)
     paid_amounts = rng.uniform(0, 3500, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(claim_ids[idx]),
-            cpt_codes[cpt_indices[idx]],
-            int(quantities[idx]),
-            round(float(unit_costs[idx]), 2),
-            round(float(allowed_amounts[idx]), 2),
-            round(float(paid_amounts[idx]), 2),
-        ))
-    return rows
+    line_ids = range(start, end)
+    selected_claims = claim_ids.tolist()
+    selected_cpt = np.take(cpt_codes, cpt_indices).tolist()
+    selected_quantities = quantities.tolist()
+    unit_costs_rounded = np.round(unit_costs, 2).tolist()
+    allowed_rounded = np.round(allowed_amounts, 2).tolist()
+    paid_rounded = np.round(paid_amounts, 2).tolist()
+    
+    return list(zip(line_ids, selected_claims, selected_cpt, selected_quantities, unit_costs_rounded, allowed_rounded, paid_rounded))
+
 
 def generate_diagnoses_chunk(start, end, NCL, icd_codes):
     size = end - start
@@ -114,16 +116,13 @@ def generate_diagnoses_chunk(start, end, NCL, icd_codes):
     primary_probs = rng.random(size)
     chronic_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(claim_ids[idx]),
-            icd_codes[icd_indices[idx]],
-            bool(primary_probs[idx] > 0.3),
-            bool(chronic_probs[idx] > 0.6),
-        ))
-    return rows
+    diag_ids = range(start, end)
+    selected_claims = claim_ids.tolist()
+    selected_icd = np.take(icd_codes, icd_indices).tolist()
+    is_primary = (primary_probs > 0.3).tolist()
+    is_chronic = (chronic_probs > 0.6).tolist()
+    
+    return list(zip(diag_ids, selected_claims, selected_icd, is_primary, is_chronic))
 
 
 def main():

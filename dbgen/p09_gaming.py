@@ -19,18 +19,25 @@ def generate_players_chunk(start, end, countries, platforms, bts, age_groups):
     age_indices = rng.integers(0, len(age_groups), size)
     paid_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Player_{i}",
-            countries[country_indices[idx]],
-            platforms[platform_indices[idx]],
-            bts + timedelta(seconds=int(seconds_offset[idx])),
-            age_groups[age_indices[idx]],
-            bool(paid_probs[idx] > 0.6),
-        ))
-    return rows
+    player_ids = range(start, end)
+    usernames = [f"Player_{i}" for i in player_ids]
+    selected_countries = np.take(countries, country_indices).tolist()
+    selected_platforms = np.take(platforms, platform_indices).tolist()
+    created_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    selected_age_groups = np.take(age_groups, age_indices).tolist()
+    is_paid = (paid_probs > 0.6).tolist()
+
+    return list(
+        zip(
+            player_ids,
+            usernames,
+            selected_countries,
+            selected_platforms,
+            created_tss,
+            selected_age_groups,
+            is_paid,
+        )
+    )
 
 def generate_levels_chunk(start, end, worlds, difficulties):
     size = end - start
@@ -41,18 +48,25 @@ def generate_levels_chunk(start, end, worlds, difficulties):
     rewards = rng.integers(10, 501, size)
     unlock_offsets = rng.integers(0, 4, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Level_{i}",
-            worlds[world_indices[idx]],
-            difficulties[diff_indices[idx]],
-            int(par_times[idx]),
-            int(rewards[idx]),
-            max(1, i - int(unlock_offsets[idx])),
-        ))
-    return rows
+    level_ids = range(start, end)
+    level_names = [f"Level_{i}" for i in level_ids]
+    selected_worlds = np.take(worlds, world_indices).tolist()
+    selected_diffs = np.take(difficulties, diff_indices).tolist()
+    par_times_list = par_times.tolist()
+    rewards_list = rewards.tolist()
+    unlock_levels = [max(1, i - int(unlock_offsets[idx])) for idx, i in enumerate(range(start, end))]
+
+    return list(
+        zip(
+            level_ids,
+            level_names,
+            selected_worlds,
+            selected_diffs,
+            par_times_list,
+            rewards_list,
+            unlock_levels,
+        )
+    )
 
 def generate_sessions_chunk(start, end, NPL, bts, platforms):
     size = end - start
@@ -66,21 +80,27 @@ def generate_sessions_chunk(start, end, NPL, bts, platforms):
     attempts = rng.integers(0, 11, size)
     coins = rng.integers(0, 1001, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        ss = bts + timedelta(seconds=int(seconds_offset[idx]))
-        dur = int(durations[idx])
-        rows.append((
-            i,
-            int(player_ids[idx]),
-            ss,
-            ss + timedelta(seconds=dur),
-            platforms[platform_indices[idx]],
-            f"v{v_majors[idx]}.{v_minors[idx]}",
-            int(attempts[idx]),
-            int(coins[idx]),
-        ))
-    return rows
+    session_ids = range(start, end)
+    selected_player_ids = player_ids.tolist()
+    
+    session_starts = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]"))
+    session_ends = session_starts + durations.astype("timedelta64[s]")
+    
+    selected_platforms = np.take(platforms, platform_indices).tolist()
+    versions = [f"v{maj}.{min}" for maj, min in zip(v_majors, v_minors)]
+    
+    return list(
+        zip(
+            session_ids,
+            selected_player_ids,
+            session_starts.tolist(),
+            session_ends.tolist(),
+            selected_platforms,
+            versions,
+            attempts.tolist(),
+            coins.tolist(),
+        )
+    )
 
 def generate_events_chunk(start, end, session_ids, player_ids, session_starts, etypes, NLV):
     size = end - start
@@ -123,19 +143,27 @@ def generate_purchases_chunk(start, end, NPL, bts, itypes, currencies):
     currency_indices = rng.integers(0, len(currencies), size)
     refund_probs = rng.random(size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(player_ids[idx]),
-            bts + timedelta(seconds=int(seconds_offset[idx])),
-            itypes[itype_indices[idx]],
-            f"Item_{item_ids[idx]}",
-            round(float(prices[idx]), 2),
-            currencies[currency_indices[idx]],
-            bool(refund_probs[idx] < 0.03),
-        ))
-    return rows
+    purchase_ids = range(start, end)
+    selected_player_ids = player_ids.tolist()
+    purchase_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    selected_itypes = np.take(itypes, itype_indices).tolist()
+    item_names = [f"Item_{iid}" for iid in item_ids]
+    rounded_prices = np.round(prices, 2).tolist()
+    selected_currencies = np.take(currencies, currency_indices).tolist()
+    is_refunded = (refund_probs < 0.03).tolist()
+
+    return list(
+        zip(
+            purchase_ids,
+            selected_player_ids,
+            purchase_tss,
+            selected_itypes,
+            item_names,
+            rounded_prices,
+            selected_currencies,
+            is_refunded,
+        )
+    )
 
 
 def main():

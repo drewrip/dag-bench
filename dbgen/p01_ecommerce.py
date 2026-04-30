@@ -14,15 +14,14 @@ def generate_categories_chunk(start, end, cats):
     size = end - start
     rng = np.random.default_rng(start)
     ids = np.arange(start, end)
-    # parent_id needs to be less than i.
-    # Use 2 as a safe minimum high value for rng.integers to avoid errors when i <= 1.
     p_ids_all = rng.integers(1, np.maximum(ids, 2))
     
-    rows = []
-    for idx, i in enumerate(ids):
-        p_id = int(p_ids_all[idx]) if i > 4 else None
-        rows.append((int(i), cats[(i - 1) % len(cats)], p_id, int(i)))
-    return rows
+    category_ids = ids.tolist()
+    names = [cats[(i - 1) % len(cats)] for i in ids]
+    parent_ids = [int(p_ids_all[idx]) if i > 4 else None for idx, i in enumerate(ids)]
+    display_ranks = ids.tolist()
+    
+    return list(zip(category_ids, names, parent_ids, display_ranks))
 
 
 def generate_customers_chunk(start, end, cn, base):
@@ -33,18 +32,15 @@ def generate_customers_chunk(start, end, cn, base):
     active_probs = rng.random(size)
     spendings = rng.uniform(0, 15000, size)
     
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"Cust {i}",
-            f"u{i}@ex.com",
-            cn[country_indices[idx]],
-            base + timedelta(days=int(days_offset[idx])),
-            bool(active_probs[idx] > 0.1),
-            round(float(spendings[idx]), 2),
-        ))
-    return rows
+    customer_ids = range(start, end)
+    full_names = [f"Cust {i}" for i in customer_ids]
+    emails = [f"u{i}@ex.com" for i in customer_ids]
+    selected_countries = np.take(cn, country_indices).tolist()
+    signup_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    is_active = (active_probs > 0.1).tolist()
+    lifetime_spends = np.round(spendings, 2).tolist()
+    
+    return list(zip(customer_ids, full_names, emails, selected_countries, signup_dates, is_active, lifetime_spends))
 
 
 def generate_products_chunk(start, end, NCT, base):
@@ -57,22 +53,29 @@ def generate_products_chunk(start, end, NCT, base):
     active_probs = rng.random(size)
     stock_qtys = rng.integers(0, 1001, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        cost = round(float(costs[idx]), 2)
-        price = round(cost * float(price_multipliers[idx]), 2)
-        rows.append((
-            i,
-            int(cat_ids[idx]),
-            f"SKU-{i:06d}",
-            f"Prod {i}",
-            price,
-            cost,
-            round(float(weights[idx]), 3),
-            bool(active_probs[idx] > 0.05),
-            int(stock_qtys[idx]),
-        ))
-    return rows
+    product_ids = range(start, end)
+    selected_cat_ids = cat_ids.tolist()
+    skus = [f"SKU-{i:06d}" for i in product_ids]
+    names = [f"Prod {i}" for i in product_ids]
+    
+    costs_rounded = np.round(costs, 2)
+    prices_rounded = np.round(costs_rounded * price_multipliers, 2)
+    
+    weights_rounded = np.round(weights, 3).tolist()
+    is_active = (active_probs > 0.05).tolist()
+    stock_qtys_list = stock_qtys.tolist()
+    
+    return list(zip(
+        product_ids,
+        selected_cat_ids,
+        skus,
+        names,
+        prices_rounded.tolist(),
+        costs_rounded.tolist(),
+        weights_rounded,
+        is_active,
+        stock_qtys_list
+    ))
 
 
 def generate_orders_chunk(start, end, NC, st, ch, base):
@@ -86,19 +89,24 @@ def generate_orders_chunk(start, end, NC, st, ch, base):
     discounts = rng.uniform(0, 30, size)
     shipping_costs = rng.uniform(0, 25, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        discount = round(float(discounts[idx]), 2) if discount_probs[idx] > 0.6 else 0.0
-        rows.append((
-            i,
-            int(cust_ids[idx]),
-            base + timedelta(days=int(days_offset[idx])),
-            st[status_indices[idx]],
-            ch[channel_indices[idx]],
-            discount,
-            round(float(shipping_costs[idx]), 2),
-        ))
-    return rows
+    order_ids = range(start, end)
+    selected_cust_ids = cust_ids.tolist()
+    order_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_statuses = np.take(st, status_indices).tolist()
+    selected_channels = np.take(ch, channel_indices).tolist()
+    
+    discount_vals = np.where(discount_probs > 0.6, np.round(discounts, 2), 0.0).tolist()
+    shipping_costs_rounded = np.round(shipping_costs, 2).tolist()
+    
+    return list(zip(
+        order_ids,
+        selected_cust_ids,
+        order_dates,
+        selected_statuses,
+        selected_channels,
+        discount_vals,
+        shipping_costs_rounded
+    ))
 
 
 def generate_order_items_chunk(start, end, NO, NP):
@@ -109,16 +117,19 @@ def generate_order_items_chunk(start, end, NO, NP):
     quantities = rng.integers(1, 6, size)
     unit_prices = rng.uniform(5, 500, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(order_ids[idx]),
-            int(product_ids[idx]),
-            int(quantities[idx]),
-            round(float(unit_prices[idx]), 2),
-        ))
-    return rows
+    item_ids = range(start, end)
+    selected_order_ids = order_ids.tolist()
+    selected_product_ids = product_ids.tolist()
+    selected_quantities = quantities.tolist()
+    unit_prices_rounded = np.round(unit_prices, 2).tolist()
+    
+    return list(zip(
+        item_ids,
+        selected_order_ids,
+        selected_product_ids,
+        selected_quantities,
+        unit_prices_rounded
+    ))
 
 
 def generate_reviews_chunk(start, end, NP, NC, base):
@@ -130,17 +141,21 @@ def generate_reviews_chunk(start, end, NP, NC, base):
     days_offset = rng.integers(0, 2001, size)
     votes = rng.integers(0, 201, size)
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            int(product_ids[idx]),
-            int(customer_ids[idx]),
-            int(ratings[idx]),
-            base + timedelta(days=int(days_offset[idx])),
-            int(votes[idx]),
-        ))
-    return rows
+    review_ids = range(start, end)
+    selected_product_ids = product_ids.tolist()
+    selected_customer_ids = customer_ids.tolist()
+    selected_ratings = ratings.tolist()
+    review_dates = (np.datetime64(base) + days_offset.astype("timedelta64[D]")).tolist()
+    selected_votes = votes.tolist()
+    
+    return list(zip(
+        review_ids,
+        selected_product_ids,
+        selected_customer_ids,
+        selected_ratings,
+        review_dates,
+        selected_votes
+    ))
 
 
 def main():

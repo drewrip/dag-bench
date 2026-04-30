@@ -19,19 +19,91 @@ def generate_substations_chunk(start, end, regions):
     voltage_indices = rng.integers(0, len(voltages), size)
     lats = rng.uniform(25, 50, size)
     lons = rng.uniform(-120, -70, size)
+    
+    sub_ids = range(start, end)
+    sub_names = [f"SUB-{i:03d}" for i in sub_ids]
+    selected_regions = np.take(regions, region_indices).tolist()
+    capacities_rounded = np.round(capacities, 2).tolist()
+    selected_voltages = np.take(voltages, voltage_indices).tolist()
+    lats_rounded = np.round(lats, 4).tolist()
+    lons_rounded = np.round(lons, 4).tolist()
+    
+    return list(zip(sub_ids, sub_names, selected_regions, capacities_rounded, selected_voltages, lats_rounded, lons_rounded))
 
-    rows = []
-    for idx, i in enumerate(range(start, end)):
-        rows.append((
-            i,
-            f"SUB-{i:03d}",
-            regions[region_indices[idx]],
-            round(float(capacities[idx]), 2),
-            int(voltages[voltage_indices[idx]]),
-            round(float(lats[idx]), 4),
-            round(float(lons[idx]), 4),
-        ))
-    return rows
+
+def generate_meters_chunk(start, end, NSB, mtypes, tariffs, base):
+    size = end - start
+    rng = np.random.default_rng(start)
+    sub_ids = rng.integers(1, NSB + 1, size)
+    customer_ids = rng.integers(1, 1000 * 2 + 1, size)
+    mtype_indices = rng.integers(0, len(mtypes), size)
+    tariff_indices = rng.integers(0, len(tariffs), size)
+    days_back = rng.integers(0, 3651, size)
+    smart_probs = rng.random(size)
+    rated_capacities = rng.uniform(1, 1000, size)
+    
+    meter_ids = range(start, end)
+    selected_sub_ids = sub_ids.tolist()
+    selected_customer_ids = customer_ids.tolist()
+    selected_mtypes = np.take(mtypes, mtype_indices).tolist()
+    selected_tariffs = np.take(tariffs, tariff_indices).tolist()
+    install_dates = (np.datetime64(base) - days_back.astype("timedelta64[D]")).tolist()
+    is_smart = (smart_probs > 0.3).tolist()
+    rated_capacities_rounded = np.round(rated_capacities, 2).tolist()
+    
+    return list(zip(meter_ids, selected_sub_ids, selected_customer_ids, selected_mtypes, selected_tariffs, install_dates, is_smart, rated_capacities_rounded))
+
+
+def generate_readings_chunk(start, end, NMT, bts):
+    size = end - start
+    rng = np.random.default_rng(start)
+    meter_ids = rng.integers(1, NMT + 1, size)
+    seconds_offset = rng.integers(0, 364 * 86400 + 1, size)
+    kwhs = np.abs(rng.normal(5, 3, size))
+    voltages = rng.normal(230, 5, size)
+    power_factors = rng.uniform(0.7, 1.0, size)
+    estimated_probs = rng.random(size)
+
+    reading_ids = range(start, end)
+    selected_meter_ids = meter_ids.tolist()
+    read_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]")).tolist()
+    kwhs_rounded = np.round(kwhs, 4).tolist()
+    voltages_rounded = np.round(voltages, 2).tolist()
+    power_factors_rounded = np.round(power_factors, 3).tolist()
+    is_estimated = (estimated_probs < 0.02).tolist()
+    
+    return list(zip(reading_ids, selected_meter_ids, read_tss, kwhs_rounded, voltages_rounded, power_factors_rounded, is_estimated))
+
+
+def generate_outages_chunk(start, end, NSB, causes, severities, bts):
+    size = end - start
+    rng = np.random.default_rng(start)
+    sub_ids = rng.integers(1, NSB + 1, size)
+    seconds_offset = rng.integers(0, 364 * 86400 + 1, size)
+    duration_minutes = rng.integers(5, 1441, size)
+    cause_indices = rng.integers(0, len(causes), size)
+    affected_meters = rng.integers(1, 501, size)
+    severity_indices = rng.integers(0, len(severities), size)
+
+    outage_ids = range(start, end)
+    selected_sub_ids = sub_ids.tolist()
+    
+    start_tss = (np.datetime64(bts) + seconds_offset.astype("timedelta64[s]"))
+    end_tss = start_tss + duration_minutes.astype("timedelta64[m]")
+    
+    selected_causes = np.take(causes, cause_indices).tolist()
+    selected_affected_meters = affected_meters.tolist()
+    selected_severities = np.take(severities, severity_indices).tolist()
+    
+    return list(zip(
+        outage_ids,
+        selected_sub_ids,
+        start_tss.tolist(),
+        end_tss.tolist(),
+        selected_causes,
+        selected_affected_meters,
+        selected_severities
+    ))
 
 def generate_meters_chunk(start, end, NSB, mtypes, tariffs, base):
     size = end - start
