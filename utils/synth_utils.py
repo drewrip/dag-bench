@@ -10,8 +10,7 @@ import pyarrow.parquet as pq
 
 
 _TEMP_BATCH_DIRS = set()
-_DEFAULT_MAX_ROWS_PER_CHUNK = 50_000
-_DEFAULT_MAX_WORKERS = 8
+_DEFAULT_MAX_WORKERS = 32
 
 
 class GenerationProgress:
@@ -132,12 +131,15 @@ def get_worker_count():
     return max(1, min(os.cpu_count() or 1, _DEFAULT_MAX_WORKERS))
 
 
-def run_parallel(executor, gen_func, total, *args):
+def run_parallel(executor, gen_func, total, *args, chunk_size_override=None):
     worker_count = executor._max_workers
-    chunk_size = max(1, total // worker_count)
-    chunk_size = min(chunk_size, _DEFAULT_MAX_ROWS_PER_CHUNK)
+    if chunk_size_override is not None:
+        chunk_size = chunk_size_override
+    else:
+        chunk_size = max(1, total // worker_count)
     temp_dir = tempfile.mkdtemp(prefix="synth-parquet-")
     _TEMP_BATCH_DIRS.add(temp_dir)
+
 
     futures = []
     for i in range(0, total, chunk_size):
