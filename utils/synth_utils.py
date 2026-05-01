@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 
 _TEMP_BATCH_DIRS = set()
 _DEFAULT_MAX_WORKERS = 32
-
+_DEFAULT_MAX_CHUNK_SIZE = 10_000_000
 
 class GenerationProgress:
     def __init__(self, project_name, total_steps):
@@ -137,21 +137,31 @@ def run_parallel(executor, gen_func, total, *args, chunk_size_override=None):
         chunk_size = chunk_size_override
     else:
         chunk_size = max(1, total // worker_count)
+        chunk_size = min(chunk_size, _DEFAULT_MAX_CHUNK_SIZE)
     temp_dir = tempfile.mkdtemp(prefix="synth-parquet-")
     _TEMP_BATCH_DIRS.add(temp_dir)
 
-
-    futures = []
-    for i in range(0, total, chunk_size):
-        start = i + 1
-        end = min(i + chunk_size + 1, total + 1)
-        parquet_path = os.path.join(temp_dir, f"chunk_{start}_{end - 1}.parquet")
-        futures.append(executor.submit(_generate_parquet_chunk, gen_func, parquet_path, start, end, args))
-
     parquet_paths = []
-    for future in as_completed(futures):
-        parquet_path = future.result()
-        if parquet_path:
-            parquet_paths.append(parquet_path)
+    futures = set()
+    next_start = 1
+
+    while next_start <= total or futures:
+        # Submit new chunks if we have capacity and work left
+        while next_start <= total and len(futures) < worker_count:
+            end = min(next_start + chunk_size, total + 1)
+            parquet_path = os.path.join(temp_dir, f"chunk_{next_start}_{end - 1}.parquet")
+            futures.add(executor.submit(_generate_parquet_chunk, gen_func, parquet_path, next_start, end, args))
+            next_start = end
+
+        if futures:
+            # Wait for at least one future to complete to avoid busy-waiting
+            from concurrent.futures import wait, FIRST_COMPLETED
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            for f in done:
+                res = f.result()
+                if res:
+                    parquet_paths.append(res)
+                futures.remove(f)
+
     parquet_paths.sort()
     return ParquetBackedRows(parquet_paths, temp_dir)
