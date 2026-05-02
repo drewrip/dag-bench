@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 84.0;
@@ -54,9 +52,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Campaigns
-    pb.set_message("Generating campaigns...");
-    let mut appender_camp = con.appender("campaigns")?;
-    for i in 1..=nca {
+    crate::generate_table_sequential(con, "campaigns", nca, &pb, "Generating campaigns...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Campaign {}", i);
         let advertiser = format!("Brand {}", rng.gen_range(1..21));
@@ -66,57 +62,32 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let end = base_date + Duration::days(rng.gen_range(200..366));
         let budget = ((rng.gen_range(5000.0..500000.0) * 100.0) as f64).round() / 100.0;
         let cpm = ((rng.gen_range(0.5..15.0) * 100.0) as f64).round() / 100.0;
-        appender_camp.append_row(params![
-            i as i32, name, advertiser, channel, objective, start, end, budget, cpm
-        ])?;
-    }
-    drop(appender_camp);
-    pb.inc(1);
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
+        (
+            i as i32, name, advertiser, channel, objective, start, end, budget, cpm,
+        )
+    })?;
 
     // 2. Impressions
-    pb.set_message("Generating impressions...");
-    let n_chunks = (nimp + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("impressions")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nimp + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let campaign_id = rng.gen_range(1..=nca) as i32;
-                let user_id = rng.gen_range(1..=nimp as i64 * 100);
-                let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-                let device = devices[rng.gen_range(0..devices.len())];
-                let geo = geos[rng.gen_range(0..geos.len())];
-                let placement = placements[rng.gen_range(0..placements.len())];
-                let cost = ((rng.gen_range(0.0001..0.05) * 1000000.0) as f64).round() / 1000000.0;
-                (
-                    i as i64,
-                    campaign_id,
-                    user_id,
-                    ts,
-                    device,
-                    geo,
-                    placement,
-                    cost,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "impressions", nimp, &pb, "Generating impressions...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let campaign_id = rng.gen_range(1..=nca) as i32;
+        let user_id = rng.gen_range(1..=nimp as i64 * 100);
+        let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+        let device = devices[rng.gen_range(0..devices.len())];
+        let geo = geos[rng.gen_range(0..geos.len())];
+        let placement = placements[rng.gen_range(0..placements.len())];
+        let cost = ((rng.gen_range(0.0001..0.05) * 1000000.0) as f64).round() / 1000000.0;
+        (
+            i as i64,
+            campaign_id,
+            user_id,
+            ts,
+            device,
+            geo,
+            placement,
+            cost,
+        )
     })?;
-    pb.inc(1);
 
     // Get samples for clicks
     let mut stmt = con.prepare(
@@ -135,42 +106,22 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
 
     // 3. Clicks
-    pb.set_message("Generating clicks...");
-    if !imp_refs.is_empty() {
-        let n_chunks = (ncl + chunk_size - 1) / chunk_size;
-        let appender = Mutex::new(SendAppender(con.appender("clicks")?));
-        (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-            let chunk_start = chunk_idx * chunk_size + 1;
-            let chunk_end = (chunk_start + chunk_size).min(ncl + 1);
-            let rows: Vec<_> = (chunk_start..chunk_end)
-                .into_par_iter()
-                .map(|i| {
-                    let mut rng = SmallRng::seed_from_u64(i as u64);
-                    let ref_idx = rng.gen_range(0..imp_refs.len());
-                    let (imp_id, camp_id, user_id, imp_ts, device) = &imp_refs[ref_idx];
-                    let click_ts = *imp_ts + Duration::seconds(rng.gen_range(1..3601));
-                    let url = format!("https://brand.com/lp/{}", rng.gen_range(1..21));
-                    (
-                        i as i64,
-                        *imp_id,
-                        *camp_id,
-                        *user_id,
-                        click_ts,
-                        url,
-                        device.clone(),
-                    )
-                })
-                .collect();
-
-            let mut app = appender.lock().unwrap();
-            for row in rows {
-                app.0
-                    .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-            }
-            Ok::<(), duckdb::Error>(())
-        })?;
-    }
-    pb.inc(1);
+    crate::generate_table_parallel(con, "clicks", ncl, &pb, "Generating clicks...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let ref_idx = rng.gen_range(0..imp_refs.len());
+        let (imp_id, camp_id, user_id, imp_ts, device) = &imp_refs[ref_idx];
+        let click_ts = *imp_ts + Duration::seconds(rng.gen_range(1..3601));
+        let url = format!("https://brand.com/lp/{}", rng.gen_range(1..21));
+        (
+            i as i64,
+            *imp_id,
+            *camp_id,
+            *user_id,
+            click_ts,
+            url,
+            device.clone(),
+        )
+    })?;
 
     // Get samples for conversions
     let mut stmt =
@@ -180,34 +131,16 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Conversions
-    pb.set_message("Generating conversions...");
-    if !click_refs.is_empty() {
-        let n_chunks = (ncv + chunk_size - 1) / chunk_size;
-        let appender = Mutex::new(SendAppender(con.appender("conversions")?));
-        (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-            let chunk_start = chunk_idx * chunk_size + 1;
-            let chunk_end = (chunk_start + chunk_size).min(ncv + 1);
-            let rows: Vec<_> = (chunk_start..chunk_end)
-                .into_par_iter()
-                .map(|i| {
-                    let mut rng = SmallRng::seed_from_u64(i as u64);
-                    let ref_idx = rng.gen_range(0..click_refs.len());
-                    let (click_id, camp_id, user_id) = click_refs[ref_idx];
-                    let conv_ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-                    let ctype = ctypes[rng.gen_range(0..ctypes.len())];
-                    let rev = ((rng.gen_range(0.0..500.0) * 100.0) as f64).round() / 100.0;
-                    (i as i32, click_id, camp_id, user_id, conv_ts, ctype, rev)
-                })
-                .collect();
+    crate::generate_table_parallel(con, "conversions", ncv, &pb, "Generating conversions...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let ref_idx = rng.gen_range(0..click_refs.len());
+        let (click_id, camp_id, user_id) = click_refs[ref_idx];
+        let conv_ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+        let ctype = ctypes[rng.gen_range(0..ctypes.len())];
+        let rev = ((rng.gen_range(0.0..500.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, click_id, camp_id, user_id, conv_ts, ctype, rev)
+    })?;
 
-            let mut app = appender.lock().unwrap();
-            for row in rows {
-                app.0
-                    .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-            }
-            Ok::<(), duckdb::Error>(())
-        })?;
-    }
     pb.finish_with_message("p08_adtech complete");
 
     Ok(())

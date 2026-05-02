@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 4000.0;
@@ -60,155 +58,76 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
             .unwrap(),
     );
 
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
-
     // 1. Patients
-    pb.set_message("Generating patients...");
-    let n_chunks = (npa + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("patients")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(npa + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let dob = base_date - Duration::days(rng.gen_range(365 * 5..365 * 85));
-                let gender = genders[rng.gen_range(0..genders.len())];
-                let zip = format!("{:05}", rng.gen_range(10000..100000));
-                let plan = plans[rng.gen_range(0..plans.len())];
-                let state = states[rng.gen_range(0..states.len())];
-                (i as i32, dob, gender, zip, plan, state)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "patients", npa, &pb, "Generating patients...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let dob = base_date - Duration::days(rng.gen_range(365 * 5..365 * 85));
+        let gender = genders[rng.gen_range(0..genders.len())];
+        let zip = format!("{:05}", rng.gen_range(10000..100000));
+        let plan = plans[rng.gen_range(0..plans.len())];
+        let state = states[rng.gen_range(0..states.len())];
+        (i as i32, dob, gender, zip, plan, state)
     })?;
-    pb.inc(1);
 
     // 2. Providers
-    pb.set_message("Generating providers...");
-    let mut appender_prov = con.appender("providers")?;
-    for i in 1..=npr {
+    crate::generate_table_sequential(con, "providers", npr, &pb, "Generating providers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Provider {}", i);
         let spec = specialties[rng.gen_range(0..specialties.len())];
         let state = states[rng.gen_range(0..states.len())];
         let network = rng.gen_bool(0.8);
         let npi = format!("NPI{:010}", i);
-        appender_prov.append_row(params![i as i32, name, spec, state, network, npi])?;
-    }
-    drop(appender_prov);
-    pb.inc(1);
+        (i as i32, name, spec, state, network, npi)
+    })?;
 
     // 3. Claims
-    pb.set_message("Generating claims...");
-    let n_chunks = (ncl + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("claims")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ncl + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let pat_id = rng.gen_range(1..=npa) as i32;
-                let prov_id = rng.gen_range(1..=npr) as i32;
-                let service = base_date + Duration::days(rng.gen_range(0..1096));
-                let ctype = ctypes[rng.gen_range(0..ctypes.len())];
-                let billed = ((rng.gen_range(100.0..50000.0) * 100.0) as f64).round() / 100.0;
-                let allowed = ((billed * rng.gen_range(0.4..0.95) * 100.0) as f64).round() / 100.0;
-                let paid = if rng.gen_bool(0.9) {
-                    ((allowed * rng.gen_range(0.5..1.0) * 100.0) as f64).round() / 100.0
-                } else {
-                    0.0
-                };
-                let status = cstatuses[rng.gen_range(0..cstatuses.len())];
-                let denial = if status == "denied" {
-                    Some(denial_reasons[rng.gen_range(0..denial_reasons.len())])
-                } else {
-                    None
-                };
-                (
-                    i as i32, pat_id, prov_id, service, ctype, billed, allowed, paid, status,
-                    denial,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "claims", ncl, &pb, "Generating claims...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let pat_id = rng.gen_range(1..=npa) as i32;
+        let prov_id = rng.gen_range(1..=npr) as i32;
+        let service = base_date + Duration::days(rng.gen_range(0..1096));
+        let ctype = ctypes[rng.gen_range(0..ctypes.len())];
+        let billed = ((rng.gen_range(100.0..50000.0) * 100.0) as f64).round() / 100.0;
+        let allowed = ((billed * rng.gen_range(0.4..0.95) * 100.0) as f64).round() / 100.0;
+        let paid = if rng.gen_bool(0.9) {
+            ((allowed * rng.gen_range(0.5..1.0) * 100.0) as f64).round() / 100.0
+        } else {
+            0.0
+        };
+        let status = cstatuses[rng.gen_range(0..cstatuses.len())];
+        let denial = if status == "denied" {
+            Some(denial_reasons[rng.gen_range(0..denial_reasons.len())])
+        } else {
+            None
+        };
+        (
+            i as i32, pat_id, prov_id, service, ctype, billed, allowed, paid, status,
+            denial,
+        )
     })?;
-    pb.inc(1);
 
     // 4. Claim Lines
-    pb.set_message("Generating claim lines...");
-    let n_chunks = (ncll + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("claim_lines")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ncll + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let cl_id = rng.gen_range(1..=ncl) as i32;
-                let cpt = &cpt_codes[rng.gen_range(0..cpt_codes.len())];
-                let qty = rng.gen_range(1..6);
-                let cost = ((rng.gen_range(10.0..5000.0) * 100.0) as f64).round() / 100.0;
-                let allowed = ((rng.gen_range(5.0..4000.0) * 100.0) as f64).round() / 100.0;
-                let paid = ((rng.gen_range(0.0..3500.0) * 100.0) as f64).round() / 100.0;
-                (i as i32, cl_id, cpt.clone(), qty, cost, allowed, paid)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "claim_lines", ncll, &pb, "Generating claim lines...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let cl_id = rng.gen_range(1..=ncl) as i32;
+        let cpt = &cpt_codes[rng.gen_range(0..cpt_codes.len())];
+        let qty = rng.gen_range(1..6);
+        let cost = ((rng.gen_range(10.0..5000.0) * 100.0) as f64).round() / 100.0;
+        let allowed = ((rng.gen_range(5.0..4000.0) * 100.0) as f64).round() / 100.0;
+        let paid = ((rng.gen_range(0.0..3500.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, cl_id, cpt.clone(), qty, cost, allowed, paid)
     })?;
-    pb.inc(1);
 
     // 5. Diagnoses
-    pb.set_message("Generating diagnoses...");
-    let n_chunks = (ndx + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("diagnoses")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ndx + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let cl_id = rng.gen_range(1..=ncl) as i32;
-                let icd = &icd_codes[rng.gen_range(0..icd_codes.len())];
-                let primary = rng.gen_bool(0.7);
-                let chronic = rng.gen_bool(0.4);
-                (i as i32, cl_id, icd.clone(), primary, chronic)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "diagnoses", ndx, &pb, "Generating diagnoses...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let cl_id = rng.gen_range(1..=ncl) as i32;
+        let icd = &icd_codes[rng.gen_range(0..icd_codes.len())];
+        let primary = rng.gen_bool(0.7);
+        let chronic = rng.gen_bool(0.4);
+        (i as i32, cl_id, icd.clone(), primary, chronic)
     })?;
+
     pb.finish_with_message("p07_healthcare complete");
 
     Ok(())

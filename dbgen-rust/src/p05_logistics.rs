@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 6000.0;
@@ -59,9 +57,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Suppliers
-    pb.set_message("Generating suppliers...");
-    let mut appender = con.appender("suppliers")?;
-    for i in 1..=nsup {
+    crate::generate_table_sequential(con, "suppliers", nsup, &pb, "Generating suppliers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Supplier {}", i);
         let country = countries_sup[rng.gen_range(0..countries_sup.len())];
@@ -69,156 +65,97 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let lead_time = rng.gen_range(3..61);
         let cat = cats[rng.gen_range(0..cats.len())];
         let preferred = rng.gen_bool(0.5);
-        appender.append_row(params![
-            i as i32, name, country, score, lead_time, cat, preferred
-        ])?;
-    }
-    drop(appender);
-    pb.inc(1);
+        (i as i32, name, country, score, lead_time, cat, preferred)
+    })?;
 
     // 2. Warehouses
-    pb.set_message("Generating warehouses...");
-    let mut appender = con.appender("warehouses")?;
-    for i in 1..=nwh {
+    crate::generate_table_sequential(con, "warehouses", nwh, &pb, "Generating warehouses...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("WH-{}", i);
         let country = countries_wh[rng.gen_range(0..countries_wh.len())];
         let region = regions[rng.gen_range(0..regions.len())];
         let cap = rng.gen_range(1000..50001);
         let active = rng.gen_bool(0.95);
-        appender.append_row(params![i as i32, name, country, region, cap, active])?;
-    }
-    drop(appender);
-    pb.inc(1);
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
+        (i as i32, name, country, region, cap, active)
+    })?;
 
     // 3. Shipments
-    pb.set_message("Generating shipments...");
-    let n_chunks = (nsh + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("shipments")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nsh + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let sup_id = rng.gen_range(1..=nsup) as i32;
-                let wh_id = rng.gen_range(1..=nwh) as i32;
-                let sku = &skus[rng.gen_range(0..skus.len())];
-                let qty = rng.gen_range(10..10001);
-                let cost = ((rng.gen_range(1.0..500.0) * 100.0) as f64).round() / 100.0;
-                let shipped = base_date + Duration::days(rng.gen_range(0..1001));
-                let received = shipped + Duration::days(rng.gen_range(3..46));
-                let status = statuses[rng.gen_range(0..statuses.len())];
-                let freight = ((rng.gen_range(50.0..5000.0) * 100.0) as f64).round() / 100.0;
-                (
-                    i as i32,
-                    sup_id,
-                    wh_id,
-                    sku.clone(),
-                    qty,
-                    cost,
-                    shipped,
-                    received,
-                    status,
-                    freight,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "shipments", nsh, &pb, "Generating shipments...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let sup_id = rng.gen_range(1..=nsup) as i32;
+        let wh_id = rng.gen_range(1..=nwh) as i32;
+        let sku = &skus[rng.gen_range(0..skus.len())];
+        let qty = rng.gen_range(10..10001);
+        let cost = ((rng.gen_range(1.0..500.0) * 100.0) as f64).round() / 100.0;
+        let shipped = base_date + Duration::days(rng.gen_range(0..1001));
+        let received = shipped + Duration::days(rng.gen_range(3..46));
+        let status = statuses[rng.gen_range(0..statuses.len())];
+        let freight = ((rng.gen_range(50.0..5000.0) * 100.0) as f64).round() / 100.0;
+        (
+            i as i32,
+            sup_id,
+            wh_id,
+            sku.clone(),
+            qty,
+            cost,
+            shipped,
+            received,
+            status,
+            freight,
+        )
     })?;
-    pb.inc(1);
 
     // 4. Inventory
-    pb.set_message("Generating inventory...");
-    let n_chunks = (nin + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("inventory")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nin + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let wh_id = rng.gen_range(1..=nwh) as i32;
-                let sku = &skus[rng.gen_range(0..skus.len())];
-                let on_hand = rng.gen_range(0..10001);
-                let reserved = rng.gen_range(0..501);
-                let reorder = rng.gen_range(100..1001);
-                let snapshot = base_date + Duration::days(rng.gen_range(800..1001));
-                (
-                    i as i32,
-                    wh_id,
-                    sku.clone(),
-                    on_hand,
-                    reserved,
-                    reorder,
-                    snapshot,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "inventory", nin, &pb, "Generating inventory...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let wh_id = rng.gen_range(1..=nwh) as i32;
+        let sku = &skus[rng.gen_range(0..skus.len())];
+        let on_hand = rng.gen_range(0..10001);
+        let reserved = rng.gen_range(0..501);
+        let reorder = rng.gen_range(100..1001);
+        let snapshot = base_date + Duration::days(rng.gen_range(800..1001));
+        (
+            i as i32,
+            wh_id,
+            sku.clone(),
+            on_hand,
+            reserved,
+            reorder,
+            snapshot,
+        )
     })?;
-    pb.inc(1);
 
     // 5. Purchase Orders
-    pb.set_message("Generating purchase orders...");
-    let n_chunks = (npo + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("purchase_orders")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(npo + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let sup_id = rng.gen_range(1..=nsup) as i32;
-                let sku = &skus[rng.gen_range(0..skus.len())];
-                let ordered = rng.gen_range(100..5001);
-                let price = ((rng.gen_range(1.0..500.0) * 100.0) as f64).round() / 100.0;
-                let order_date = base_date + Duration::days(rng.gen_range(0..901));
-                let expected = order_date + Duration::days(rng.gen_range(7..61));
-                let received = rng.gen_range(0..5001);
-                let status = po_statuses[rng.gen_range(0..po_statuses.len())];
-                (
-                    i as i32,
-                    sup_id,
-                    sku.clone(),
-                    ordered,
-                    price,
-                    order_date,
-                    expected,
-                    received,
-                    status,
-                )
-            })
-            .collect();
+    crate::generate_table_parallel(
+        con,
+        "purchase_orders",
+        npo,
+        &pb,
+        "Generating purchase orders...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let sup_id = rng.gen_range(1..=nsup) as i32;
+            let sku = &skus[rng.gen_range(0..skus.len())];
+            let ordered = rng.gen_range(100..5001);
+            let price = ((rng.gen_range(1.0..500.0) * 100.0) as f64).round() / 100.0;
+            let order_date = base_date + Duration::days(rng.gen_range(0..901));
+            let expected = order_date + Duration::days(rng.gen_range(7..61));
+            let received = rng.gen_range(0..5001);
+            let status = po_statuses[rng.gen_range(0..po_statuses.len())];
+            (
+                i as i32,
+                sup_id,
+                sku.clone(),
+                ordered,
+                price,
+                order_date,
+                expected,
+                received,
+                status,
+            )
+        },
+    )?;
 
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
-    })?;
     pb.finish_with_message("p05_logistics complete");
 
     Ok(())

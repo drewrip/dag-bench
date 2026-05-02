@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 1550.0;
@@ -41,26 +39,9 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let statuses = ["completed", "pending", "shipped", "cancelled", "refunded"];
     let channels = ["web", "mobile", "in-store", "marketplace"];
     let cats_names = [
-        "Electronics",
-        "Clothing",
-        "Books",
-        "Home",
-        "Sports",
-        "Beauty",
-        "Toys",
-        "Food",
-        "Garden",
-        "Automotive",
-        "Health",
-        "Office",
-        "Jewelry",
-        "Music",
-        "Movies",
-        "Games",
-        "Travel",
-        "Pets",
-        "Tools",
-        "Baby",
+        "Electronics", "Clothing", "Books", "Home", "Sports", "Beauty", "Toys", "Food",
+        "Garden", "Automotive", "Health", "Office", "Jewelry", "Music", "Movies", "Games",
+        "Travel", "Pets", "Tools", "Baby",
     ];
 
     let pb = ProgressBar::new(6);
@@ -71,9 +52,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Categories
-    pb.set_message("Generating categories...");
-    let mut appender = con.appender("categories")?;
-    for i in 1..=nct {
+    crate::generate_table_sequential(con, "categories", nct, &pb, "Generating categories...", |i| {
         let name = cats_names[(i - 1) % cats_names.len()];
         let parent_id = if i > 4 {
             let mut rng = SmallRng::seed_from_u64(i as u64);
@@ -81,194 +60,72 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         } else {
             None
         };
-        appender.append_row(params![i as i32, name, parent_id, i as i32])?;
-    }
-    drop(appender);
-    pb.inc(1);
+        (i as i32, name, parent_id, i as i32)
+    })?;
 
     // 2. Customers
-    pb.set_message("Generating customers...");
-    let chunk_size = 1_000_000;
-    let n_chunks = (nc + chunk_size - 1) / chunk_size;
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-
-    let appender = Mutex::new(SendAppender(con.appender("customers")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start: usize = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nc + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let full_name = format!("Cust {}", i);
-                let email = format!("u{}@ex.com", i);
-                let country = countries[rng.gen_range(0..countries.len())];
-                let signup_date = base_date + Duration::days(rng.gen_range(0..2001));
-                let is_active = rng.gen_bool(0.9);
-                let lifetime_spend = ((rng.gen_range(0.0..15000.0) * 100.0) as f64).round() / 100.0;
-                (
-                    i as i32,
-                    full_name,
-                    email,
-                    country,
-                    signup_date,
-                    is_active,
-                    lifetime_spend,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "customers", nc, &pb, "Generating customers...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let full_name = format!("Cust {}", i);
+        let email = format!("u{}@ex.com", i);
+        let country = countries[rng.gen_range(0..countries.len())];
+        let signup_date = base_date + Duration::days(rng.gen_range(0..2001));
+        let is_active = rng.gen_bool(0.9);
+        let lifetime_spend = ((rng.gen_range(0.0..15000.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, full_name, email, country, signup_date, is_active, lifetime_spend)
     })?;
-    pb.inc(1);
 
     // 3. Products
-    pb.set_message("Generating products...");
-    let n_chunks = (np + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("products")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start: usize = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(np + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let cat_id = rng.gen_range(1..=nct) as i32;
-                let sku = format!("SKU-{:060}", i);
-                let name = format!("Prod {}", i);
-                let cost = ((rng.gen_range(1.0..400.0) * 100.0) as f64).round() / 100.0;
-                let price = ((cost * rng.gen_range(1.1..4.0) * 100.0) as f64).round() / 100.0;
-                let weight = ((rng.gen_range(0.1..20.0) * 1000.0) as f64).round() / 1000.0;
-                let is_active = rng.gen_bool(0.95);
-                let stock_qty = rng.gen_range(0..=1000);
-                (
-                    i as i32, cat_id, sku, name, price, cost, weight, is_active, stock_qty,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "products", np, &pb, "Generating products...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let cat_id = rng.gen_range(1..=nct) as i32;
+        let sku = format!("SKU-{:060}", i);
+        let name = format!("Prod {}", i);
+        let cost = ((rng.gen_range(1.0..400.0) * 100.0) as f64).round() / 100.0;
+        let price = ((cost * rng.gen_range(1.1..4.0) * 100.0) as f64).round() / 100.0;
+        let weight = ((rng.gen_range(0.1..20.0) * 1000.0) as f64).round() / 1000.0;
+        let is_active = rng.gen_bool(0.95);
+        let stock_qty = rng.gen_range(0..=1000);
+        (i as i32, cat_id, sku, name, price, cost, weight, is_active, stock_qty)
     })?;
-    pb.inc(1);
 
     // 4. Orders
-    pb.set_message("Generating orders...");
-    let n_chunks = (no + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("orders")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start: usize = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(no + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let cust_id = rng.gen_range(1..=nc) as i32;
-                let order_date = base_date + Duration::days(rng.gen_range(0..2001));
-                let status = statuses[rng.gen_range(0..statuses.len())];
-                let channel = channels[rng.gen_range(0..channels.len())];
-                let discount = if rng.gen_bool(0.4) {
-                    ((rng.gen_range(0.0..30.0) * 100.0) as f64).round() / 100.0
-                } else {
-                    0.0
-                };
-                let shipping_cost = ((rng.gen_range(0.0..25.0) * 100.0) as f64).round() / 100.0;
-                (
-                    i as i32,
-                    cust_id,
-                    order_date,
-                    status,
-                    channel,
-                    discount,
-                    shipping_cost,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "orders", no, &pb, "Generating orders...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let cust_id = rng.gen_range(1..=nc) as i32;
+        let order_date = base_date + Duration::days(rng.gen_range(0..2001));
+        let status = statuses[rng.gen_range(0..statuses.len())];
+        let channel = channels[rng.gen_range(0..channels.len())];
+        let discount = if rng.gen_bool(0.4) {
+            ((rng.gen_range(0.0..30.0) * 100.0) as f64).round() / 100.0
+        } else {
+            0.0
+        };
+        let shipping_cost = ((rng.gen_range(0.0..25.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, cust_id, order_date, status, channel, discount, shipping_cost)
     })?;
-    pb.inc(1);
 
     // 5. Order Items
-    pb.set_message("Generating order items...");
-    let n_chunks = (ni + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("order_items")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start: usize = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ni + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let order_id = rng.gen_range(1..=no) as i32;
-                let product_id = rng.gen_range(1..=np) as i32;
-                let quantity = rng.gen_range(1..6);
-                let unit_price = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
-                (i as i32, order_id, product_id, quantity, unit_price)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "order_items", ni, &pb, "Generating order items...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let order_id = rng.gen_range(1..=no) as i32;
+        let product_id = rng.gen_range(1..=np) as i32;
+        let quantity = rng.gen_range(1..6);
+        let unit_price = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, order_id, product_id, quantity, unit_price)
     })?;
-    pb.inc(1);
 
     // 6. Reviews
-    pb.set_message("Generating reviews...");
-    let n_chunks = (nr + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("reviews")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start: usize = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nr + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let product_id = rng.gen_range(1..=np) as i32;
-                let customer_id = rng.gen_range(1..=nc) as i32;
-                let rating = rng.gen_range(1..6) as i8;
-                let review_date = base_date + Duration::days(rng.gen_range(0..2001));
-                let helpful_votes = rng.gen_range(0..201);
-                (
-                    i as i32,
-                    product_id,
-                    customer_id,
-                    rating,
-                    review_date,
-                    helpful_votes,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "reviews", nr, &pb, "Generating reviews...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let product_id = rng.gen_range(1..=np) as i32;
+        let customer_id = rng.gen_range(1..=nc) as i32;
+        let rating = rng.gen_range(1..6) as i8;
+        let review_date = base_date + Duration::days(rng.gen_range(0..2001));
+        let helpful_votes = rng.gen_range(0..201);
+        (i as i32, product_id, customer_id, rating, review_date, helpful_votes)
     })?;
-    pb.finish_with_message("p01_ecommerce complete");
 
+    pb.finish_with_message("p01_ecommerce complete");
     Ok(())
 }

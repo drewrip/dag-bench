@@ -1,11 +1,9 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 use rand_distr::{Distribution, Normal};
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 90.0;
@@ -56,9 +54,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Substations
-    pb.set_message("Generating substations...");
-    let mut appender_sub = con.appender("substations")?;
-    for i in 1..=nsb {
+    crate::generate_table_sequential(con, "substations", nsb, &pb, "Generating substations...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("SUB-{:03}", i);
         let region = regions[rng.gen_range(0..regions.len())];
@@ -66,110 +62,58 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let volt = voltages[rng.gen_range(0..voltages.len())];
         let lat = ((rng.gen_range(25.0..50.0) * 10000.0) as f64).round() / 10000.0;
         let lon = ((rng.gen_range(-120.0..-70.0) * 10000.0) as f64).round() / 10000.0;
-        appender_sub.append_row(params![i as i32, name, region, cap, volt, lat, lon])?;
-    }
-    drop(appender_sub);
-    pb.inc(1);
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
+        (i as i32, name, region, cap, volt, lat, lon)
+    })?;
 
     // 2. Meters
-    pb.set_message("Generating meters...");
-    let n_chunks = (nmt + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("meters")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nmt + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let sub_id = rng.gen_range(1..=nsb) as i32;
-                let cust_id = rng.gen_range(1..=2001) as i32;
-                let mtype = mtypes[rng.gen_range(0..mtypes.len())];
-                let tariff = tariffs[rng.gen_range(0..tariffs.len())];
-                let install = (base_ts - Duration::days(rng.gen_range(0..3651))).date();
-                let smart = rng.gen_bool(0.7);
-                let cap = ((rng.gen_range(1.0..1000.0) * 100.0) as f64).round() / 100.0;
-                (
-                    i as i32, sub_id, cust_id, mtype, tariff, install, smart, cap,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "meters", nmt, &pb, "Generating meters...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let sub_id = rng.gen_range(1..=nsb) as i32;
+        let cust_id = rng.gen_range(1..=2001) as i32;
+        let mtype = mtypes[rng.gen_range(0..mtypes.len())];
+        let tariff = tariffs[rng.gen_range(0..tariffs.len())];
+        let install = (base_ts - Duration::days(rng.gen_range(0..3651))).date();
+        let smart = rng.gen_bool(0.7);
+        let cap = ((rng.gen_range(1.0..1000.0) * 100.0) as f64).round() / 100.0;
+        (
+            i as i32, sub_id, cust_id, mtype, tariff, install, smart, cap,
+        )
     })?;
-    pb.inc(1);
 
     // 3. Consumption Readings
-    pb.set_message("Generating consumption readings...");
-    let n_chunks = (ncr + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("consumption_readings")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ncr + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let meter_id = rng.gen_range(1..=nmt) as i32;
-                let ts = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
-                let kwh_dist = Normal::new(5.0, 3.0).unwrap();
-                let kwh =
-                    (((kwh_dist.sample(&mut rng) as f64).abs() * 10000.0) as f64).round() / 10000.0;
-                let volt_dist = Normal::new(230.0, 5.0).unwrap();
-                let volt = ((volt_dist.sample(&mut rng) * 100.0) as f64).round() / 100.0;
-                let pf = ((rng.gen_range(0.7..1.0) * 1000.0) as f64).round() / 1000.0;
-                let estimated = rng.gen_bool(0.02);
-                (i as i64, meter_id, ts, kwh, volt, pf, estimated)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
-    })?;
-    pb.inc(1);
+    crate::generate_table_parallel(
+        con,
+        "consumption_readings",
+        ncr,
+        &pb,
+        "Generating consumption readings...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let meter_id = rng.gen_range(1..=nmt) as i32;
+            let ts = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
+            let kwh_dist = Normal::new(5.0, 3.0).unwrap();
+            let kwh =
+                (((kwh_dist.sample(&mut rng) as f64).abs() * 10000.0) as f64).round() / 10000.0;
+            let volt_dist = Normal::new(230.0, 5.0).unwrap();
+            let volt = ((volt_dist.sample(&mut rng) * 100.0) as f64).round() / 100.0;
+            let pf = ((rng.gen_range(0.7..1.0) * 1000.0) as f64).round() / 1000.0;
+            let estimated = rng.gen_bool(0.02);
+            (i as i64, meter_id, ts, kwh, volt, pf, estimated)
+        },
+    )?;
 
     // 4. Outage Events
-    pb.set_message("Generating outage events...");
-    let n_chunks = (noe + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("outage_events")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(noe + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let sub_id = rng.gen_range(1..=nsb) as i32;
-                let start = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
-                let end = start + Duration::seconds(rng.gen_range(5 * 60..1441 * 60));
-                let cause = causes[rng.gen_range(0..causes.len())];
-                let affected = rng.gen_range(1..501);
-                let sev = severities[rng.gen_range(0..severities.len())];
-                (i as i32, sub_id, start, end, cause, affected, sev)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "outage_events", noe, &pb, "Generating outage events...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let sub_id = rng.gen_range(1..=nsb) as i32;
+        let start = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
+        let end = start + Duration::seconds(rng.gen_range(5 * 60..1441 * 60));
+        let cause = causes[rng.gen_range(0..causes.len())];
+        let affected = rng.gen_range(1..501);
+        let sev = severities[rng.gen_range(0..severities.len())];
+        (i as i32, sub_id, start, end, cause, affected, sev)
     })?;
+
     pb.finish_with_message("p10_energy complete");
 
     Ok(())

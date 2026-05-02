@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 800.0;
@@ -81,9 +79,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Accounts
-    pb.set_message("Generating accounts...");
-    let mut appender = con.appender("accounts")?;
-    for i in 1..=nac {
+    crate::generate_table_sequential(con, "accounts", nac, &pb, "Generating accounts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Account {}", i);
         let industry = industries[rng.gen_range(0..industries.len())];
@@ -92,154 +88,81 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let created = base_date + Duration::days(rng.gen_range(0..701));
         let csm = rng.gen_range(1..21);
         let health = rng.gen_range(1..=100) as i8;
-        appender.append_row(params![
-            i as i32, name, industry, country, arr, created, csm, health
-        ])?;
-    }
-    drop(appender);
-    pb.inc(1);
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
+        (i as i32, name, industry, country, arr, created, csm, health)
+    })?;
 
     // 2. Subscriptions
-    pb.set_message("Generating subscriptions...");
-    let n_chunks = (nsb + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("subscriptions")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nsb + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let acc_id = rng.gen_range(1..=nac) as i32;
-                let plan = plans[rng.gen_range(0..plans.len())];
-                let seats = rng.gen_range(1..201);
-                let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
-                let start = base_date + Duration::days(rng.gen_range(0..601));
-                let end = start + Duration::days(365);
-                let active = rng.gen_bool(0.9);
-                (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "subscriptions", nsb, &pb, "Generating subscriptions...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let acc_id = rng.gen_range(1..=nac) as i32;
+        let plan = plans[rng.gen_range(0..plans.len())];
+        let seats = rng.gen_range(1..201);
+        let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
+        let start = base_date + Duration::days(rng.gen_range(0..601));
+        let end = start + Duration::days(365);
+        let active = rng.gen_bool(0.9);
+        (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
     })?;
-    pb.inc(1);
 
     // 3. Events
-    pb.set_message("Generating events...");
-    let n_chunks = (nev + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("events")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nev + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let acc_id = rng.gen_range(1..=nac) as i32;
-                let user_id = rng.gen_range(1..=nac * 5) as i32;
-                let etype = etypes[rng.gen_range(0..etypes.len())];
-                let ts = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
-                let session = format!("sess_{}", rng.gen_range(1..nac * 20));
-                let platform = platforms[rng.gen_range(0..platforms.len())];
-                (i as i64, acc_id, user_id, etype, ts, session, platform)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "events", nev, &pb, "Generating events...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let acc_id = rng.gen_range(1..=nac) as i32;
+        let user_id = rng.gen_range(1..=nac * 5) as i32;
+        let etype = etypes[rng.gen_range(0..etypes.len())];
+        let ts = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+        let session = format!("sess_{}", rng.gen_range(1..nac * 20));
+        let platform = platforms[rng.gen_range(0..platforms.len())];
+        (i as i64, acc_id, user_id, etype, ts, session, platform)
     })?;
-    pb.inc(1);
 
     // 4. Feature Usage
-    pb.set_message("Generating feature usage...");
-    let n_chunks = (nfu + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("feature_usage")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nfu + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let acc_id = rng.gen_range(1..=nac) as i32;
-                let feature = features[rng.gen_range(0..features.len())];
-                let date = base_date + Duration::days(rng.gen_range(0..701));
-                let count = rng.gen_range(1..1001);
-                (i as i32, acc_id, feature, date, count)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "feature_usage", nfu, &pb, "Generating feature usage...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let acc_id = rng.gen_range(1..=nac) as i32;
+        let feature = features[rng.gen_range(0..features.len())];
+        let date = base_date + Duration::days(rng.gen_range(0..701));
+        let count = rng.gen_range(1..1001);
+        (i as i32, acc_id, feature, date, count)
     })?;
-    pb.inc(1);
 
     // 5. Support Tickets
-    pb.set_message("Generating support tickets...");
-    let n_chunks = (nst + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("support_tickets")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nst + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let acc_id = rng.gen_range(1..=nac) as i32;
-                let created = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
-                let resolved = if rng.gen_bool(0.8) {
-                    Some(base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)))
-                } else {
-                    None
-                };
-                let priority = priorities[rng.gen_range(0..priorities.len())];
-                let cat = ticket_cats[rng.gen_range(0..ticket_cats.len())];
-                let csat = if rng.gen_bool(0.7) {
-                    Some(rng.gen_range(1..6) as i8)
-                } else {
-                    None
-                };
-                let is_resolved = rng.gen_bool(0.8);
-                (
-                    i as i32,
-                    acc_id,
-                    created,
-                    resolved,
-                    priority,
-                    cat,
-                    csat,
-                    is_resolved,
-                )
-            })
-            .collect();
+    crate::generate_table_parallel(
+        con,
+        "support_tickets",
+        nst,
+        &pb,
+        "Generating support tickets...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = rng.gen_range(1..=nac) as i32;
+            let created = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+            let resolved = if rng.gen_bool(0.8) {
+                Some(base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)))
+            } else {
+                None
+            };
+            let priority = priorities[rng.gen_range(0..priorities.len())];
+            let cat = ticket_cats[rng.gen_range(0..ticket_cats.len())];
+            let csat = if rng.gen_bool(0.7) {
+                Some(rng.gen_range(1..6) as i8)
+            } else {
+                None
+            };
+            let is_resolved = rng.gen_bool(0.8);
+            (
+                i as i32,
+                acc_id,
+                created,
+                resolved,
+                priority,
+                cat,
+                csat,
+                is_resolved,
+            )
+        },
+    )?;
 
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
-    })?;
     pb.finish_with_message("p06_saas complete");
 
     Ok(())
