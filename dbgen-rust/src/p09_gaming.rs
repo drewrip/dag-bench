@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 400.0;
@@ -77,44 +75,20 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
             .unwrap(),
     );
 
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
-
     // 1. Players
-    pb.set_message("Generating players...");
-    let n_chunks = (npl + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("players")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(npl + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let username = format!("Player_{}", i);
-                let country = countries[rng.gen_range(0..countries.len())];
-                let platform = platforms[rng.gen_range(0..platforms.len())];
-                let ts = base_ts + Duration::seconds(rng.gen_range(0..200 * 86400));
-                let age = age_groups[rng.gen_range(0..age_groups.len())];
-                let paid = rng.gen_bool(0.4);
-                (i as i32, username, country, platform, ts, age, paid)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "players", npl, &pb, "Generating players...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let username = format!("Player_{}", i);
+        let country = countries[rng.gen_range(0..countries.len())];
+        let platform = platforms[rng.gen_range(0..platforms.len())];
+        let ts = base_ts + Duration::seconds(rng.gen_range(0..200 * 86400));
+        let age = age_groups[rng.gen_range(0..age_groups.len())];
+        let paid = rng.gen_bool(0.4);
+        (i as i32, username, country, platform, ts, age, paid)
     })?;
-    pb.inc(1);
 
     // 2. Levels
-    pb.set_message("Generating levels...");
-    let mut appender_lvl = con.appender("levels")?;
-    for i in 1..=nlv {
+    crate::generate_table_sequential(con, "levels", nlv, &pb, "Generating levels...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Level_{}", i);
         let world = worlds[rng.gen_range(0..worlds.len())];
@@ -122,45 +96,24 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let par = rng.gen_range(60..601);
         let reward = rng.gen_range(10..501);
         let unlock = (i as i32 - rng.gen_range(0..4)).max(1);
-        appender_lvl.append_row(params![i as i32, name, world, diff, par, reward, unlock])?;
-    }
-    drop(appender_lvl);
-    pb.inc(1);
+        (i as i32, name, world, diff, par, reward, unlock)
+    })?;
 
     // 3. Sessions
-    pb.set_message("Generating sessions...");
-    let n_chunks = (nss + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("sessions")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nss + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let player_id = rng.gen_range(1..=npl) as i32;
-                let start = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-                let dur = rng.gen_range(60..7201);
-                let end = start + Duration::seconds(dur);
-                let platform = platforms[rng.gen_range(0..platforms.len())];
-                let version = format!("v{}.{}", rng.gen_range(1..4), rng.gen_range(0..10));
-                let attempts = rng.gen_range(0..11);
-                let coins = rng.gen_range(0..1001);
-                (
-                    i as i64, player_id, start, end, platform, version, attempts, coins,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "sessions", nss, &pb, "Generating sessions...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let player_id = rng.gen_range(1..=npl) as i32;
+        let start = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+        let dur = rng.gen_range(60..7201);
+        let end = start + Duration::seconds(dur);
+        let platform = platforms[rng.gen_range(0..platforms.len())];
+        let version = format!("v{}.{}", rng.gen_range(1..4), rng.gen_range(0..10));
+        let attempts = rng.gen_range(0..11);
+        let coins = rng.gen_range(0..1001);
+        (
+            i as i64, player_id, start, end, platform, version, attempts, coins,
+        )
     })?;
-    pb.inc(1);
 
     // Get samples for events
     let mut stmt = con
@@ -170,71 +123,33 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Events
-    pb.set_message("Generating events...");
-    if !session_refs.is_empty() {
-        let n_chunks = (nev + chunk_size - 1) / chunk_size;
-        let appender = Mutex::new(SendAppender(con.appender("events")?));
-        (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-            let chunk_start = chunk_idx * chunk_size + 1;
-            let chunk_end = (chunk_start + chunk_size).min(nev + 1);
-            let rows: Vec<_> = (chunk_start..chunk_end)
-                .into_par_iter()
-                .map(|i| {
-                    let mut rng = SmallRng::seed_from_u64(i as u64);
-                    let ref_idx = rng.gen_range(0..session_refs.len());
-                    let (sess_id, player_id, sess_start) = session_refs[ref_idx];
-                    let etype = etypes[rng.gen_range(0..etypes.len())];
-                    let ts = sess_start + Duration::seconds(rng.gen_range(0..7201));
-                    let level_id = rng.gen_range(1..=nlv) as i32;
-                    let value = ((rng.gen_range(0.0..1000.0) * 100.0) as f64).round() / 100.0;
-                    let meta = format!("meta_{}", i);
-                    (
-                        i as i64, sess_id, player_id, etype, ts, level_id, value, meta,
-                    )
-                })
-                .collect();
-
-            let mut app = appender.lock().unwrap();
-            for row in rows {
-                app.0.append_row(params![
-                    row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-                ])?;
-            }
-            Ok::<(), duckdb::Error>(())
-        })?;
-    }
-    pb.inc(1);
+    crate::generate_table_parallel(con, "events", nev, &pb, "Generating events...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let ref_idx = rng.gen_range(0..session_refs.len());
+        let (sess_id, player_id, sess_start) = session_refs[ref_idx];
+        let etype = etypes[rng.gen_range(0..etypes.len())];
+        let ts = sess_start + Duration::seconds(rng.gen_range(0..7201));
+        let level_id = rng.gen_range(1..=nlv) as i32;
+        let value = ((rng.gen_range(0.0..1000.0) * 100.0) as f64).round() / 100.0;
+        let meta = format!("meta_{}", i);
+        (
+            i as i64, sess_id, player_id, etype, ts, level_id, value, meta,
+        )
+    })?;
 
     // 5. Purchases
-    pb.set_message("Generating purchases...");
-    let n_chunks = (npu + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("purchases")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(npu + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let player_id = rng.gen_range(1..=npl) as i32;
-                let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-                let itype = itypes[rng.gen_range(0..itypes.len())];
-                let name = format!("Item_{}", rng.gen_range(1..51));
-                let price = ((rng.gen_range(0.99..99.99) * 100.0) as f64).round() / 100.0;
-                let curr = currencies[rng.gen_range(0..currencies.len())];
-                let refunded = rng.gen_bool(0.03);
-                (i as i32, player_id, ts, itype, name, price, curr, refunded)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "purchases", npu, &pb, "Generating purchases...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let player_id = rng.gen_range(1..=npl) as i32;
+        let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+        let itype = itypes[rng.gen_range(0..itypes.len())];
+        let name = format!("Item_{}", rng.gen_range(1..51));
+        let price = ((rng.gen_range(0.99..99.99) * 100.0) as f64).round() / 100.0;
+        let curr = currencies[rng.gen_range(0..currencies.len())];
+        let refunded = rng.gen_bool(0.03);
+        (i as i32, player_id, ts, itype, name, price, curr, refunded)
     })?;
+
     pb.finish_with_message("p09_gaming complete");
 
     Ok(())

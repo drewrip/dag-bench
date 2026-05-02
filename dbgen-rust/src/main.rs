@@ -1,6 +1,9 @@
 use clap::Parser;
 use duckdb::Connection;
+use indicatif::ProgressBar;
+use rayon::prelude::*;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 mod p01_ecommerce;
 mod p02_fraud;
@@ -12,6 +15,66 @@ mod p07_healthcare;
 mod p08_adtech;
 mod p09_gaming;
 mod p10_energy;
+
+pub struct SendAppender<'a>(pub duckdb::Appender<'a>);
+unsafe impl<'a> Send for SendAppender<'a> {}
+
+pub fn generate_table_parallel<T, F>(
+    con: &Connection,
+    table_name: &str,
+    total_rows: usize,
+    pb: &ProgressBar,
+    msg: &str,
+    generator: F,
+) -> duckdb::Result<()>
+where
+    T: duckdb::AppenderParams + Send,
+    F: Fn(usize) -> T + Sync + Send,
+{
+    const CHUNK_SIZE: usize = 1_000_000;
+    pb.set_message(msg.to_string());
+    let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    let appender = Mutex::new(SendAppender(con.appender(table_name)?));
+
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * CHUNK_SIZE + 1;
+        let chunk_end = (chunk_start + CHUNK_SIZE).min(total_rows + 1);
+        let rows: Vec<T> = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(&generator)
+            .collect();
+
+        let mut app = appender.lock().unwrap();
+        app.0.append_rows(rows)?;
+        Ok::<(), duckdb::Error>(())
+    })?;
+
+    pb.inc(1);
+    Ok(())
+}
+
+pub fn generate_table_sequential<T, F>(
+    con: &Connection,
+    table_name: &str,
+    total_rows: usize,
+    pb: &ProgressBar,
+    msg: &str,
+    generator: F,
+) -> duckdb::Result<()>
+where
+    T: duckdb::AppenderParams,
+    F: Fn(usize) -> T,
+{
+    pb.set_message(msg.to_string());
+    let mut appender = con.appender(table_name)?;
+    let mut rows = Vec::with_capacity(total_rows);
+    for i in 1..=total_rows {
+        rows.push(generator(i));
+    }
+    appender.append_rows(rows)?;
+    pb.inc(1);
+    Ok(())
+}
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]

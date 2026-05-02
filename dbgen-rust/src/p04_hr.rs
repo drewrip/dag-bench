@@ -1,10 +1,8 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::{params, Connection};
+use duckdb::Connection;
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
 use rand::rngs::SmallRng;
-use rayon::prelude::*;
-use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 8989.0;
@@ -75,150 +73,93 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Departments
-    pb.set_message("Generating departments...");
-    let mut appender = con.appender("departments")?;
-    for i in 1..=nd {
+    crate::generate_table_sequential(con, "departments", nd, &pb, "Generating departments...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Dept-{}", i);
         let div = divs[rng.gen_range(0..divs.len())];
         let loc = locs[rng.gen_range(0..locs.len())];
         let budget = ((rng.gen_range(100000.0..10000000.0) * 100.0) as f64).round() / 100.0;
         let headcount = rng.gen_range(5..=101);
-        appender.append_row(params![i as i32, name, div, loc, budget, headcount])?;
-    }
-    drop(appender);
-    pb.inc(1);
-
-    struct SendAppender<'a>(duckdb::Appender<'a>);
-    unsafe impl<'a> Send for SendAppender<'a> {}
-    let chunk_size = 1_000_000;
+        (i as i32, name, div, loc, budget, headcount)
+    })?;
 
     // 2. Employees
-    pb.set_message("Generating employees...");
-    let n_chunks = (ne + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("employees")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ne + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let dept_id = rng.gen_range(1..=nd) as i32;
-                let manager_id = if i <= mgr_id_limit {
-                    None
-                } else {
-                    Some(rng.gen_range(1..=mgr_id_limit) as i32)
-                };
-                let first_name = format!("First{}", i);
-                let last_name = format!("Last{}", i);
-                let gender = genders[rng.gen_range(0..genders.len())];
-                let hire_date = base_date + Duration::days(rng.gen_range(0..3001));
-                let title = ttitles[rng.gen_range(0..ttitles.len())];
-                let etype = etypes[rng.gen_range(0..etypes.len())];
-                let active = rng.gen_bool(0.93);
-                (
-                    i as i32, dept_id, manager_id, first_name, last_name, gender, hire_date, title,
-                    etype, active,
-                )
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0.append_row(params![
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9
-            ])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "employees", ne, &pb, "Generating employees...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let dept_id = rng.gen_range(1..=nd) as i32;
+        let manager_id = if i <= mgr_id_limit {
+            None
+        } else {
+            Some(rng.gen_range(1..=mgr_id_limit) as i32)
+        };
+        let first_name = format!("First{}", i);
+        let last_name = format!("Last{}", i);
+        let gender = genders[rng.gen_range(0..genders.len())];
+        let hire_date = base_date + Duration::days(rng.gen_range(0..3001));
+        let title = ttitles[rng.gen_range(0..ttitles.len())];
+        let etype = etypes[rng.gen_range(0..etypes.len())];
+        let active = rng.gen_bool(0.93);
+        (
+            i as i32,
+            dept_id,
+            manager_id,
+            first_name,
+            last_name,
+            gender,
+            hire_date,
+            title,
+            etype,
+            active,
+        )
     })?;
-    pb.inc(1);
 
     // 3. Salaries
-    pb.set_message("Generating salaries...");
-    let n_chunks = (ns + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("salaries")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(ns + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let emp_id = rng.gen_range(1..=ne) as i32;
-                let eff_date = base_date + Duration::days(rng.gen_range(0..3001));
-                let base = ((rng.gen_range(30000.0..300000.0) * 100.0) as f64).round() / 100.0;
-                let bonus = ((rng.gen_range(0.0..50000.0) * 100.0) as f64).round() / 100.0;
-                (i as i32, emp_id, eff_date, base, bonus, "USD")
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5])?;
-        }
-        Ok::<(), duckdb::Error>(())
+    crate::generate_table_parallel(con, "salaries", ns, &pb, "Generating salaries...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let emp_id = rng.gen_range(1..=ne) as i32;
+        let eff_date = base_date + Duration::days(rng.gen_range(0..3001));
+        let base = ((rng.gen_range(30000.0..300000.0) * 100.0) as f64).round() / 100.0;
+        let bonus = ((rng.gen_range(0.0..50000.0) * 100.0) as f64).round() / 100.0;
+        (i as i32, emp_id, eff_date, base, bonus, "USD")
     })?;
-    pb.inc(1);
 
     // 4. Performance Reviews
-    pb.set_message("Generating performance reviews...");
-    let n_chunks = (npr + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("performance_reviews")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(npr + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let emp_id = rng.gen_range(1..=ne) as i32;
-                let rev_date = base_date + Duration::days(rng.gen_range(365..3651));
-                let reviewer_id = rng.gen_range(1..=ne) as i32;
-                let score = ((rng.gen_range(1.0..5.0) * 100.0) as f64).round() / 100.0;
-                let cat = cats[rng.gen_range(0..cats.len())];
-                let notes = format!("Review notes for review {}", i);
-                (i as i32, emp_id, rev_date, reviewer_id, score, cat, notes)
-            })
-            .collect();
-
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
-        }
-        Ok::<(), duckdb::Error>(())
-    })?;
-    pb.inc(1);
+    crate::generate_table_parallel(
+        con,
+        "performance_reviews",
+        npr,
+        &pb,
+        "Generating performance reviews...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let emp_id = rng.gen_range(1..=ne) as i32;
+            let rev_date = base_date + Duration::days(rng.gen_range(365..3651));
+            let reviewer_id = rng.gen_range(1..=ne) as i32;
+            let score = ((rng.gen_range(1.0..5.0) * 100.0) as f64).round() / 100.0;
+            let cat = cats[rng.gen_range(0..cats.len())];
+            let notes = format!("Review notes for review {}", i);
+            (i as i32, emp_id, rev_date, reviewer_id, score, cat, notes)
+        },
+    )?;
 
     // 5. Leave Requests
-    pb.set_message("Generating leave requests...");
-    let n_chunks = (nlr + chunk_size - 1) / chunk_size;
-    let appender = Mutex::new(SendAppender(con.appender("leave_requests")?));
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * chunk_size + 1;
-        let chunk_end = (chunk_start + chunk_size).min(nlr + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(|i| {
-                let mut rng = SmallRng::seed_from_u64(i as u64);
-                let emp_id = rng.gen_range(1..=ne) as i32;
-                let ltype = ltypes[rng.gen_range(0..ltypes.len())];
-                let start = base_date + Duration::days(rng.gen_range(0..3001));
-                let end = start + Duration::days(rng.gen_range(1..31));
-                let approved = rng.gen_bool(0.9);
-                (i as i32, emp_id, ltype, start, end, approved)
-            })
-            .collect();
+    crate::generate_table_parallel(
+        con,
+        "leave_requests",
+        nlr,
+        &pb,
+        "Generating leave requests...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let emp_id = rng.gen_range(1..=ne) as i32;
+            let ltype = ltypes[rng.gen_range(0..ltypes.len())];
+            let start = base_date + Duration::days(rng.gen_range(0..3001));
+            let end = start + Duration::days(rng.gen_range(1..31));
+            let approved = rng.gen_bool(0.9);
+            (i as i32, emp_id, ltype, start, end, approved)
+        },
+    )?;
 
-        let mut app = appender.lock().unwrap();
-        for row in rows {
-            app.0
-                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5])?;
-        }
-        Ok::<(), duckdb::Error>(())
-    })?;
     pb.finish_with_message("p04_hr complete");
 
     Ok(())
