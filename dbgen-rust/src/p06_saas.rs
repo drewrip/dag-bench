@@ -2,7 +2,9 @@ use chrono::{Duration, NaiveDate};
 use duckdb::{params, Connection};
 use indicatif::{ProgressBar, ProgressStyle};
 use rand::prelude::*;
+use rand::rngs::SmallRng;
 use rayon::prelude::*;
+use std::sync::Mutex;
 
 pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let sf_adj = sf * 800.0;
@@ -34,25 +36,55 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
 
     let base_date = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();
-    let industries = ["fintech", "healthtech", "edtech", "ecommerce", "manufacturing", "media"];
+    let industries = [
+        "fintech",
+        "healthtech",
+        "edtech",
+        "ecommerce",
+        "manufacturing",
+        "media",
+    ];
     let plans = ["starter", "growth", "enterprise", "enterprise_plus"];
-    let etypes = ["login", "page_view", "feature_click", "export", "api_call", "report_view"];
-    let features = ["dashboard", "reports", "api", "integrations", "automations", "analytics", "exports"];
+    let etypes = [
+        "login",
+        "page_view",
+        "feature_click",
+        "export",
+        "api_call",
+        "report_view",
+    ];
+    let features = [
+        "dashboard",
+        "reports",
+        "api",
+        "integrations",
+        "automations",
+        "analytics",
+        "exports",
+    ];
     let priorities = ["low", "medium", "high", "critical"];
-    let ticket_cats = ["billing", "technical", "feature_request", "onboarding", "other"];
+    let ticket_cats = [
+        "billing",
+        "technical",
+        "feature_request",
+        "onboarding",
+        "other",
+    ];
     let countries = ["US", "UK", "DE", "FR", "CA", "AU"];
     let platforms = ["web", "mobile", "api"];
 
     let pb = ProgressBar::new(5);
-    pb.set_style(ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
-        .unwrap());
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
+            .unwrap(),
+    );
 
     // 1. Accounts
     pb.set_message("Generating accounts...");
     let mut appender = con.appender("accounts")?;
     for i in 1..=nac {
-        let mut rng = StdRng::seed_from_u64(i as u64);
+        let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Account {}", i);
         let industry = industries[rng.gen_range(0..industries.len())];
         let country = countries[rng.gen_range(0..countries.len())];
@@ -60,106 +92,154 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let created = base_date + Duration::days(rng.gen_range(0..701));
         let csm = rng.gen_range(1..21);
         let health = rng.gen_range(1..=100) as i8;
-        appender.append_row(params![i as i32, name, industry, country, arr, created, csm, health])?;
+        appender.append_row(params![
+            i as i32, name, industry, country, arr, created, csm, health
+        ])?;
     }
     drop(appender);
     pb.inc(1);
 
+    struct SendAppender<'a>(duckdb::Appender<'a>);
+    unsafe impl<'a> Send for SendAppender<'a> {}
+    let chunk_size = 1_000_000;
+
     // 2. Subscriptions
     pb.set_message("Generating subscriptions...");
-    let chunk_size = 100_000;
-    for chunk_start in (1..=nsb).step_by(chunk_size) {
+    let n_chunks = (nsb + chunk_size - 1) / chunk_size;
+    let appender = Mutex::new(SendAppender(con.appender("subscriptions")?));
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * chunk_size + 1;
         let chunk_end = (chunk_start + chunk_size).min(nsb + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end).into_par_iter().map(|i| {
-            let mut rng = StdRng::seed_from_u64(i as u64);
-            let acc_id = rng.gen_range(1..=nac) as i32;
-            let plan = plans[rng.gen_range(0..plans.len())];
-            let seats = rng.gen_range(1..201);
-            let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
-            let start = base_date + Duration::days(rng.gen_range(0..601));
-            let end = start + Duration::days(365);
-            let active = rng.gen_bool(0.9);
-            (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
-        }).collect();
+        let rows: Vec<_> = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(|i| {
+                let mut rng = SmallRng::seed_from_u64(i as u64);
+                let acc_id = rng.gen_range(1..=nac) as i32;
+                let plan = plans[rng.gen_range(0..plans.len())];
+                let seats = rng.gen_range(1..201);
+                let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
+                let start = base_date + Duration::days(rng.gen_range(0..601));
+                let end = start + Duration::days(365);
+                let active = rng.gen_bool(0.9);
+                (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
+            })
+            .collect();
 
-        let mut appender = con.appender("subscriptions")?;
+        let mut app = appender.lock().unwrap();
         for row in rows {
-            appender.append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8])?;
+            app.0.append_row(params![
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8
+            ])?;
         }
-    }
+        Ok::<(), duckdb::Error>(())
+    })?;
     pb.inc(1);
 
     // 3. Events
     pb.set_message("Generating events...");
-    for chunk_start in (1..=nev).step_by(chunk_size) {
+    let n_chunks = (nev + chunk_size - 1) / chunk_size;
+    let appender = Mutex::new(SendAppender(con.appender("events")?));
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * chunk_size + 1;
         let chunk_end = (chunk_start + chunk_size).min(nev + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end).into_par_iter().map(|i| {
-            let mut rng = StdRng::seed_from_u64(i as u64);
-            let acc_id = rng.gen_range(1..=nac) as i32;
-            let user_id = rng.gen_range(1..=nac * 5) as i32;
-            let etype = etypes[rng.gen_range(0..etypes.len())];
-            let ts = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
-            let session = format!("sess_{}", rng.gen_range(1..nac * 20));
-            let platform = platforms[rng.gen_range(0..platforms.len())];
-            (i as i64, acc_id, user_id, etype, ts, session, platform)
-        }).collect();
+        let rows: Vec<_> = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(|i| {
+                let mut rng = SmallRng::seed_from_u64(i as u64);
+                let acc_id = rng.gen_range(1..=nac) as i32;
+                let user_id = rng.gen_range(1..=nac * 5) as i32;
+                let etype = etypes[rng.gen_range(0..etypes.len())];
+                let ts = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+                let session = format!("sess_{}", rng.gen_range(1..nac * 20));
+                let platform = platforms[rng.gen_range(0..platforms.len())];
+                (i as i64, acc_id, user_id, etype, ts, session, platform)
+            })
+            .collect();
 
-        let mut appender = con.appender("events")?;
+        let mut app = appender.lock().unwrap();
         for row in rows {
-            appender.append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
+            app.0
+                .append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6])?;
         }
-    }
+        Ok::<(), duckdb::Error>(())
+    })?;
     pb.inc(1);
 
     // 4. Feature Usage
     pb.set_message("Generating feature usage...");
-    for chunk_start in (1..=nfu).step_by(chunk_size) {
+    let n_chunks = (nfu + chunk_size - 1) / chunk_size;
+    let appender = Mutex::new(SendAppender(con.appender("feature_usage")?));
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * chunk_size + 1;
         let chunk_end = (chunk_start + chunk_size).min(nfu + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end).into_par_iter().map(|i| {
-            let mut rng = StdRng::seed_from_u64(i as u64);
-            let acc_id = rng.gen_range(1..=nac) as i32;
-            let feature = features[rng.gen_range(0..features.len())];
-            let date = base_date + Duration::days(rng.gen_range(0..701));
-            let count = rng.gen_range(1..1001);
-            (i as i32, acc_id, feature, date, count)
-        }).collect();
+        let rows: Vec<_> = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(|i| {
+                let mut rng = SmallRng::seed_from_u64(i as u64);
+                let acc_id = rng.gen_range(1..=nac) as i32;
+                let feature = features[rng.gen_range(0..features.len())];
+                let date = base_date + Duration::days(rng.gen_range(0..701));
+                let count = rng.gen_range(1..1001);
+                (i as i32, acc_id, feature, date, count)
+            })
+            .collect();
 
-        let mut appender = con.appender("feature_usage")?;
+        let mut app = appender.lock().unwrap();
         for row in rows {
-            appender.append_row(params![row.0, row.1, row.2, row.3, row.4])?;
+            app.0
+                .append_row(params![row.0, row.1, row.2, row.3, row.4])?;
         }
-    }
+        Ok::<(), duckdb::Error>(())
+    })?;
     pb.inc(1);
 
     // 5. Support Tickets
     pb.set_message("Generating support tickets...");
-    for chunk_start in (1..=nst).step_by(chunk_size) {
+    let n_chunks = (nst + chunk_size - 1) / chunk_size;
+    let appender = Mutex::new(SendAppender(con.appender("support_tickets")?));
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * chunk_size + 1;
         let chunk_end = (chunk_start + chunk_size).min(nst + 1);
-        let rows: Vec<_> = (chunk_start..chunk_end).into_par_iter().map(|i| {
-            let mut rng = StdRng::seed_from_u64(i as u64);
-            let acc_id = rng.gen_range(1..=nac) as i32;
-            let created = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
-            let resolved = if rng.gen_bool(0.8) {
-                Some(base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)))
-            } else {
-                None
-            };
-            let priority = priorities[rng.gen_range(0..priorities.len())];
-            let cat = ticket_cats[rng.gen_range(0..ticket_cats.len())];
-            let csat = if rng.gen_bool(0.7) {
-                Some(rng.gen_range(1..6) as i8)
-            } else {
-                None
-            };
-            let is_resolved = rng.gen_bool(0.8);
-            (i as i32, acc_id, created, resolved, priority, cat, csat, is_resolved)
-        }).collect();
+        let rows: Vec<_> = (chunk_start..chunk_end)
+            .into_par_iter()
+            .map(|i| {
+                let mut rng = SmallRng::seed_from_u64(i as u64);
+                let acc_id = rng.gen_range(1..=nac) as i32;
+                let created = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+                let resolved = if rng.gen_bool(0.8) {
+                    Some(base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)))
+                } else {
+                    None
+                };
+                let priority = priorities[rng.gen_range(0..priorities.len())];
+                let cat = ticket_cats[rng.gen_range(0..ticket_cats.len())];
+                let csat = if rng.gen_bool(0.7) {
+                    Some(rng.gen_range(1..6) as i8)
+                } else {
+                    None
+                };
+                let is_resolved = rng.gen_bool(0.8);
+                (
+                    i as i32,
+                    acc_id,
+                    created,
+                    resolved,
+                    priority,
+                    cat,
+                    csat,
+                    is_resolved,
+                )
+            })
+            .collect();
 
-        let mut appender = con.appender("support_tickets")?;
+        let mut app = appender.lock().unwrap();
         for row in rows {
-            appender.append_row(params![row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7])?;
+            app.0.append_row(params![
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7
+            ])?;
         }
-    }
+        Ok::<(), duckdb::Error>(())
+    })?;
     pb.finish_with_message("p06_saas complete");
 
     Ok(())
