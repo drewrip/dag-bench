@@ -78,7 +78,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "onboarding",
         "other",
     ];
-    let countries = ["US", "UK", "DE", "Fregister_arrowR", "CA", "AU"];
+    let countries = ["US", "UK", "DE", "FR", "CA", "AU"];
     let platforms = ["web", "mobile", "api"];
 
     let pb = ProgressBar::new(5);
