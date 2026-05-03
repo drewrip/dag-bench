@@ -1,5 +1,5 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use duckdb::{Connection, DuckdbConnectionManager};
+use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use rand::prelude::*;

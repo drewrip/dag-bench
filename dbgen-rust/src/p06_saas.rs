@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{Duration, NaiveDate};
 use duckdb::arrow::array::{
-    BooleanArray, Date32Array, Date64Array, Float64Array, Int32Array, Int64Array, Int8Array,
-    StringArray, TimestampMillisecondArray, TimestampSecondArray,
+    BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, Int8Array, StringArray,
+    TimestampMillisecondArray,
 };
-use duckdb::arrow::datatypes::{
-    ArrowTimestampType, Date32Type, Date64Type, TimestampMillisecondType, TimestampSecondType,
-};
-use duckdb::{Connection, DuckdbConnectionManager};
+use duckdb::arrow::datatypes::{ArrowTimestampType, Date32Type, TimestampMillisecondType};
+use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use rand::prelude::*;
