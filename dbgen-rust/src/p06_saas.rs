@@ -79,7 +79,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Accounts
-    crate::generate_table_sequential(con, "accounts", nac, &pb, "Generating accounts...", |i| {
+    crate::generate_table_parallel(con, "accounts", nac, &pb, "Generating accounts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Account {}", i);
         let industry = industries[rng.gen_range(0..industries.len())];
@@ -92,17 +92,24 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 2. Subscriptions
-    crate::generate_table_parallel(con, "subscriptions", nsb, &pb, "Generating subscriptions...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let acc_id = rng.gen_range(1..=nac) as i32;
-        let plan = plans[rng.gen_range(0..plans.len())];
-        let seats = rng.gen_range(1..201);
-        let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
-        let start = base_date + Duration::days(rng.gen_range(0..601));
-        let end = start + Duration::days(365);
-        let active = rng.gen_bool(0.9);
-        (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "subscriptions",
+        nsb,
+        &pb,
+        "Generating subscriptions...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = rng.gen_range(1..=nac) as i32;
+            let plan = plans[rng.gen_range(0..plans.len())];
+            let seats = rng.gen_range(1..201);
+            let mrr = ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0;
+            let start = base_date + Duration::days(rng.gen_range(0..601));
+            let end = start + Duration::days(365);
+            let active = rng.gen_bool(0.9);
+            (i as i32, acc_id, plan, seats, mrr, start, end, active, end)
+        },
+    )?;
 
     // 3. Events
     crate::generate_table_parallel(con, "events", nev, &pb, "Generating events...", |i| {
@@ -117,14 +124,21 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 4. Feature Usage
-    crate::generate_table_parallel(con, "feature_usage", nfu, &pb, "Generating feature usage...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let acc_id = rng.gen_range(1..=nac) as i32;
-        let feature = features[rng.gen_range(0..features.len())];
-        let date = base_date + Duration::days(rng.gen_range(0..701));
-        let count = rng.gen_range(1..1001);
-        (i as i32, acc_id, feature, date, count)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "feature_usage",
+        nfu,
+        &pb,
+        "Generating feature usage...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = rng.gen_range(1..=nac) as i32;
+            let feature = features[rng.gen_range(0..features.len())];
+            let date = base_date + Duration::days(rng.gen_range(0..701));
+            let count = rng.gen_range(1..1001);
+            (i as i32, acc_id, feature, date, count)
+        },
+    )?;
 
     // 5. Support Tickets
     crate::generate_table_parallel(

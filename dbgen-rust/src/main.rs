@@ -1,9 +1,16 @@
 use clap::Parser;
-use duckdb::Connection;
+use duckdb::arrow::array::{ArrayRef, RecordBatch};
+use duckdb::{params, Connection};
 use indicatif::ProgressBar;
+use parquet::arrow::ArrowWriter;
+use parquet::basic::Compression;
+use parquet::file::properties::WriterProperties;
 use rayon::prelude::*;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tempfile::env::temp_dir;
+use tempfile::{tempdir, tempfile};
 
 mod p01_ecommerce;
 mod p02_fraud;
@@ -53,7 +60,7 @@ where
     Ok(())
 }
 
-pub fn generate_table_sequential<T, F>(
+pub fn generate_table<F>(
     con: &Connection,
     table_name: &str,
     total_rows: usize,
@@ -62,16 +69,62 @@ pub fn generate_table_sequential<T, F>(
     generator: F,
 ) -> duckdb::Result<()>
 where
-    T: duckdb::AppenderParams,
-    F: Fn(usize) -> T,
+    F: Fn(usize, usize) -> Vec<ArrayRef> + Sync,
 {
+    const CHUNK_SIZE: usize = 1_000_000;
     pb.set_message(msg.to_string());
-    let mut appender = con.appender(table_name)?;
-    let mut rows = Vec::with_capacity(total_rows);
-    for i in 1..=total_rows {
-        rows.push(generator(i));
-    }
-    appender.append_rows(rows)?;
+    let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    // Create temp directory
+    let tmp_dir = tempdir().unwrap();
+
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let chunk_start = chunk_idx * CHUNK_SIZE + 1;
+        let chunk_end = (chunk_start + CHUNK_SIZE).min(total_rows + 1);
+
+        // `generator` should generate chunk_end - chunk_start rows, but in columnar form.
+        let arrays: Vec<ArrayRef> = generator(chunk_start, chunk_end);
+
+        let batch = RecordBatch::try_from_iter(
+            arrays
+                .into_iter()
+                .enumerate()
+                .map(|(i, a)| (format!("c{}", i), a)),
+        )
+        .unwrap();
+
+        let file: File = File::create(
+            tmp_dir
+                .path()
+                .join(format!("{}_{}.parquet", table_name, chunk_idx)),
+        )
+        .unwrap();
+
+        // WriterProperties can be used to set Parquet file options
+        let props = WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .build();
+
+        let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).unwrap();
+
+        writer.write(&batch).expect("Writing batch");
+
+        // writer must be closed to write footer
+        writer.close().unwrap();
+        Ok::<(), duckdb::Error>(())
+    })?;
+
+    // Connect to duckdb and `COPY` all Parquet files in the temporary directory into `table_name`
+    con.execute(
+        &format!(
+            "COPY {} FROM '{}'",
+            table_name,
+            tmp_dir.path().to_str().unwrap()
+        ),
+        params![],
+    )
+    .unwrap();
+
     pb.inc(1);
     Ok(())
 }

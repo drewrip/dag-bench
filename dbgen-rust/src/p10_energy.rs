@@ -54,16 +54,23 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Substations
-    crate::generate_table_sequential(con, "substations", nsb, &pb, "Generating substations...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let name = format!("SUB-{:03}", i);
-        let region = regions[rng.gen_range(0..regions.len())];
-        let cap = ((rng.gen_range(10.0..500.0) * 100.0) as f64).round() / 100.0;
-        let volt = voltages[rng.gen_range(0..voltages.len())];
-        let lat = ((rng.gen_range(25.0..50.0) * 10000.0) as f64).round() / 10000.0;
-        let lon = ((rng.gen_range(-120.0..-70.0) * 10000.0) as f64).round() / 10000.0;
-        (i as i32, name, region, cap, volt, lat, lon)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "substations",
+        nsb,
+        &pb,
+        "Generating substations...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let name = format!("SUB-{:03}", i);
+            let region = regions[rng.gen_range(0..regions.len())];
+            let cap = ((rng.gen_range(10.0..500.0) * 100.0) as f64).round() / 100.0;
+            let volt = voltages[rng.gen_range(0..voltages.len())];
+            let lat = ((rng.gen_range(25.0..50.0) * 10000.0) as f64).round() / 10000.0;
+            let lon = ((rng.gen_range(-120.0..-70.0) * 10000.0) as f64).round() / 10000.0;
+            (i as i32, name, region, cap, volt, lat, lon)
+        },
+    )?;
 
     // 2. Meters
     crate::generate_table_parallel(con, "meters", nmt, &pb, "Generating meters...", |i| {
@@ -103,16 +110,23 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     )?;
 
     // 4. Outage Events
-    crate::generate_table_parallel(con, "outage_events", noe, &pb, "Generating outage events...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let sub_id = rng.gen_range(1..=nsb) as i32;
-        let start = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
-        let end = start + Duration::seconds(rng.gen_range(5 * 60..1441 * 60));
-        let cause = causes[rng.gen_range(0..causes.len())];
-        let affected = rng.gen_range(1..501);
-        let sev = severities[rng.gen_range(0..severities.len())];
-        (i as i32, sub_id, start, end, cause, affected, sev)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "outage_events",
+        noe,
+        &pb,
+        "Generating outage events...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let sub_id = rng.gen_range(1..=nsb) as i32;
+            let start = base_ts + Duration::seconds(rng.gen_range(0..364 * 86400));
+            let end = start + Duration::seconds(rng.gen_range(5 * 60..1441 * 60));
+            let cause = causes[rng.gen_range(0..causes.len())];
+            let affected = rng.gen_range(1..501);
+            let sev = severities[rng.gen_range(0..severities.len())];
+            (i as i32, sub_id, start, end, cause, affected, sev)
+        },
+    )?;
 
     pb.finish_with_message("p10_energy complete");
 

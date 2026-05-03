@@ -52,7 +52,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Campaigns
-    crate::generate_table_sequential(con, "campaigns", nca, &pb, "Generating campaigns...", |i| {
+    crate::generate_table_parallel(con, "campaigns", nca, &pb, "Generating campaigns...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Campaign {}", i);
         let advertiser = format!("Brand {}", rng.gen_range(1..21));
@@ -68,26 +68,33 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 2. Impressions
-    crate::generate_table_parallel(con, "impressions", nimp, &pb, "Generating impressions...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let campaign_id = rng.gen_range(1..=nca) as i32;
-        let user_id = rng.gen_range(1..=nimp as i64 * 100);
-        let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-        let device = devices[rng.gen_range(0..devices.len())];
-        let geo = geos[rng.gen_range(0..geos.len())];
-        let placement = placements[rng.gen_range(0..placements.len())];
-        let cost = ((rng.gen_range(0.0001..0.05) * 1000000.0) as f64).round() / 1000000.0;
-        (
-            i as i64,
-            campaign_id,
-            user_id,
-            ts,
-            device,
-            geo,
-            placement,
-            cost,
-        )
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "impressions",
+        nimp,
+        &pb,
+        "Generating impressions...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let campaign_id = rng.gen_range(1..=nca) as i32;
+            let user_id = rng.gen_range(1..=nimp as i64 * 100);
+            let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+            let device = devices[rng.gen_range(0..devices.len())];
+            let geo = geos[rng.gen_range(0..geos.len())];
+            let placement = placements[rng.gen_range(0..placements.len())];
+            let cost = ((rng.gen_range(0.0001..0.05) * 1000000.0) as f64).round() / 1000000.0;
+            (
+                i as i64,
+                campaign_id,
+                user_id,
+                ts,
+                device,
+                geo,
+                placement,
+                cost,
+            )
+        },
+    )?;
 
     // Get samples for clicks
     let mut stmt = con.prepare(
@@ -131,15 +138,22 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Conversions
-    crate::generate_table_parallel(con, "conversions", ncv, &pb, "Generating conversions...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let ref_idx = rng.gen_range(0..click_refs.len());
-        let (click_id, camp_id, user_id) = click_refs[ref_idx];
-        let conv_ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-        let ctype = ctypes[rng.gen_range(0..ctypes.len())];
-        let rev = ((rng.gen_range(0.0..500.0) * 100.0) as f64).round() / 100.0;
-        (i as i32, click_id, camp_id, user_id, conv_ts, ctype, rev)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "conversions",
+        ncv,
+        &pb,
+        "Generating conversions...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let ref_idx = rng.gen_range(0..click_refs.len());
+            let (click_id, camp_id, user_id) = click_refs[ref_idx];
+            let conv_ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
+            let ctype = ctypes[rng.gen_range(0..ctypes.len())];
+            let rev = ((rng.gen_range(0.0..500.0) * 100.0) as f64).round() / 100.0;
+            (i as i32, click_id, camp_id, user_id, conv_ts, ctype, rev)
+        },
+    )?;
 
     pb.finish_with_message("p08_adtech complete");
 

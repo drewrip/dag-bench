@@ -57,7 +57,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Sites
-    crate::generate_table_sequential(con, "sites", ns, &pb, "Generating sites...", |i| {
+    crate::generate_table_parallel(con, "sites", ns, &pb, "Generating sites...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Site-{}", i);
         let region = regions[rng.gen_range(0..regions.len())];

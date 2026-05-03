@@ -73,15 +73,22 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Departments
-    crate::generate_table_sequential(con, "departments", nd, &pb, "Generating departments...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let name = format!("Dept-{}", i);
-        let div = divs[rng.gen_range(0..divs.len())];
-        let loc = locs[rng.gen_range(0..locs.len())];
-        let budget = ((rng.gen_range(100000.0..10000000.0) * 100.0) as f64).round() / 100.0;
-        let headcount = rng.gen_range(5..=101);
-        (i as i32, name, div, loc, budget, headcount)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "departments",
+        nd,
+        &pb,
+        "Generating departments...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let name = format!("Dept-{}", i);
+            let div = divs[rng.gen_range(0..divs.len())];
+            let loc = locs[rng.gen_range(0..locs.len())];
+            let budget = ((rng.gen_range(100000.0..10000000.0) * 100.0) as f64).round() / 100.0;
+            let headcount = rng.gen_range(5..=101);
+            (i as i32, name, div, loc, budget, headcount)
+        },
+    )?;
 
     // 2. Employees
     crate::generate_table_parallel(con, "employees", ne, &pb, "Generating employees...", |i| {
@@ -100,15 +107,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let etype = etypes[rng.gen_range(0..etypes.len())];
         let active = rng.gen_bool(0.93);
         (
-            i as i32,
-            dept_id,
-            manager_id,
-            first_name,
-            last_name,
-            gender,
-            hire_date,
-            title,
-            etype,
+            i as i32, dept_id, manager_id, first_name, last_name, gender, hire_date, title, etype,
             active,
         )
     })?;
