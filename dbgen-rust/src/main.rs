@@ -7,8 +7,8 @@ use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use r2d2::{Pool, PooledConnection};
 use rayon::prelude::*;
-use std::fs::File;
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -113,12 +113,13 @@ pub fn generate_table<F>(
 where
     F: Fn(usize, usize) -> Vec<ArrayRef> + Sync,
 {
-    const CHUNK_SIZE: usize = 1_000_000;
+    const CHUNK_SIZE: usize = 10_000;
     pb.set_message(msg.to_string());
     let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
     // Create temp directory
-    let tmp_dir = TempDir::new().unwrap();
+    let tmp_dir = Path::new("tmp_data/");
+    fs::create_dir(tmp_dir).expect("couldn't create tmp dir");
 
     (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
         let chunk_start = chunk_idx * CHUNK_SIZE + 1;
@@ -135,12 +136,8 @@ where
         )
         .unwrap();
 
-        let file: File = File::create(
-            tmp_dir
-                .path()
-                .join(format!("{}_{}.parquet", table_name, chunk_idx)),
-        )
-        .unwrap();
+        let file: File =
+            File::create(tmp_dir.join(format!("{}_{}.parquet", table_name, chunk_idx))).unwrap();
 
         // WriterProperties can be used to set Parquet file options
         let props = WriterProperties::builder()
@@ -162,12 +159,13 @@ where
         &format!(
             "COPY {} FROM '{}' (FORMAT parquet)",
             table_name,
-            tmp_dir.path().join("*").to_str().unwrap()
+            tmp_dir.join("*").to_str().unwrap()
         ),
         params![],
     )
     .unwrap();
 
+    fs::remove_dir_all(tmp_dir).expect("couldn't delete tmp dir");
     pb.inc(1);
     Ok(())
 }
@@ -195,7 +193,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::create_dir_all(parent)?;
     }
 
-    let config = Config::default();
+    let mut config = Config::default();
+    config = config.max_memory("8GB").expect("couldn't set max memory");
     let manager = DuckdbConnectionManager::file_with_flags(&cli.output, config)
         .expect("couldn't open connection pool");
     let mut pool = Pool::builder()
