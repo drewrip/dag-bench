@@ -1,6 +1,6 @@
 use clap::Parser;
 use duckdb::arrow::array::{ArrayRef, RecordBatch};
-use duckdb::{params, Appender, Config, Connection, DuckdbConnectionManager};
+use duckdb::{params, Config, DuckdbConnectionManager};
 use indicatif::ProgressBar;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
@@ -11,8 +11,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
-use tempfile::env::temp_dir;
-use tempfile::{tempdir, tempfile, TempDir};
+use tempfile::TempDir;
 
 mod p01_ecommerce;
 mod p02_fraud;
