@@ -1,16 +1,19 @@
 use chrono::{Duration, NaiveDate};
-use duckdb::Connection;
+use duckdb::{Connection, DuckdbConnectionManager};
 use indicatif::{ProgressBar, ProgressStyle};
+use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 use rand_distr::{Distribution, Normal};
 
-pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let sf_adj = sf * 90.0;
     let nsb = (50.0 * sf_adj).max(5.0) as usize;
     let nmt = (1000.0 * sf_adj).max(20.0) as usize;
     let ncr = (500000.0 * sf_adj).max(200.0) as usize;
     let noe = (200.0 * sf_adj).max(5.0) as usize;
+
+    let con = &pool.get().expect("couldn't get connection");
 
     con.execute_batch(
         "DROP TABLE IF EXISTS outage_events; DROP TABLE IF EXISTS consumption_readings;
