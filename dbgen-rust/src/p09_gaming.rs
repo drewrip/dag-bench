@@ -1,16 +1,19 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use duckdb::Connection;
+use duckdb::{Connection, DuckdbConnectionManager};
 use indicatif::{ProgressBar, ProgressStyle};
+use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let sf_adj = sf * 400.0;
     let npl = (2000.0 * sf_adj).max(20.0) as usize;
     let nss = (10000.0 * sf_adj).max(50.0) as usize;
     let nev = (80000.0 * sf_adj).max(200.0) as usize;
     let npu = (3000.0 * sf_adj).max(10.0) as usize;
     let nlv = (50.0 * sf_adj).max(10.0) as usize;
+
+    let con = &pool.get().expect("couldn't get connection");
 
     con.execute_batch(
         "DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS events;

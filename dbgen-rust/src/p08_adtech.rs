@@ -1,15 +1,18 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use duckdb::Connection;
+use duckdb::{Connection, DuckdbConnectionManager};
 use indicatif::{ProgressBar, ProgressStyle};
+use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let sf_adj = sf * 84.0;
     let nca = (200.0 * sf_adj).max(10.0) as usize;
     let nimp = (500000.0 * sf_adj).max(100.0) as usize;
     let ncl = (15000.0 * sf_adj).max(20.0) as usize;
     let ncv = (3000.0 * sf_adj).max(5.0) as usize;
+
+    let con = &pool.get().expect("couldn't get connection");
 
     con.execute_batch(
         "DROP TABLE IF EXISTS conversions; DROP TABLE IF EXISTS clicks;
@@ -97,11 +100,12 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     )?;
 
     // Get samples for clicks
-    let mut stmt = con.prepare(
-        "SELECT imp_id, campaign_id, user_id, imp_ts, device FROM impressions USING SAMPLE ? ROWS",
-    )?;
+    let mut stmt = con.prepare(&format!(
+        "SELECT imp_id, campaign_id, user_id, imp_ts, device FROM impressions USING SAMPLE {} ROWS",
+        ncl
+    ))?;
     let imp_refs: Vec<(i64, i32, i64, NaiveDateTime, String)> = stmt
-        .query_map([ncl], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get(0)?,
                 row.get(1)?,
@@ -131,10 +135,12 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // Get samples for conversions
-    let mut stmt =
-        con.prepare("SELECT click_id, campaign_id, user_id FROM clicks USING SAMPLE ? ROWS")?;
+    let mut stmt = con.prepare(&format!(
+        "SELECT click_id, campaign_id, user_id FROM clicks USING SAMPLE {} ROWS",
+        ncv
+    ))?;
     let click_refs: Vec<(i64, i32, i64)> = stmt
-        .query_map([ncv], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Conversions
