@@ -88,7 +88,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 2. Levels
-    crate::generate_table_sequential(con, "levels", nlv, &pb, "Generating levels...", |i| {
+    crate::generate_table_parallel(con, "levels", nlv, &pb, "Generating levels...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Level_{}", i);
         let world = worlds[rng.gen_range(0..worlds.len())];

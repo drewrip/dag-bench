@@ -70,7 +70,7 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 2. Providers
-    crate::generate_table_sequential(con, "providers", npr, &pb, "Generating providers...", |i| {
+    crate::generate_table_parallel(con, "providers", npr, &pb, "Generating providers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Provider {}", i);
         let spec = specialties[rng.gen_range(0..specialties.len())];
@@ -101,22 +101,28 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
             None
         };
         (
-            i as i32, pat_id, prov_id, service, ctype, billed, allowed, paid, status,
-            denial,
+            i as i32, pat_id, prov_id, service, ctype, billed, allowed, paid, status, denial,
         )
     })?;
 
     // 4. Claim Lines
-    crate::generate_table_parallel(con, "claim_lines", ncll, &pb, "Generating claim lines...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let cl_id = rng.gen_range(1..=ncl) as i32;
-        let cpt = &cpt_codes[rng.gen_range(0..cpt_codes.len())];
-        let qty = rng.gen_range(1..6);
-        let cost = ((rng.gen_range(10.0..5000.0) * 100.0) as f64).round() / 100.0;
-        let allowed = ((rng.gen_range(5.0..4000.0) * 100.0) as f64).round() / 100.0;
-        let paid = ((rng.gen_range(0.0..3500.0) * 100.0) as f64).round() / 100.0;
-        (i as i32, cl_id, cpt.clone(), qty, cost, allowed, paid)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "claim_lines",
+        ncll,
+        &pb,
+        "Generating claim lines...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let cl_id = rng.gen_range(1..=ncl) as i32;
+            let cpt = &cpt_codes[rng.gen_range(0..cpt_codes.len())];
+            let qty = rng.gen_range(1..6);
+            let cost = ((rng.gen_range(10.0..5000.0) * 100.0) as f64).round() / 100.0;
+            let allowed = ((rng.gen_range(5.0..4000.0) * 100.0) as f64).round() / 100.0;
+            let paid = ((rng.gen_range(0.0..3500.0) * 100.0) as f64).round() / 100.0;
+            (i as i32, cl_id, cpt.clone(), qty, cost, allowed, paid)
+        },
+    )?;
 
     // 5. Diagnoses
     crate::generate_table_parallel(con, "diagnoses", ndx, &pb, "Generating diagnoses...", |i| {

@@ -39,9 +39,26 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     let statuses = ["completed", "pending", "shipped", "cancelled", "refunded"];
     let channels = ["web", "mobile", "in-store", "marketplace"];
     let cats_names = [
-        "Electronics", "Clothing", "Books", "Home", "Sports", "Beauty", "Toys", "Food",
-        "Garden", "Automotive", "Health", "Office", "Jewelry", "Music", "Movies", "Games",
-        "Travel", "Pets", "Tools", "Baby",
+        "Electronics",
+        "Clothing",
+        "Books",
+        "Home",
+        "Sports",
+        "Beauty",
+        "Toys",
+        "Food",
+        "Garden",
+        "Automotive",
+        "Health",
+        "Office",
+        "Jewelry",
+        "Music",
+        "Movies",
+        "Games",
+        "Travel",
+        "Pets",
+        "Tools",
+        "Baby",
     ];
 
     let pb = ProgressBar::new(6);
@@ -52,16 +69,23 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Categories
-    crate::generate_table_sequential(con, "categories", nct, &pb, "Generating categories...", |i| {
-        let name = cats_names[(i - 1) % cats_names.len()];
-        let parent_id = if i > 4 {
-            let mut rng = SmallRng::seed_from_u64(i as u64);
-            Some(rng.gen_range(1..i))
-        } else {
-            None
-        };
-        (i as i32, name, parent_id, i as i32)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "categories",
+        nct,
+        &pb,
+        "Generating categories...",
+        |i| {
+            let name = cats_names[(i - 1) % cats_names.len()];
+            let parent_id = if i > 4 {
+                let mut rng = SmallRng::seed_from_u64(i as u64);
+                Some(rng.gen_range(1..i))
+            } else {
+                None
+            };
+            (i as i32, name, parent_id, i as i32)
+        },
+    )?;
 
     // 2. Customers
     crate::generate_table_parallel(con, "customers", nc, &pb, "Generating customers...", |i| {
@@ -72,7 +96,15 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let signup_date = base_date + Duration::days(rng.gen_range(0..2001));
         let is_active = rng.gen_bool(0.9);
         let lifetime_spend = ((rng.gen_range(0.0..15000.0) * 100.0) as f64).round() / 100.0;
-        (i as i32, full_name, email, country, signup_date, is_active, lifetime_spend)
+        (
+            i as i32,
+            full_name,
+            email,
+            country,
+            signup_date,
+            is_active,
+            lifetime_spend,
+        )
     })?;
 
     // 3. Products
@@ -86,7 +118,9 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let weight = ((rng.gen_range(0.1..20.0) * 1000.0) as f64).round() / 1000.0;
         let is_active = rng.gen_bool(0.95);
         let stock_qty = rng.gen_range(0..=1000);
-        (i as i32, cat_id, sku, name, price, cost, weight, is_active, stock_qty)
+        (
+            i as i32, cat_id, sku, name, price, cost, weight, is_active, stock_qty,
+        )
     })?;
 
     // 4. Orders
@@ -102,18 +136,33 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
             0.0
         };
         let shipping_cost = ((rng.gen_range(0.0..25.0) * 100.0) as f64).round() / 100.0;
-        (i as i32, cust_id, order_date, status, channel, discount, shipping_cost)
+        (
+            i as i32,
+            cust_id,
+            order_date,
+            status,
+            channel,
+            discount,
+            shipping_cost,
+        )
     })?;
 
     // 5. Order Items
-    crate::generate_table_parallel(con, "order_items", ni, &pb, "Generating order items...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let order_id = rng.gen_range(1..=no) as i32;
-        let product_id = rng.gen_range(1..=np) as i32;
-        let quantity = rng.gen_range(1..6);
-        let unit_price = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
-        (i as i32, order_id, product_id, quantity, unit_price)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "order_items",
+        ni,
+        &pb,
+        "Generating order items...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let order_id = rng.gen_range(1..=no) as i32;
+            let product_id = rng.gen_range(1..=np) as i32;
+            let quantity = rng.gen_range(1..6);
+            let unit_price = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
+            (i as i32, order_id, product_id, quantity, unit_price)
+        },
+    )?;
 
     // 6. Reviews
     crate::generate_table_parallel(con, "reviews", nr, &pb, "Generating reviews...", |i| {
@@ -123,7 +172,14 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
         let rating = rng.gen_range(1..6) as i8;
         let review_date = base_date + Duration::days(rng.gen_range(0..2001));
         let helpful_votes = rng.gen_range(0..201);
-        (i as i32, product_id, customer_id, rating, review_date, helpful_votes)
+        (
+            i as i32,
+            product_id,
+            customer_id,
+            rating,
+            review_date,
+            helpful_votes,
+        )
     })?;
 
     pb.finish_with_message("p01_ecommerce complete");

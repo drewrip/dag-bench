@@ -92,21 +92,28 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     })?;
 
     // 3. Transactions
-    crate::generate_table_parallel(con, "transactions", nt, &pb, "Generating transactions...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let acc_id = rng.gen_range(1..=na) as i32;
-        let merch_id = rng.gen_range(1..=nm) as i32;
-        let amount = ((rng.gen_range(1.0..5000.0) * 100.0) as f64).round() / 100.0;
-        let ts = base_ts + Duration::seconds(rng.gen_range(0..365 * 86400));
-        let channel = chans[rng.gen_range(0..chans.len())];
-        let curr = currs[rng.gen_range(0..currs.len())];
-        let declined = rng.gen_bool(0.05);
-        let flagged = rng.gen_bool(0.04);
-        let rcode = rcodes[rng.gen_range(0..rcodes.len())];
-        (
-            i as i32, acc_id, merch_id, amount, ts, channel, curr, declined, flagged, rcode,
-        )
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "transactions",
+        nt,
+        &pb,
+        "Generating transactions...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = rng.gen_range(1..=na) as i32;
+            let merch_id = rng.gen_range(1..=nm) as i32;
+            let amount = ((rng.gen_range(1.0..5000.0) * 100.0) as f64).round() / 100.0;
+            let ts = base_ts + Duration::seconds(rng.gen_range(0..365 * 86400));
+            let channel = chans[rng.gen_range(0..chans.len())];
+            let curr = currs[rng.gen_range(0..currs.len())];
+            let declined = rng.gen_bool(0.05);
+            let flagged = rng.gen_bool(0.04);
+            let rcode = rcodes[rng.gen_range(0..rcodes.len())];
+            (
+                i as i32, acc_id, merch_id, amount, ts, channel, curr, declined, flagged, rcode,
+            )
+        },
+    )?;
 
     // Get flagged IDs for alerts
     let mut stmt =

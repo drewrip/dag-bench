@@ -57,27 +57,41 @@ pub fn run(sf: f64, con: &mut Connection) -> duckdb::Result<()> {
     );
 
     // 1. Suppliers
-    crate::generate_table_sequential(con, "suppliers", nsup, &pb, "Generating suppliers...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let name = format!("Supplier {}", i);
-        let country = countries_sup[rng.gen_range(0..countries_sup.len())];
-        let score = ((rng.gen_range(0.5..1.0) * 100.0) as f64).round() / 100.0;
-        let lead_time = rng.gen_range(3..61);
-        let cat = cats[rng.gen_range(0..cats.len())];
-        let preferred = rng.gen_bool(0.5);
-        (i as i32, name, country, score, lead_time, cat, preferred)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "suppliers",
+        nsup,
+        &pb,
+        "Generating suppliers...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let name = format!("Supplier {}", i);
+            let country = countries_sup[rng.gen_range(0..countries_sup.len())];
+            let score = ((rng.gen_range(0.5..1.0) * 100.0) as f64).round() / 100.0;
+            let lead_time = rng.gen_range(3..61);
+            let cat = cats[rng.gen_range(0..cats.len())];
+            let preferred = rng.gen_bool(0.5);
+            (i as i32, name, country, score, lead_time, cat, preferred)
+        },
+    )?;
 
     // 2. Warehouses
-    crate::generate_table_sequential(con, "warehouses", nwh, &pb, "Generating warehouses...", |i| {
-        let mut rng = SmallRng::seed_from_u64(i as u64);
-        let name = format!("WH-{}", i);
-        let country = countries_wh[rng.gen_range(0..countries_wh.len())];
-        let region = regions[rng.gen_range(0..regions.len())];
-        let cap = rng.gen_range(1000..50001);
-        let active = rng.gen_bool(0.95);
-        (i as i32, name, country, region, cap, active)
-    })?;
+    crate::generate_table_parallel(
+        con,
+        "warehouses",
+        nwh,
+        &pb,
+        "Generating warehouses...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let name = format!("WH-{}", i);
+            let country = countries_wh[rng.gen_range(0..countries_wh.len())];
+            let region = regions[rng.gen_range(0..regions.len())];
+            let cap = rng.gen_range(1000..50001);
+            let active = rng.gen_bool(0.95);
+            (i as i32, name, country, region, cap, active)
+        },
+    )?;
 
     // 3. Shipments
     crate::generate_table_parallel(con, "shipments", nsh, &pb, "Generating shipments...", |i| {
