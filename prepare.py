@@ -49,31 +49,10 @@ def main():
             gen_script_path = os.path.join(abs_project_path, gen_script)
             cwd_for_gen = abs_project_path
 
-            # If it's a multi-sink project, we generate data in the corresponding one-sink project and copy the duckdb file
-            if "projects/synth/multi-sink/" in project_path:
-                one_sink_path = project_path.replace("multi-sink", "one-sink")
-                abs_one_sink_path = os.path.abspath(one_sink_path)
-                src_db = os.path.join(abs_one_sink_path, "data", "warehouse.duckdb")
-                dst_db = os.path.join(abs_project_path, "data", "warehouse.duckdb")
-                if os.path.exists(src_db):
-                    os.makedirs(os.path.dirname(dst_db), exist_ok=True)
-                    print(f"Copying {src_db} to {dst_db}")
-                    import shutil
-                    shutil.copy2(src_db, dst_db)
-                    # We've handled data gen for multi-sink by using one-sink, so we skip the default logic
-                    # But we still need to proceed to dbt deps/compile.
-                    # Using a flag to avoid running the default gen logic below.
-                    gen_done = True
-                else:
-                    gen_done = False
+            if os.path.exists(gen_script_path):
+                run_command(["python3", gen_script, args.sf], cwd_for_gen)
             else:
-                gen_done = False
-
-            if not gen_done:
-                if os.path.exists(gen_script_path):
-                    run_command(["python3", gen_script, args.sf], cwd_for_gen)
-                else:
-                    print(f"Warning: {gen_script} not found for {project_path}. Skipping data generation.")
+                print(f"Warning: {gen_script} not found for {project_path}. Skipping data generation.")
         else:
             print(f"Skipping data generation for {project_path} as requested.")
 

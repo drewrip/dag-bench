@@ -1,6 +1,7 @@
 import os
 import sys
 import subprocess
+import shutil
 from pathlib import Path
 
 
@@ -21,7 +22,21 @@ def run_project(project_name: str) -> None:
         except ValueError:
             pass  # Use default
 
-    # 3. Get Rust binary path from environment
+    # 3. Check cache
+    cache_dir = Path(__file__).parent / ".cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sf_str = str(sf).replace(".", "_")
+    cache_filename = f"p{project_num}_sf{sf_str}.duckdb"
+    cache_path = cache_dir / cache_filename
+    output_path = "data/warehouse.duckdb"
+
+    if cache_path.exists():
+        print(f"Using cached duckdb file: {cache_path}")
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cache_path, output_path)
+        return
+
+    # 4. Get Rust binary path from environment
     dbgen_bin = os.environ.get("DBGEN")
     if not dbgen_bin:
         print(
@@ -29,15 +44,16 @@ def run_project(project_name: str) -> None:
         )
         sys.exit(1)
 
-    # 4. Prepare arguments for the Rust binary
+    # 5. Prepare arguments for the Rust binary
     # The output should be in 'data/warehouse.duckdb' relative to current working directory
-    output_path = "data/warehouse.duckdb"
-
     cmd = [dbgen_bin, "-p", str(project_num), "-s", str(sf), "-o", output_path]
 
     print(f"Running Rust dbgen: {' '.join(cmd)}")
     try:
         subprocess.run(cmd, check=True)
+        # 6. Cache the result
+        shutil.copy2(output_path, cache_path)
+        print(f"Cached generated duckdb file to: {cache_path}")
     except subprocess.CalledProcessError as e:
         print(f"Error running dbgen: {e}")
         sys.exit(1)
