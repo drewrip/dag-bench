@@ -1,5 +1,5 @@
 [package]
-name = "dbgen-rust"
+name = "dbgen"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,7 +11,6 @@ rand_distr = "0.4"
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 indicatif = "0.17"
-tempfile = "3.27.0"
 parquet = "58.2.0"
 r2d2 = "0.8.10"
 

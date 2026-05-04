@@ -119,10 +119,12 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Get samples for events
-    let mut stmt = con
-        .prepare("SELECT session_id, player_id, session_start FROM sessions USING SAMPLE ? ROWS")?;
+    let mut stmt = con.prepare(&format!(
+        "SELECT session_id, player_id, session_start FROM sessions USING SAMPLE {} ROWS",
+        nev
+    ))?;
     let session_refs: Vec<(i64, i32, NaiveDateTime)> = stmt
-        .query_map([nev], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Events

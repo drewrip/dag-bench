@@ -11,7 +11,6 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
-use tempfile::TempDir;
 
 mod p01_ecommerce;
 mod p02_fraud;

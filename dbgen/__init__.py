@@ -1,1 +1,1 @@
-"""Shared synthetic data generators for synth projects."""
+# dbgen package
