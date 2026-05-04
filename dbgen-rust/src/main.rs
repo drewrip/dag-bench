@@ -194,7 +194,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut config = Config::default();
-    config = config.max_memory("8GB").expect("couldn't set max memory");
+    config = config
+        .with("preserve_insertion_order", "false")
+        .expect("couldn't turn off preserve_insertion_order");
     let manager = DuckdbConnectionManager::file_with_flags(&cli.output, config)
         .expect("couldn't open connection pool");
     let mut pool = Pool::builder()
