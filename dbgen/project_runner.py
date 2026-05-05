@@ -30,6 +30,11 @@ def run_project(project_name: str) -> None:
     cache_path = cache_dir / cache_filename
     output_path = "data/warehouse.duckdb"
 
+    # Delete existing output file if it exists
+    if Path(output_path).exists():
+        print(f"Deleting existing duckdb file: {output_path}")
+        Path(output_path).unlink()
+
     if cache_path.exists():
         print(f"Using cached duckdb file: {cache_path}")
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
