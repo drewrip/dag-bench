@@ -12,6 +12,7 @@ import logging
 import datetime
 from collections import Counter, defaultdict
 
+import duckdb
 import networkx as nx
 import yaml
 from jinja2 import Template
@@ -117,6 +118,36 @@ def read_project_config(project_path):
     return info
 
 
+def get_duckdb_path(project_path):
+    """Return the path to the project's duckdb warehouse file, per profiles.yml, if configured."""
+    try:
+        with open(os.path.join(project_path, 'profiles.yml')) as f:
+            profiles = yaml.safe_load(f) or {}
+    except Exception:
+        return None
+    for profile in profiles.values():
+        if not isinstance(profile, dict):
+            continue
+        for output in profile.get('outputs', {}).values():
+            if isinstance(output, dict) and output.get('type') == 'duckdb' and output.get('path'):
+                return os.path.join(project_path, output['path'])
+    return None
+
+
+def sample_rows_for_node(con, node_detail):
+    """Run SELECT * FROM <node> LIMIT 10 against the project's duckdb warehouse."""
+    database, schema, alias = node_detail['database'], node_detail['schema'], node_detail['alias']
+    if not (database and schema and alias):
+        return None, None, 'No table location known for this node.'
+    try:
+        result = con.execute(f'SELECT * FROM "{database}"."{schema}"."{alias}" LIMIT 10')
+        columns = [d[0] for d in result.description]
+        rows = result.fetchall()
+        return columns, rows, None
+    except Exception as e:
+        return None, None, str(e)
+
+
 def build_graph(all_nodes):
     """Build a DiGraph over VISUAL_RESOURCES, edges pointing from dependency -> dependent."""
     G = nx.DiGraph()
@@ -209,6 +240,14 @@ def analyze_project(project):
     leaves = [n for n in G_metrics.nodes if G_metrics.out_degree(n) == 0]
     roots = [n for n in G_metrics.nodes if G.in_degree(n) == 0]
 
+    duckdb_path = get_duckdb_path(project['path'])
+    duckdb_con = None
+    if duckdb_path and os.path.exists(duckdb_path):
+        try:
+            duckdb_con = duckdb.connect(duckdb_path, read_only=True)
+        except Exception as e:
+            logging.warning(f"Could not open duckdb warehouse for {project['name']}: {e}")
+
     # Per-node detail for the SQL/lineage panel
     node_details = {}
     viz_nodes = []
@@ -240,6 +279,14 @@ def analyze_project(project):
             'children': sorted(G.successors(n)),
         }
 
+        if duckdb_con is not None:
+            sample_columns, sample_rows, sample_error = sample_rows_for_node(duckdb_con, node_details[n])
+        else:
+            sample_columns, sample_rows, sample_error = None, None, 'No duckdb warehouse found for this project.'
+        node_details[n]['sample_columns'] = sample_columns
+        node_details[n]['sample_rows'] = sample_rows
+        node_details[n]['sample_error'] = sample_error
+
         color = node_color(res_type, materialized)
         title = f"{res_type} · {node.get('name')}"
         if materialized:
@@ -256,6 +303,9 @@ def analyze_project(project):
 
     for u, v in G.edges():
         viz_edges.append({'from': u, 'to': v})
+
+    if duckdb_con is not None:
+        duckdb_con.close()
 
     project_config = read_project_config(project['path'])
 
@@ -482,6 +532,11 @@ pre.sql-block code { white-space: pre; }
 .kv b { color: var(--text-secondary); font-weight: 600; }
 .lineage-col h4 { font-size: 0.78em; text-transform: uppercase; color: var(--text-muted); margin: 12px 0 6px; }
 .node-empty-note { color: var(--text-muted); font-size: 0.82em; }
+.sample-wrap { overflow-x: auto; }
+table.sample { border-collapse: collapse; font-size: 0.8em; white-space: nowrap; }
+table.sample th, table.sample td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+table.sample th { color: var(--text-muted); font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.03em; background: var(--surface-2); position: sticky; top: 0; }
+table.sample td { max-width: 260px; overflow: hidden; text-overflow: ellipsis; font-family: monospace; }
 
 /* node table */
 table.nodes { width: 100%; border-collapse: collapse; font-size: 0.83em; margin-top: 10px; }
@@ -629,6 +684,16 @@ function highlightSqlBlock(codeEl) {
   if (!codeEl || !window.hljs) return;
   delete codeEl.dataset.highlighted;
   hljs.highlightElement(codeEl);
+}
+function buildSampleSection(n) {
+  if (n.sample_error) return `<p class="node-empty-note">${esc(n.sample_error)}</p>`;
+  if (!n.sample_columns) return `<p class="node-empty-note">No sample data available.</p>`;
+  if (!n.sample_rows.length) return `<p class="node-empty-note">Table has no rows.</p>`;
+  const head = n.sample_columns.map(c => `<th>${esc(c)}</th>`).join('');
+  const rows = n.sample_rows.map(row =>
+    `<tr>${row.map(v => `<td>${v === null ? '<span class="node-empty-note">null</span>' : esc(v)}</td>`).join('')}</tr>`
+  ).join('');
+  return `<div class="sample-wrap"><table class="sample"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 // ---------------- overview panel ----------------
@@ -950,6 +1015,7 @@ function showDetail(id, p, nodeId) {
       <div class="detail-tab active" data-tab="sql">SQL</div>
       <div class="detail-tab" data-tab="info">Info</div>
       <div class="detail-tab" data-tab="lineage">Lineage</div>
+      <div class="detail-tab" data-tab="sample">Sample</div>
     </div>
     <div class="detail-section active" data-tab="sql">${sqlSection}</div>
     <div class="detail-section" data-tab="info">
@@ -967,6 +1033,7 @@ function showDetail(id, p, nodeId) {
         <h4>Used by (${n.children.length})</h4>${childrenHtml}
       </div>
     </div>
+    <div class="detail-section" data-tab="sample">${buildSampleSection(n)}</div>
   `;
 
   if (hasSql) highlightSqlBlock(document.getElementById('sql-code-' + id));
