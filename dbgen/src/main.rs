@@ -12,14 +12,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-mod p01_ecommerce;
-mod p02_fraud;
-mod p03_iot;
-mod p04_hr;
-mod p05_logistics;
-mod p06_saas;
-mod p07_healthcare;
-mod p08_adtech;
+mod p01_iot;
+mod p02_adtech;
+mod p03_ecommerce;
+mod p04_fraud;
+mod p05_hr;
+mod p06_logistics;
+mod p07_saas;
+mod p08_healthcare;
 mod p09_gaming;
 mod p10_energy;
 
@@ -205,14 +205,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("couldn't build pool");
 
     match cli.project {
-        1 => p01_ecommerce::run(cli.sf, &mut pool)?,
-        2 => p02_fraud::run(cli.sf, &mut pool)?,
-        3 => p03_iot::run(cli.sf, &mut pool)?,
-        4 => p04_hr::run(cli.sf, &mut pool)?,
-        5 => p05_logistics::run(cli.sf, &mut pool)?,
-        6 => p06_saas::run(cli.sf, &mut pool)?,
-        7 => p07_healthcare::run(cli.sf, &mut pool)?,
-        8 => p08_adtech::run(cli.sf, &mut pool)?,
+        1 => p01_iot::run(cli.sf, &mut pool)?,
+        2 => p02_adtech::run(cli.sf, &mut pool)?,
+        3 => p03_ecommerce::run(cli.sf, &mut pool)?,
+        4 => p04_fraud::run(cli.sf, &mut pool)?,
+        5 => p05_hr::run(cli.sf, &mut pool)?,
+        6 => p06_logistics::run(cli.sf, &mut pool)?,
+        7 => p07_saas::run(cli.sf, &mut pool)?,
+        8 => p08_healthcare::run(cli.sf, &mut pool)?,
         9 => p09_gaming::run(cli.sf, &mut pool)?,
         10 => p10_energy::run(cli.sf, &mut pool)?,
         _ => {

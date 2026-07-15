@@ -1,9 +1,0 @@
-version: 2
-sources:
-  - name: grid
-    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
-    tables:
-      - name: substations
-      - name: meters
-      - name: consumption_readings
-      - name: outage_events

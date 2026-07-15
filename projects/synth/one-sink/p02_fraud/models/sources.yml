@@ -1,9 +1,0 @@
-version: 2
-sources:
-  - name: src
-    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
-    tables:
-      - name: accounts
-      - name: merchants
-      - name: transactions
-      - name: alerts

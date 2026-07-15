@@ -1,9 +1,0 @@
-version: 2
-sources:
-  - name: iot
-    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
-    tables:
-      - name: sites
-      - name: devices
-      - name: readings
-      - name: maintenance_logs
