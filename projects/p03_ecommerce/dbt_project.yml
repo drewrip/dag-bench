@@ -13,6 +13,8 @@ models:
       +materialized: view
     layer_3:
       +materialized: view
+      customer_ltv:
+        +materialized: table
     layer_4:
       +materialized: view
     layer_5:

@@ -13,6 +13,8 @@ models:
       +materialized: view
     layer_3:
       +materialized: view
+      account_risk_profile:
+        +materialized: table
     layer_4:
       +materialized: view
     layer_5:

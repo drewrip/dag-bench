@@ -9,6 +9,8 @@ models:
   p08_healthcare:
     layer_1:
       +materialized: view
+      stg_claims:
+        +materialized: table
     layer_2:
       +materialized: view
     layer_3:

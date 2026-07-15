@@ -9,6 +9,8 @@ models:
   p10_energy:
     layer_1:
       +materialized: view
+      stg_readings:
+        +materialized: table
     layer_2:
       +materialized: view
     layer_3:
