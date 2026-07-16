@@ -1,3 +1,4 @@
+use crate::common::{weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -7,11 +8,13 @@ use rand::rngs::SmallRng;
 use rand_distr::{Distribution, Normal};
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 220.0;
-    let ns = (30.0 * sf_adj).max(3.0) as usize;
-    let nd = (150.0 * sf_adj).max(10.0) as usize;
-    let nr = (200000.0 * sf_adj).max(100.0) as usize;
-    let nml = (500.0 * sf_adj).max(5.0) as usize;
+    let ns = (6642.0 * sf).max(3.0) as usize;
+    // SPEC.md §2.1: devices ~= 5 per site on average, so device count scales with site count
+    // rather than an unrelated flat constant.
+    let nd = ((ns as f64) * 5.0).max(10.0) as usize;
+    // SPEC.md §2.1: readings/maintenance_logs are fan-out off of devices, not independent bases.
+    let nr = ((nd as f64) * 1300.0).max(100.0) as usize;
+    let nml = ((nd as f64) * 3.3).max(5.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -35,22 +38,50 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .unwrap()
         .and_hms_opt(0, 0, 0)
         .unwrap();
-    let regions = ["NA", "EU", "APAC", "LATAM"];
-    let dtypes = [
-        "temperature",
-        "humidity",
-        "pressure",
-        "multi",
-        "air_quality",
+
+    // SPEC.md §3.1 fixed vocabularies.
+    let regions = ["north_america", "europe", "apac", "latin_america", "middle_east_africa"];
+    let region_weights = [35.0, 25.0, 25.0, 10.0, 5.0];
+    let tz_by_region: [&[&str]; 5] = [
+        &["America/New_York", "America/Chicago", "America/Los_Angeles"],
+        &["Europe/London", "Europe/Berlin", "Europe/Paris"],
+        &["Asia/Tokyo", "Asia/Singapore", "Asia/Kolkata"],
+        &["America/Sao_Paulo"],
+        &["Africa/Johannesburg", "Asia/Dubai"],
     ];
+
+    let device_types = [
+        "temperature_sensor",
+        "humidity_sensor",
+        "pressure_sensor",
+        "multi_sensor",
+        "gateway",
+    ];
+    let device_type_weights = [30.0, 20.0, 15.0, 25.0, 10.0];
+    let models_by_type: [&[&str]; 5] = [
+        &["TS-100", "TS-200"],
+        &["HM-100", "HM-220"],
+        &["PR-050", "PR-090"],
+        &["MX-300", "MX-500", "MX-700"],
+        &["GW-500", "GW-900"],
+    ];
+    let firmware_major_weights = [5.0, 15.0, 40.0, 40.0]; // majors 1..4
+
     let actions = [
-        "calibrate",
-        "replace_battery",
+        "routine_inspection",
+        "battery_replacement",
         "firmware_update",
         "repair",
-        "inspect",
+        "recalibration",
+        "decommission",
     ];
-    let tz_list = ["UTC", "US/Eastern", "Europe/Berlin", "Asia/Tokyo"];
+    let action_weights = [35.0, 25.0, 20.0, 12.0, 5.0, 3.0];
+
+    // SPEC.md §1.3a: devices skew toward a few larger/busier sites; readings/maintenance
+    // skew toward a few always-on devices. Weights are precomputed once and shared
+    // read-only across the parallel per-row closures.
+    let site_popularity = PopularityWeights::new(ns, 0.9, 11);
+    let device_popularity = PopularityWeights::new(nd, 0.9, 22);
 
     let pb = ProgressBar::new(4);
     pb.set_style(
@@ -63,30 +94,31 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "sites", ns, &pb, "Generating sites...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Site-{}", i);
-        let region = regions[rng.gen_range(0..regions.len())];
+        let region_idx = {
+            // weighted_choice over indices so we can look up the matching tz pool
+            let target = weighted_choice(&mut rng, &(0..regions.len()).collect::<Vec<_>>(), &region_weights);
+            target
+        };
+        let region = regions[region_idx];
         let lat = ((rng.gen_range(-60.0..60.0) * 10000.0) as f64).round() / 10000.0;
         let lon = ((rng.gen_range(-180.0..180.0) * 10000.0) as f64).round() / 10000.0;
-        let tz = tz_list[rng.gen_range(0..tz_list.len())];
+        let tz_pool = tz_by_region[region_idx];
+        let tz = tz_pool[rng.gen_range(0..tz_pool.len())];
         (i as i32, name, region, lat, lon, tz)
     })?;
 
     // 2. Devices
     crate::generate_table_parallel(con, "devices", nd, &pb, "Generating devices...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let site_id = rng.gen_range(1..=ns) as i32;
-        let dtype = dtypes[rng.gen_range(0..dtypes.len())];
-        let model = format!(
-            "Model-{}{}",
-            ['A', 'B', 'C'][rng.gen_range(0..3)],
-            rng.gen_range(1..6)
-        );
-        let firmware = format!(
-            "v{}.{}.{}",
-            rng.gen_range(1..5),
-            rng.gen_range(0..10),
-            rng.gen_range(0..100)
-        );
-        let installed_date = (base_ts - Duration::days(rng.gen_range(0..731))).date();
+        let site_id = site_popularity.sample(&mut rng) as i32;
+        let dtype_idx = weighted_choice(&mut rng, &(0..device_types.len()).collect::<Vec<_>>(), &device_type_weights);
+        let dtype = device_types[dtype_idx];
+        let model_pool = models_by_type[dtype_idx];
+        let model = model_pool[rng.gen_range(0..model_pool.len())];
+        let major = weighted_choice(&mut rng, &[1, 2, 3, 4], &firmware_major_weights);
+        let firmware = format!("v{}.{}.{}", major, rng.gen_range(0..10), rng.gen_range(0..100));
+        // SPEC.md §2.1: installed_date predates base_date by 0-3 years (founding offset).
+        let installed_date = (base_ts - Duration::days(rng.gen_range(0..1096))).date();
         let is_active = rng.gen_bool(0.95);
         (
             i as i32,
@@ -102,16 +134,32 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     // 3. Readings
     crate::generate_table_parallel(con, "readings", nr, &pb, "Generating readings...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let device_id = rng.gen_range(1..=nd) as i32;
-        let ts = base_ts + Duration::seconds(rng.gen_range(0..180 * 86400));
+        // Every device gets a guaranteed reading among the first `nd` rows (stratified
+        // minimum, SPEC.md §2.1); the rest are popularity-weighted across devices.
+        let device_id = if i <= nd {
+            i as i32
+        } else {
+            device_popularity.sample(&mut rng) as i32
+        };
+        let seconds_since_base = rng.gen_range(0..180 * 86400);
+        let ts = base_ts + Duration::seconds(seconds_since_base);
         let temp_dist = Normal::new(20.0, 8.0).unwrap();
-        let temp = ((temp_dist.sample(&mut rng) * 100.0) as f64).round() / 100.0;
+        let temp: f64 = temp_dist.sample(&mut rng);
+        let temp = temp.clamp(-20.0, 60.0);
+        let temp = ((temp * 100.0) as f64).round() / 100.0;
         let humid = ((rng.gen_range(20.0..95.0) * 100.0) as f64).round() / 100.0;
         let press_dist = Normal::new(1013.0, 15.0).unwrap();
         let press = ((press_dist.sample(&mut rng) * 100.0) as f64).round() / 100.0;
-        let battery = rng.gen_range(5..=101) as i8;
+        // Battery decays across a ~30-day maintenance cycle and resets, rather than being
+        // drawn independently (SPEC.md §2.1), so battery level correlates with maintenance.
+        let cycle_days = 30;
+        let day_in_cycle = (seconds_since_base / 86400) % cycle_days;
+        let battery = (100.0 - (day_in_cycle as f64 / cycle_days as f64) * 90.0)
+            .clamp(5.0, 100.0) as i8;
         let rssi = rng.gen_range(-90..-29) as i16;
-        let error = rng.gen_bool(0.02);
+        // Error rate correlates with low battery (SPEC.md §2.1): base 1.5%, ~3x when low.
+        let error_rate = if battery < 15 { 0.045 } else { 0.015 };
+        let error = rng.gen_bool(error_rate);
         (
             i as i64, device_id, ts, temp, humid, press, battery, rssi, error,
         )
@@ -126,14 +174,12 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating maintenance logs...",
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
-            let device_id = rng.gen_range(1..=nd) as i32;
+            let device_id = device_popularity.sample(&mut rng) as i32;
             let ts = base_ts + Duration::hours(rng.gen_range(0..4321));
-            let action = actions[rng.gen_range(0..actions.len())];
+            let action_idx = weighted_choice(&mut rng, &(0..actions.len()).collect::<Vec<_>>(), &action_weights);
+            let action = actions[action_idx];
             let tech = format!("Tech-{}", rng.gen_range(1..21));
-            let note = format!(
-                "Performed {} on device",
-                actions[rng.gen_range(0..actions.len())]
-            );
+            let note = format!("Performed {} on device", action);
             (i as i32, device_id, ts, action, tech, note)
         },
     )?;

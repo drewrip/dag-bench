@@ -1,16 +1,22 @@
+use crate::common::{lognormal_clamped, round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
+use rand_distr::{Distribution, Exp, Gamma};
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 84.0;
-    let nca = (200.0 * sf_adj).max(10.0) as usize;
-    let nimp = (500000.0 * sf_adj).max(100.0) as usize;
-    let ncl = (15000.0 * sf_adj).max(20.0) as usize;
-    let ncv = (3000.0 * sf_adj).max(5.0) as usize;
+    let nca = (17608.0 * sf).max(10.0) as usize;
+    // SPEC.md §2.2: impressions/clicks/conversions are fan-out ratios (avg per campaign,
+    // CTR, CVR), not independent base constants.
+    let avg_impressions_per_campaign = 2500.0;
+    let ctr = 0.03;
+    let cvr = 0.175;
+    let nimp = ((nca as f64) * avg_impressions_per_campaign).max(100.0) as usize;
+    let ncl = ((nimp as f64) * ctr).max(20.0) as usize;
+    let ncv = ((ncl as f64) * cvr).max(5.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -33,19 +39,24 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let base_date = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();
-    let channels = ["search", "social", "display", "video", "email", "affiliate"];
-    let objectives = ["awareness", "traffic", "leads", "sales", "retention"];
-    let devices = ["desktop", "mobile", "tablet", "ctv"];
-    let geos = ["US", "UK", "CA", "DE", "FR", "AU", "JP", "BR"];
-    let placements = [
-        "header",
-        "sidebar",
-        "feed",
-        "pre-roll",
-        "interstitial",
-        "sponsored",
+
+    // SPEC.md §3.2 fixed vocabularies.
+    let channels = ["search", "social", "display", "video", "native", "email"];
+    let channel_weights = [30.0, 25.0, 20.0, 12.0, 8.0, 5.0];
+    let objectives = ["conversion", "awareness", "consideration", "retargeting"];
+    let objective_weights = [35.0, 25.0, 20.0, 20.0];
+    let devices = ["mobile", "desktop", "tablet", "ctv"];
+    let device_weights = [55.0, 30.0, 10.0, 5.0];
+    let geos = [
+        "US", "UK", "CA", "DE", "AU", "FR", "BR", "IN", "JP", "MX", "IT", "ES", "NL", "SE", "KR",
     ];
-    let ctypes = ["purchase", "lead", "signup", "download", "call"];
+    let geo_weights = [
+        40.0, 10.0, 8.0, 7.0, 6.0, 4.0, 4.0, 4.0, 3.0, 3.0, 2.0, 2.0, 2.0, 2.5, 2.5,
+    ];
+    let placements = ["banner", "native", "video", "interstitial"];
+    let placement_weights = [35.0, 25.0, 25.0, 15.0];
+    let ctypes = ["purchase", "lead", "signup", "app_install", "subscription"];
+    let ctype_weights = [45.0, 20.0, 15.0, 12.0, 8.0];
 
     let pb = ProgressBar::new(4);
     pb.set_style(
@@ -59,16 +70,26 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Campaign {}", i);
         let advertiser = format!("Brand {}", rng.gen_range(1..21));
-        let channel = channels[rng.gen_range(0..channels.len())];
-        let objective = objectives[rng.gen_range(0..objectives.len())];
+        let channel_idx = weighted_choice(&mut rng, &(0..channels.len()).collect::<Vec<_>>(), &channel_weights);
+        let channel = channels[channel_idx];
+        let objective = weighted_choice(&mut rng, &objectives, &objective_weights);
         let start = base_date + Duration::days(rng.gen_range(0..201));
         let end = base_date + Duration::days(rng.gen_range(200..366));
-        let budget = ((rng.gen_range(5000.0..500000.0) * 100.0) as f64).round() / 100.0;
-        let cpm = ((rng.gen_range(0.5..15.0) * 100.0) as f64).round() / 100.0;
+        let budget = round_to(lognormal_clamped(&mut rng, 60000.0, 0.8, 5000.0, 2_000_000.0), 2);
+        let cpm = round_to(rng.gen_range(0.5..15.0), 2);
         (
             i as i32, name, advertiser, channel, objective, start, end, budget, cpm,
         )
     })?;
+
+    // Materialize each campaign's budget/cpm so impression volume and cost can correlate
+    // with them (SPEC.md §2.2), instead of drawing impression fields independently.
+    let mut stmt = con.prepare("SELECT budget, cpm_target FROM campaigns ORDER BY campaign_id")?;
+    let campaign_facts: Vec<(f64, f64)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let budgets: Vec<f64> = campaign_facts.iter().map(|(b, _)| *b).collect();
+    let campaign_popularity = PopularityWeights::from_factors(&budgets);
 
     // 2. Impressions
     crate::generate_table_parallel(
@@ -79,16 +100,19 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating impressions...",
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
-            let campaign_id = rng.gen_range(1..=nca) as i32;
-            let user_id = rng.gen_range(1..=nimp as i64 * 100);
+            let campaign_id = campaign_popularity.sample(&mut rng);
+            let cpm_target = campaign_facts[campaign_id - 1].1;
+            let user_id = rng.gen_range(1..=nimp as i64 * 3);
             let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-            let device = devices[rng.gen_range(0..devices.len())];
-            let geo = geos[rng.gen_range(0..geos.len())];
-            let placement = placements[rng.gen_range(0..placements.len())];
-            let cost = ((rng.gen_range(0.0001..0.05) * 1000000.0) as f64).round() / 1000000.0;
+            let device = weighted_choice(&mut rng, &devices, &device_weights);
+            let geo_idx = weighted_choice(&mut rng, &(0..geos.len()).collect::<Vec<_>>(), &geo_weights);
+            let geo = geos[geo_idx];
+            let placement = weighted_choice(&mut rng, &placements, &placement_weights);
+            // Cost tracks the owning campaign's target CPM (SPEC.md §2.2), not independently.
+            let cost = round_to((cpm_target / 1000.0) * rng.gen_range(0.7..1.3), 6);
             (
                 i as i64,
-                campaign_id,
+                campaign_id as i32,
                 user_id,
                 ts,
                 device,
@@ -99,7 +123,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Get samples for clicks
+    // Get samples for clicks, weighted toward higher-traffic campaigns via SQL sampling.
     let mut stmt = con.prepare(&format!(
         "SELECT imp_id, campaign_id, user_id, imp_ts, device FROM impressions USING SAMPLE {} ROWS",
         ncl
@@ -121,7 +145,11 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let ref_idx = rng.gen_range(0..imp_refs.len());
         let (imp_id, camp_id, user_id, imp_ts, device) = &imp_refs[ref_idx];
-        let click_ts = *imp_ts + Duration::seconds(rng.gen_range(1..3601));
+        // Most clicks happen fast after the impression; a long tail happens later
+        // (SPEC.md §2.2: Exponential rather than flat uniform), clipped to a few hours.
+        let click_delay: f64 = Exp::new(1.0 / 90.0).unwrap().sample(&mut rng);
+        let click_delay = click_delay.min(3600.0 * 4.0);
+        let click_ts = *imp_ts + Duration::seconds(click_delay.max(1.0) as i64);
         let url = format!("https://brand.com/lp/{}", rng.gen_range(1..21));
         (
             i as i64,
@@ -136,11 +164,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // Get samples for conversions
     let mut stmt = con.prepare(&format!(
-        "SELECT click_id, campaign_id, user_id FROM clicks USING SAMPLE {} ROWS",
+        "SELECT click_id, campaign_id, user_id, click_ts FROM clicks USING SAMPLE {} ROWS",
         ncv
     ))?;
-    let click_refs: Vec<(i64, i32, i64)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    let click_refs: Vec<(i64, i32, i64, NaiveDateTime)> = stmt
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
     // 4. Conversions
@@ -153,10 +183,17 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
             let ref_idx = rng.gen_range(0..click_refs.len());
-            let (click_id, camp_id, user_id) = click_refs[ref_idx];
-            let conv_ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-            let ctype = ctypes[rng.gen_range(0..ctypes.len())];
-            let rev = ((rng.gen_range(0.0..500.0) * 100.0) as f64).round() / 100.0;
+            let (click_id, camp_id, user_id, click_ts) = click_refs[ref_idx];
+            // Conversions can lag by hours to days, unlike near-instant clicks (SPEC.md §2.2).
+            let lag_days = Gamma::new(2.0, 1.0).unwrap().sample(&mut rng);
+            let conv_ts = click_ts + Duration::seconds((lag_days * 86400.0) as i64);
+            let ctype = weighted_choice(&mut rng, &ctypes, &ctype_weights);
+            // Revenue correlates with the campaign's target CPM tier (SPEC.md §2.2 / §1.7).
+            let cpm_target = campaign_facts[(camp_id as usize) - 1].1;
+            let rev = round_to(
+                lognormal_clamped(&mut rng, 15.0 + cpm_target * 3.0, 0.6, 1.0, 5000.0),
+                2,
+            );
             (i as i32, click_id, camp_id, user_id, conv_ts, ctype, rev)
         },
     )?;

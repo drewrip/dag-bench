@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
+mod common;
 mod p01_iot;
 mod p02_adtech;
 mod p03_ecommerce;

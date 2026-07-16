@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::common::{round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate};
 use duckdb::arrow::array::{
     BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, Int8Array, StringArray,
@@ -13,12 +14,14 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 800.0;
-    let nac = (500.0 * sf_adj).max(10.0) as usize;
-    let nsb = (700.0 * sf_adj).max(10.0) as usize;
-    let nev = (50000.0 * sf_adj).max(100.0) as usize;
-    let nfu = (5000.0 * sf_adj).max(20.0) as usize;
-    let nst = (2000.0 * sf_adj).max(10.0) as usize;
+    let nac = (343952.0 * sf).max(10.0) as usize;
+    // SPEC.md §2.7: subscriptions/events/feature_usage are fan-out ratios off accounts.
+    let nsb = ((nac as f64) * 1.4).max(10.0) as usize;
+    let avg_events_per_account = 100.0;
+    let avg_feature_usage_per_account = 10.0;
+    let nev = ((nac as f64) * avg_events_per_account).max(100.0) as usize;
+    let nfu = ((nac as f64) * avg_feature_usage_per_account).max(20.0) as usize;
+    let nst = ((nac as f64) * 4.0).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -44,42 +47,31 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let base_date = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();
+
+    // SPEC.md §3.7 fixed vocabularies.
     let industries = [
-        "fintech",
-        "healthtech",
-        "edtech",
-        "ecommerce",
-        "manufacturing",
-        "media",
+        "Software/SaaS", "Financial Services", "Retail/E-commerce", "Healthcare",
+        "Manufacturing", "Media/Entertainment", "Education", "Government/Public Sector", "Other",
     ];
-    let plans = ["starter", "growth", "enterprise", "enterprise_plus"];
-    let etypes = [
-        "login",
-        "page_view",
-        "feature_click",
-        "export",
-        "api_call",
-        "report_view",
-    ];
+    let industry_weights = [20.0, 15.0, 12.0, 12.0, 10.0, 10.0, 10.0, 6.0, 5.0];
+    let countries = ["US", "UK", "CA", "DE", "AU", "FR", "IN", "BR", "JP"];
+    let country_weights = [40.0, 12.0, 10.0, 10.0, 8.0, 6.0, 6.0, 4.0, 4.0];
+    let plans = ["starter", "professional", "business", "enterprise"];
+    let plan_weights = [35.0, 35.0, 20.0, 10.0];
+    let plan_per_seat_rate = [20.0, 50.0, 90.0, 150.0];
+    let etypes = ["page_view", "feature_used", "login", "api_call", "export", "report_generated", "invite_sent"];
+    let etype_weights = [30.0, 25.0, 15.0, 12.0, 8.0, 6.0, 4.0];
+    let platforms = ["web", "api", "ios", "android"];
+    let platform_weights = [65.0, 20.0, 8.0, 7.0];
     let features = [
-        "dashboard",
-        "reports",
-        "api",
-        "integrations",
-        "automations",
-        "analytics",
-        "exports",
+        "dashboards", "reporting", "alerts", "integrations", "api_access", "sso", "automation",
+        "exports", "search", "collaboration", "audit_logs", "custom_fields", "mobile_app",
     ];
-    let priorities = ["low", "medium", "high", "critical"];
-    let ticket_cats = [
-        "billing",
-        "technical",
-        "feature_request",
-        "onboarding",
-        "other",
-    ];
-    let countries = ["US", "UK", "DE", "FR", "CA", "AU"];
-    let platforms = ["web", "mobile", "api"];
+    let feature_weights = [22.0, 18.0, 15.0, 8.0, 7.0, 6.0, 6.0, 5.0, 4.0, 3.0, 2.0, 2.0, 2.0];
+    let priorities = ["low", "medium", "high", "urgent"];
+    let priority_weights = [40.0, 35.0, 18.0, 7.0];
+    let ticket_cats = ["technical", "billing", "bug", "onboarding", "feature_request", "account_access"];
+    let ticket_cat_weights = [30.0, 18.0, 18.0, 15.0, 12.0, 7.0];
 
     let pb = ProgressBar::new(5);
     pb.set_style(
@@ -100,13 +92,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
             let name: Vec<String> = (start..end).map(|i| format!("Account {}", i)).collect();
             let industry: Vec<&str> = (start..end)
-                .map(|_| industries[rng.gen_range(0..industries.len())])
+                .map(|_| weighted_choice(&mut rng, &industries, &industry_weights))
                 .collect();
             let country: Vec<&str> = (start..end)
-                .map(|_| countries[rng.gen_range(0..countries.len())])
+                .map(|_| weighted_choice(&mut rng, &countries, &country_weights))
                 .collect();
             let arr: Vec<f64> = (start..end)
-                .map(|_| ((rng.gen_range(5000.0..500000.0) * 100.0) as f64).round() / 100.0)
+                .map(|_| round_to(rng.gen_range(5000.0..500000.0), 2))
                 .collect();
             let created: Vec<i32> = (start..end)
                 .map(|_| {
@@ -128,7 +120,25 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 2. Subscriptions
+    // Materialize arr/health_score so downstream tables can correlate with them (SPEC.md
+    // §2.7) instead of drawing account activity independently.
+    let mut stmt = con.prepare("SELECT arr, health_score FROM accounts ORDER BY account_id")?;
+    let account_facts: Vec<(f64, i8)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let arr_health_factor: Vec<f64> = account_facts
+        .iter()
+        .map(|(arr, health)| (*arr).sqrt() * (*health as f64 / 100.0).max(0.05))
+        .collect();
+    let ticket_factor: Vec<f64> = account_facts
+        .iter()
+        .map(|(_, health)| (100.0 - *health as f64).max(1.0))
+        .collect();
+    let account_engagement_popularity = PopularityWeights::from_factors(&arr_health_factor);
+    let account_ticket_popularity = PopularityWeights::from_factors(&ticket_factor);
+
+    // 2. Subscriptions: mrr is a deterministic function of plan/seats plus small noise
+    // (SPEC.md §1.7/§2.7), not independent.
     crate::generate_table(
         pool,
         "subscriptions",
@@ -141,12 +151,20 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let acc_id: Vec<i32> = (start..end)
                 .map(|_| rng.gen_range(1..=nac) as i32)
                 .collect();
-            let plan: Vec<&str> = (start..end)
-                .map(|_| plans[rng.gen_range(0..plans.len())])
+            let plan_idx: Vec<usize> = (start..end)
+                .map(|_| weighted_choice(&mut rng, &(0..plans.len()).collect::<Vec<_>>(), &plan_weights))
                 .collect();
+            let plan: Vec<&str> = plan_idx.iter().map(|&p| plans[p]).collect();
             let seats: Vec<i32> = (start..end).map(|_| rng.gen_range(1..201)).collect();
-            let mrr: Vec<f64> = (start..end)
-                .map(|_| ((rng.gen_range(99.0..9999.0) * 100.0) as f64).round() / 100.0)
+            let mrr: Vec<f64> = plan_idx
+                .iter()
+                .zip(seats.iter())
+                .map(|(&p, &s)| {
+                    round_to(
+                        (s as f64) * plan_per_seat_rate[p] * rng.gen_range(0.9..1.1),
+                        2,
+                    )
+                })
                 .collect();
             let start_date: Vec<i32> = (start..end)
                 .map(|_| {
@@ -171,12 +189,14 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
                 Arc::new(Date32Array::from(start_date)),
                 Arc::new(Date32Array::from(end_date.clone())),
                 Arc::new(BooleanArray::from(active)),
+                // renewal_date is a denormalized copy of end_date, not an independently
+                // random field (SPEC.md §2.7).
                 Arc::new(Date32Array::from(end_date)),
             ]
         },
     )?;
 
-    // 3. Events
+    // 3. Events (popularity-weighted by account arr/health, SPEC.md §2.7 [CHANGE from dbgen])
     crate::generate_table(
         pool,
         "events",
@@ -187,13 +207,18 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let mut rng = SmallRng::seed_from_u64(start as u64);
             let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
             let acc_id: Vec<i32> = (start..end)
-                .map(|_| rng.gen_range(1..=nac) as i32)
+                .map(|_| account_engagement_popularity.sample(&mut rng) as i32)
                 .collect();
-            let user_id: Vec<i32> = (start..end)
-                .map(|_| rng.gen_range(1..=nac * 5) as i32)
+            let user_id: Vec<i32> = acc_id
+                .iter()
+                .map(|&a| {
+                    // roughly one synthetic user pool per account, sized off seat count
+                    let pool_size = 20;
+                    (a - 1) * pool_size + rng.gen_range(1..=pool_size)
+                })
                 .collect();
             let etype: Vec<&str> = (start..end)
-                .map(|_| etypes[rng.gen_range(0..etypes.len())])
+                .map(|_| weighted_choice(&mut rng, &etypes, &etype_weights))
                 .collect();
             let ts: Vec<i64> = (start..end)
                 .map(|_| {
@@ -204,11 +229,12 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
                     .unwrap()
                 })
                 .collect();
-            let session: Vec<String> = (start..end)
-                .map(|_| format!("sess_{}", rng.gen_range(1..nac * 20)))
+            let session: Vec<String> = acc_id
+                .iter()
+                .map(|&a| format!("sess_{}_{}", a, rng.gen_range(1..500)))
                 .collect();
             let platform: Vec<&str> = (start..end)
-                .map(|_| platforms[rng.gen_range(0..platforms.len())])
+                .map(|_| weighted_choice(&mut rng, &platforms, &platform_weights))
                 .collect();
             vec![
                 Arc::new(Int64Array::from(i)),
@@ -222,7 +248,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 4. Feature Usage
+    // 4. Feature Usage (popularity-weighted like events, SPEC.md §2.7)
     crate::generate_table(
         pool,
         "feature_usage",
@@ -233,10 +259,10 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let mut rng = SmallRng::seed_from_u64(start as u64);
             let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
             let acc_id: Vec<i32> = (start..end)
-                .map(|_| rng.gen_range(1..=nac) as i32)
+                .map(|_| account_engagement_popularity.sample(&mut rng) as i32)
                 .collect();
             let feature: Vec<&str> = (start..end)
-                .map(|_| features[rng.gen_range(0..features.len())])
+                .map(|_| weighted_choice(&mut rng, &features, &feature_weights))
                 .collect();
             let date: Vec<i32> = (start..end)
                 .map(|_| {
@@ -254,7 +280,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 5. Support Tickets
+    // 5. Support Tickets: volume correlates inversely with health_score (SPEC.md §2.7
+    // [CHANGE from dbgen]) rather than being independent of it.
     crate::generate_table(
         pool,
         "support_tickets",
@@ -265,7 +292,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let mut rng = SmallRng::seed_from_u64(start as u64);
             let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
             let acc_id: Vec<i32> = (start..end)
-                .map(|_| rng.gen_range(1..=nac) as i32)
+                .map(|_| account_ticket_popularity.sample(&mut rng) as i32)
                 .collect();
             let created: Vec<i64> = (start..end)
                 .map(|_| {
@@ -292,10 +319,10 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
                 })
                 .collect();
             let priority: Vec<&str> = (start..end)
-                .map(|_| priorities[rng.gen_range(0..priorities.len())])
+                .map(|_| weighted_choice(&mut rng, &priorities, &priority_weights))
                 .collect();
             let cat: Vec<&str> = (start..end)
-                .map(|_| ticket_cats[rng.gen_range(0..ticket_cats.len())])
+                .map(|_| weighted_choice(&mut rng, &ticket_cats, &ticket_cat_weights))
                 .collect();
             let csat: Vec<Option<i8>> = (start..end)
                 .map(|_| {

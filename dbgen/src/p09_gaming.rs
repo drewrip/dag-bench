@@ -1,3 +1,4 @@
+use crate::common::{pareto_weight_vec, round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -6,12 +7,14 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 400.0;
-    let npl = (2000.0 * sf_adj).max(20.0) as usize;
-    let nss = (10000.0 * sf_adj).max(50.0) as usize;
-    let nev = (80000.0 * sf_adj).max(200.0) as usize;
-    let npu = (3000.0 * sf_adj).max(10.0) as usize;
-    let nlv = (50.0 * sf_adj).max(10.0) as usize;
+    let npl = (762872.0 * sf).max(20.0) as usize;
+    let nlv = (19074.0 * sf).max(10.0) as usize;
+    // SPEC.md §2.9: sessions/events/purchases are fan-out ratios off players/sessions.
+    let avg_sessions_per_player = 5.0;
+    let avg_events_per_session = 8.0;
+    let avg_purchases_per_paid_player = 4.0;
+    let nss = ((npl as f64) * avg_sessions_per_player).max(50.0) as usize;
+    let nev = ((nss as f64) * avg_events_per_session).max(200.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -40,36 +43,27 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .unwrap()
         .and_hms_opt(0, 0, 0)
         .unwrap();
-    let countries = ["US", "CN", "DE", "JP", "BR", "KR", "RU", "GB", "CA", "FR"];
-    let platforms = [
-        "PC",
-        "Mobile_iOS",
-        "Mobile_Android",
-        "Console_PS",
-        "Console_Xbox",
-    ];
-    let age_groups = ["<13", "13-17", "18-24", "25-34", "35-44", "45+"];
-    let worlds = ["Forest", "Desert", "Ocean", "Space", "Underground", "Sky"];
-    let difficulties = ["easy", "normal", "hard", "nightmare"];
+
+    // SPEC.md §3.9 fixed vocabularies.
+    let countries = ["US", "BR", "IN", "UK", "DE", "JP", "KR", "FR", "CA", "MX", "AU", "RU", "IT"];
+    let country_weights = [25.0, 10.0, 10.0, 8.0, 6.0, 6.0, 6.0, 6.0, 6.0, 5.0, 4.0, 4.0, 4.0];
+    let platforms = ["android", "ios", "steam", "playstation", "xbox", "nintendo_switch"];
+    let platform_weights = [50.0, 35.0, 10.0, 3.0, 1.5, 0.5];
+    let age_groups = ["18_24", "25_34", "13_17", "35_44", "45_plus", "under_13"];
+    let age_group_weights = [25.0, 28.0, 15.0, 18.0, 10.0, 4.0];
+    let worlds = ["Forest", "Desert", "Ice Caverns", "Volcano", "Sky Kingdom", "Void"];
+    let difficulties = ["easy", "medium", "hard", "expert"];
+    let versions = ["2.4.0", "2.5.0", "2.6.1", "2.7.0"];
+    let version_weights = [10.0, 20.0, 30.0, 40.0];
     let etypes = [
-        "level_start",
-        "level_complete",
-        "level_fail",
-        "achievement",
-        "item_pickup",
-        "death",
-        "checkpoint",
-        "boss_kill",
+        "level_start", "level_complete", "item_collected", "level_fail", "tutorial_step",
+        "achievement_unlocked", "purchase_prompt_shown", "session_start", "session_end",
     ];
-    let itypes = [
-        "coin_pack",
-        "skin",
-        "level_skip",
-        "power_up",
-        "subscription",
-        "loot_box",
-    ];
-    let currencies = ["USD", "EUR", "GBP", "JPY", "BRL"];
+    let etype_weights = [25.0, 18.0, 18.0, 15.0, 8.0, 7.0, 5.0, 2.0, 2.0];
+    let itypes = ["coin_pack", "skin", "booster", "battle_pass", "character_unlock", "remove_ads"];
+    let itype_weights = [35.0, 20.0, 18.0, 15.0, 8.0, 4.0];
+    let currencies = ["USD", "EUR", "GBP", "BRL", "JPY", "other"];
+    let currency_weights = [70.0, 12.0, 6.0, 5.0, 4.0, 3.0];
 
     let pb = ProgressBar::new(5);
     pb.set_style(
@@ -82,35 +76,54 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "players", npl, &pb, "Generating players...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let username = format!("Player_{}", i);
-        let country = countries[rng.gen_range(0..countries.len())];
-        let platform = platforms[rng.gen_range(0..platforms.len())];
+        let country = weighted_choice(&mut rng, &countries, &country_weights);
+        let platform = weighted_choice(&mut rng, &platforms, &platform_weights);
         let ts = base_ts + Duration::seconds(rng.gen_range(0..200 * 86400));
-        let age = age_groups[rng.gen_range(0..age_groups.len())];
+        let age = weighted_choice(&mut rng, &age_groups, &age_group_weights);
         let paid = rng.gen_bool(0.4);
         (i as i32, username, country, platform, ts, age, paid)
     })?;
 
-    // 2. Levels
+    // 2. Levels: contiguous blocks per world, difficulty trends harder with world index, and
+    // unlock_level references a strictly earlier level (SPEC.md §2.9).
+    let n_worlds = worlds.len();
     crate::generate_table_parallel(con, "levels", nlv, &pb, "Generating levels...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Level_{}", i);
-        let world = worlds[rng.gen_range(0..worlds.len())];
-        let diff = difficulties[rng.gen_range(0..difficulties.len())];
+        let world_idx = ((i - 1) * n_worlds / nlv.max(1)).min(n_worlds - 1);
+        let world = worlds[world_idx];
+        let base_diff = (world_idx * difficulties.len() / n_worlds).min(difficulties.len() - 1);
+        let diff_idx = (base_diff as i64 + rng.gen_range(-1..2)).clamp(0, difficulties.len() as i64 - 1) as usize;
+        let diff = difficulties[diff_idx];
         let par = rng.gen_range(60..601);
         let reward = rng.gen_range(10..501);
-        let unlock = (i as i32 - rng.gen_range(0..4)).max(1);
+        let unlock = (i as i32 - rng.gen_range(1..5)).max(1);
         (i as i32, name, world, diff, par, reward, unlock)
     })?;
 
-    // 3. Sessions
+    // Materialize is_paid_user so session/purchase volume can correlate with it (SPEC.md
+    // §2.9) instead of drawing player activity independently.
+    let mut stmt = con.prepare("SELECT is_paid_user FROM players ORDER BY player_id")?;
+    let player_paid: Vec<bool> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let base_player_weights = pareto_weight_vec(npl, 1.0, 181);
+    let session_factors: Vec<f64> = base_player_weights
+        .iter()
+        .zip(player_paid.iter())
+        .map(|(w, paid)| if *paid { w * 3.0 } else { *w })
+        .collect();
+    let session_popularity = PopularityWeights::from_factors(&session_factors);
+
+    // 3. Sessions (strongly popularity-weighted toward paid/engaged players, SPEC.md §2.9)
     crate::generate_table_parallel(con, "sessions", nss, &pb, "Generating sessions...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let player_id = rng.gen_range(1..=npl) as i32;
+        let player_id = session_popularity.sample(&mut rng) as i32;
         let start = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
         let dur = rng.gen_range(60..7201);
         let end = start + Duration::seconds(dur);
-        let platform = platforms[rng.gen_range(0..platforms.len())];
-        let version = format!("v{}.{}", rng.gen_range(1..4), rng.gen_range(0..10));
+        let platform = weighted_choice(&mut rng, &platforms, &platform_weights);
+        let version = weighted_choice(&mut rng, &versions, &version_weights);
         let attempts = rng.gen_range(0..11);
         let coins = rng.gen_range(0..1001);
         (
@@ -118,7 +131,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // Get samples for events
+    // Get samples for events; sessions are already popularity-distributed across players, so
+    // uniform sampling here still reflects player-level skew (SPEC.md §1.3b composition).
     let mut stmt = con.prepare(&format!(
         "SELECT session_id, player_id, session_start FROM sessions USING SAMPLE {} ROWS",
         nev
@@ -127,30 +141,52 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
 
-    // 4. Events
+    // Early levels get seen far more often than late ones (drop-off funnel, SPEC.md §2.9):
+    // an unshuffled, monotonically decaying weight over level_id (not a rank shuffle, since
+    // the funnel really does follow level order).
+    let level_funnel_weights: Vec<f64> = (1..=nlv).map(|k| (k as f64).powf(-0.7)).collect();
+    let level_funnel = PopularityWeights::from_factors(&level_funnel_weights);
+
+    // 4. Events (materialized-parent sampled from real sessions, SPEC.md §1.3b)
     crate::generate_table_parallel(con, "events", nev, &pb, "Generating events...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let ref_idx = rng.gen_range(0..session_refs.len());
         let (sess_id, player_id, sess_start) = session_refs[ref_idx];
-        let etype = etypes[rng.gen_range(0..etypes.len())];
+        let etype = weighted_choice(&mut rng, &etypes, &etype_weights);
         let ts = sess_start + Duration::seconds(rng.gen_range(0..7201));
-        let level_id = rng.gen_range(1..=nlv) as i32;
-        let value = ((rng.gen_range(0.0..1000.0) * 100.0) as f64).round() / 100.0;
+        let level_id = level_funnel.sample(&mut rng) as i32;
+        let value = round_to(rng.gen_range(0.0..1000.0), 2);
         let meta = format!("meta_{}", i);
         (
             i as i64, sess_id, player_id, etype, ts, level_id, value, meta,
         )
     })?;
 
+    // Purchases are restricted to is_paid_user=true players only (SPEC.md §2.9 [CHANGE from
+    // dbgen]) - free players never generate purchase rows.
+    let paid_player_ids: Vec<usize> = player_paid
+        .iter()
+        .enumerate()
+        .filter(|(_, paid)| **paid)
+        .map(|(idx, _)| idx + 1)
+        .collect();
+    let paid_player_factors: Vec<f64> = paid_player_ids
+        .iter()
+        .map(|&id| base_player_weights[id - 1])
+        .collect();
+    let paid_player_popularity = PopularityWeights::from_factors(&paid_player_factors);
+    let npu = ((paid_player_ids.len() as f64) * avg_purchases_per_paid_player).max(10.0) as usize;
+
     // 5. Purchases
     crate::generate_table_parallel(con, "purchases", npu, &pb, "Generating purchases...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let player_id = rng.gen_range(1..=npl) as i32;
+        let pool_idx = paid_player_popularity.sample(&mut rng) - 1;
+        let player_id = paid_player_ids[pool_idx] as i32;
         let ts = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
-        let itype = itypes[rng.gen_range(0..itypes.len())];
+        let itype = weighted_choice(&mut rng, &itypes, &itype_weights);
         let name = format!("Item_{}", rng.gen_range(1..51));
-        let price = ((rng.gen_range(0.99..99.99) * 100.0) as f64).round() / 100.0;
-        let curr = currencies[rng.gen_range(0..currencies.len())];
+        let price = round_to(rng.gen_range(0.99..99.99), 2);
+        let curr = weighted_choice(&mut rng, &currencies, &currency_weights);
         let refunded = rng.gen_bool(0.03);
         (i as i32, player_id, ts, itype, name, price, curr, refunded)
     })?;

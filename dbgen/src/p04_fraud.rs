@@ -1,3 +1,4 @@
+use crate::common::{round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -6,11 +7,11 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 2200.0;
-    let na = (1000.0 * sf_adj).max(10.0) as usize;
-    let nm = (300.0 * sf_adj).max(10.0) as usize;
-    let nt = (20000.0 * sf_adj).max(50.0) as usize;
-    let nal = (500.0 * sf_adj).max(5.0) as usize;
+    let na = (1988346.0 * sf).max(10.0) as usize;
+    let nm = (596340.0 * sf).max(10.0) as usize;
+    // SPEC.md §2.4: transactions fan out off accounts; alerts fan out off flagged txns.
+    let avg_txn_per_account = 20.0;
+    let nt = ((na as f64) * avg_txn_per_account).max(50.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -36,25 +37,43 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .unwrap()
         .and_hms_opt(0, 0, 0)
         .unwrap();
-    let atypes = ["checking", "savings", "credit", "business"];
-    let cats = [
-        "retail", "travel", "grocery", "online", "gaming", "crypto", "atm",
+
+    // SPEC.md §3.4 fixed vocabularies.
+    let account_types = ["checking", "savings", "credit_card", "business"];
+    let account_type_weights = [45.0, 30.0, 20.0, 5.0];
+    let countries_acc = ["US", "CA", "UK", "DE", "FR", "MX", "AU", "JP", "BR", "IN"];
+    let countries_acc_weights = [60.0, 6.0, 6.0, 5.0, 5.0, 5.0, 4.0, 3.0, 3.0, 3.0];
+    let merchant_categories = [
+        "grocery", "restaurant", "online_retail", "gas_station", "electronics", "travel",
+        "entertainment", "utilities", "other",
     ];
-    let risks = ["low", "medium", "high", "critical"];
-    let chans = ["pos", "web", "mobile", "atm", "wire"];
-    let currs = ["USD", "EUR", "GBP", "JPY", "BTC"];
-    let rcodes = ["00", "01", "05", "14", "51", "57", "96"];
-    let atypes2 = [
-        "velocity",
-        "geo_anomaly",
-        "amount_spike",
-        "card_not_present",
-        "identity",
+    let merchant_category_weights = [18.0, 16.0, 15.0, 12.0, 10.0, 8.0, 8.0, 7.0, 6.0];
+    let countries_merch = ["US", "GB", "CN", "NG", "RU", "MX", "DE"];
+    let countries_merch_weights = [45.0, 15.0, 12.0, 10.0, 8.0, 6.0, 4.0];
+    let risk_tiers = ["low", "medium", "high"];
+    let risk_tier_weights = [60.0, 30.0, 10.0];
+    let txn_channels = ["card_present", "online", "mobile_wallet", "card_not_present", "atm"];
+    let txn_channel_weights = [45.0, 30.0, 15.0, 7.0, 3.0];
+    let currencies = ["USD", "EUR", "GBP", "CAD", "other"];
+    let currency_weights = [85.0, 6.0, 4.0, 3.0, 2.0];
+    let decline_codes = [
+        "insufficient_funds",
+        "do_not_honor",
+        "expired_card",
+        "invalid_pin",
+        "fraud_suspected",
     ];
-    let sevs = ["info", "warning", "critical"];
-    let ress = ["confirmed_fraud", "false_positive", "under_review"];
-    let countries_acc = ["US", "GB", "DE", "FR", "CA"];
-    let countries_merch = ["US", "GB", "NG", "CN", "RU"];
+    let decline_code_weights = [3.0, 2.0, 1.5, 1.0, 0.5];
+    let alert_types = ["unusual_amount", "velocity", "geo_anomaly", "card_not_present", "identity_theft"];
+    let alert_type_weights = [30.0, 25.0, 20.0, 15.0, 10.0];
+    let severities = ["low", "medium", "high", "critical"];
+    let severity_weights = [35.0, 35.0, 22.0, 8.0];
+    let resolutions = ["false_positive", "customer_verified", "confirmed_fraud"];
+    let resolution_weights = [45.0, 30.0, 25.0];
+
+    // SPEC.md §1.3a: transactions skew toward a few high-activity accounts and merchants.
+    let account_popularity = PopularityWeights::new(na, 1.0, 71);
+    let merchant_popularity = PopularityWeights::new(nm, 1.1, 82);
 
     let pb = ProgressBar::new(4);
     pb.set_style(
@@ -67,9 +86,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "accounts", na, &pb, "Generating accounts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let holder_name = format!("Holder {}", i);
-        let atype = atypes[rng.gen_range(0..atypes.len())];
-        let country = countries_acc[rng.gen_range(0..countries_acc.len())];
-        let limit = ((rng.gen_range(500.0..50000.0) * 100.0) as f64).round() / 100.0;
+        let atype = weighted_choice(&mut rng, &account_types, &account_type_weights);
+        let country = weighted_choice(&mut rng, &countries_acc, &countries_acc_weights);
+        let limit = round_to(rng.gen_range(500.0..50000.0), 2);
         let opened_date = (base_ts - Duration::days(rng.gen_range(30..3651))).date();
         let is_frozen = rng.gen_bool(0.03);
         (
@@ -87,12 +106,23 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "merchants", nm, &pb, "Generating merchants...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Merchant {}", i);
-        let cat = cats[rng.gen_range(0..cats.len())];
-        let country = countries_merch[rng.gen_range(0..countries_merch.len())];
-        let risk = risks[rng.gen_range(0..risks.len())];
-        let avg_amount = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
+        let cat = weighted_choice(&mut rng, &merchant_categories, &merchant_category_weights);
+        let country = weighted_choice(&mut rng, &countries_merch, &countries_merch_weights);
+        let risk = weighted_choice(&mut rng, &risk_tiers, &risk_tier_weights);
+        let avg_amount = round_to(rng.gen_range(5.0..500.0), 2);
         (i as i32, name, cat, country, risk, avg_amount)
     })?;
+
+    // Materialize risk tier / frozen status so transactions can correlate with them
+    // (SPEC.md §2.4), instead of drawing is_flagged/is_declined independently.
+    let mut stmt = con.prepare("SELECT risk_tier FROM merchants ORDER BY merchant_id")?;
+    let merchant_risk: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut stmt = con.prepare("SELECT is_frozen FROM accounts ORDER BY account_id")?;
+    let account_frozen: Vec<bool> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
 
     // 3. Transactions
     crate::generate_table_parallel(
@@ -103,29 +133,56 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating transactions...",
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
-            let acc_id = rng.gen_range(1..=na) as i32;
-            let merch_id = rng.gen_range(1..=nm) as i32;
-            let amount = ((rng.gen_range(1.0..5000.0) * 100.0) as f64).round() / 100.0;
+            let acc_id = account_popularity.sample(&mut rng);
+            let merch_id = merchant_popularity.sample(&mut rng);
+            let amount = round_to(rng.gen_range(1.0..5000.0), 2);
             let ts = base_ts + Duration::seconds(rng.gen_range(0..365 * 86400));
-            let channel = chans[rng.gen_range(0..chans.len())];
-            let curr = currs[rng.gen_range(0..currs.len())];
-            let declined = rng.gen_bool(0.05);
-            let flagged = rng.gen_bool(0.04);
-            let rcode = rcodes[rng.gen_range(0..rcodes.len())];
+            let channel = weighted_choice(&mut rng, &txn_channels, &txn_channel_weights);
+            let curr = weighted_choice(&mut rng, &currencies, &currency_weights);
+
+            // Decline odds spike sharply for frozen accounts (SPEC.md §2.4).
+            let frozen = account_frozen[acc_id - 1];
+            let decline_rate = if frozen { 0.85 } else { 0.05 };
+            let declined = rng.gen_bool(decline_rate);
+
+            // Flag odds scale with amount and merchant risk tier (SPEC.md §2.4), tuned so
+            // ~3-5% of transactions end up flagged overall (SPEC.md §1.6 filter budget).
+            let risk = merchant_risk[merch_id - 1].as_str();
+            let base_flag_rate: f64 = match risk {
+                "high" => 0.10,
+                "medium" => 0.04,
+                _ => 0.02,
+            };
+            let amount_bump = if amount > 2000.0 { 1.8 } else { 1.0 };
+            let flagged = rng.gen_bool((base_flag_rate * amount_bump).min(0.5));
+
+            let rcode = if declined {
+                weighted_choice(&mut rng, &decline_codes, &decline_code_weights)
+            } else {
+                "approved"
+            };
             (
-                i as i32, acc_id, merch_id, amount, ts, channel, curr, declined, flagged, rcode,
+                i as i32, acc_id as i32, merch_id as i32, amount, ts, channel, curr, declined,
+                flagged, rcode,
             )
         },
     )?;
 
-    // Get flagged IDs for alerts
+    // Get flagged IDs for alerts, sized off the actual flagged count (SPEC.md §1.3c) rather
+    // than an unrelated flat constant.
+    let flagged_count: i64 =
+        con.query_row("SELECT COUNT(*) FROM transactions WHERE is_flagged", [], |row| {
+            row.get(0)
+        })?;
+    let nal = ((flagged_count as f64) * 1.1).max(5.0) as usize;
+
     let mut stmt =
-        con.prepare("SELECT txn_id FROM transactions WHERE is_flagged ORDER BY txn_id LIMIT ?")?;
+        con.prepare("SELECT txn_id FROM transactions WHERE is_flagged ORDER BY txn_id")?;
     let flagged_ids: Vec<i32> = stmt
-        .query_map([nal as i32], |row| row.get(0))?
+        .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<i32>, _>>()?;
 
-    // 4. Alerts
+    // 4. Alerts (filtered-subset sampled from flagged transactions, SPEC.md §1.3c/§2.4)
     crate::generate_table_parallel(con, "alerts", nal, &pb, "Generating alerts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let txn_id = if !flagged_ids.is_empty() {
@@ -133,16 +190,16 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         } else {
             rng.gen_range(1..=nt) as i32
         };
-        let atype2 = atypes2[rng.gen_range(0..atypes2.len())];
-        let sev = sevs[rng.gen_range(0..sevs.len())];
+        let atype = weighted_choice(&mut rng, &alert_types, &alert_type_weights);
+        let sev = weighted_choice(&mut rng, &severities, &severity_weights);
         let ts = base_ts + Duration::seconds(rng.gen_range(0..365 * 86400));
         let resolved = rng.gen_bool(0.6);
-        let res = if rng.gen_bool(0.6) {
-            Some(ress[rng.gen_range(0..ress.len())])
+        let res = if resolved {
+            Some(weighted_choice(&mut rng, &resolutions, &resolution_weights))
         } else {
             None
         };
-        (i as i32, txn_id, atype2, sev, ts, resolved, res)
+        (i as i32, txn_id, atype, sev, ts, resolved, res)
     })?;
 
     pb.finish_with_message("p04_fraud complete");

@@ -1,3 +1,4 @@
+use crate::common::{round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -6,14 +7,16 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 1550.0;
-    let nc = (2000.0 * sf_adj).max(10.0) as usize;
-    let nct = (20.0 * sf_adj).max(5.0) as usize;
-    let np = (500.0 * sf_adj).max(20.0) as usize;
-    let no = (8000.0 * sf_adj).max(30.0) as usize;
-    let ni = (24000.0 * sf_adj).max(50.0) as usize;
-    let nr = (6000.0 * sf_adj).max(20.0) as usize;
-    let nmo = (700.0 * sf_adj).max(10.0) as usize;
+    let nc = (3255392.0 * sf).max(10.0) as usize;
+    let nct = (32555.0 * sf).max(5.0) as usize;
+    let np = (813848.0 * sf).max(20.0) as usize;
+    // SPEC.md §2.3: orders/order_items/reviews are fan-out ratios off their parents.
+    let avg_orders_per_customer = 4.0;
+    let avg_items_per_order = 2.8;
+    let review_rate = 0.225; // of eligible (completed) order_items
+    let no = ((nc as f64) * avg_orders_per_customer).max(30.0) as usize;
+    let ni = ((no as f64) * avg_items_per_order).max(50.0) as usize;
+    let nmo = (1139387.0 * sf).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -43,39 +46,37 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     let base_date = NaiveDate::from_ymd_opt(2018, 1, 1).unwrap();
-    let countries = ["US", "GB", "DE", "FR", "CA", "AU", "JP", "BR", "IN", "MX"];
-    let statuses = ["completed", "pending", "shipped", "cancelled", "refunded"];
-    let channels = ["web", "mobile", "in-store"];
-    let marketplace_names = ["Amazon", "eBay", "Etsy"];
-    let partner_statuses = [
-        "Shipped",
-        "Delivered",
-        "Awaiting Payment",
-        "Returned",
-        "Cancelled",
-    ];
+
+    // SPEC.md §3.3 fixed vocabularies.
+    let countries = ["US", "CA", "GB", "DE", "FR", "AU", "JP", "BR", "IN", "MX", "IT", "ES", "NL", "SE", "KR"];
+    let country_weights = [40.0, 8.0, 8.0, 6.0, 5.0, 5.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 3.0, 2.0, 2.0];
+    let statuses = ["completed", "cancelled", "returned", "pending", "processing"];
+    let status_weights = [75.0, 8.0, 7.0, 5.0, 5.0];
+    let channels = ["web", "mobile_app", "phone", "in_store_kiosk"];
+    let channel_weights = [55.0, 35.0, 5.0, 5.0];
+    let marketplace_names = ["Amazon", "eBay", "Walmart Marketplace", "Etsy"];
+    let marketplace_weights = [55.0, 20.0, 15.0, 10.0];
+    let partner_statuses = ["shipped", "pending", "cancelled", "refunded"];
+    let partner_status_weights = [70.0, 12.0, 10.0, 8.0];
     let cats_names = [
         "Electronics",
-        "Clothing",
+        "Home & Kitchen",
+        "Apparel",
+        "Beauty & Personal Care",
+        "Sports & Outdoors",
+        "Toys & Games",
         "Books",
-        "Home",
-        "Sports",
-        "Beauty",
-        "Toys",
-        "Food",
-        "Garden",
-        "Automotive",
-        "Health",
-        "Office",
-        "Jewelry",
-        "Music",
-        "Movies",
-        "Games",
-        "Travel",
-        "Pets",
-        "Tools",
-        "Baby",
+        "Grocery",
     ];
+    let qty_values = [1, 2, 3, 4, 5, 6, 7, 8];
+    let qty_weights = [35.0, 25.0, 15.0, 10.0, 7.0, 4.0, 2.0, 2.0];
+
+    // SPEC.md §1.3a: a few categories/products/customers/orders should dominate rather than
+    // uniform draws.
+    let category_popularity = PopularityWeights::new(nct, 1.0, 31);
+    let customer_popularity = PopularityWeights::new(nc, 1.1, 42);
+    let product_popularity = PopularityWeights::new(np, 1.0, 53);
+    let order_popularity = PopularityWeights::new(no, 1.0, 64);
 
     let pb = ProgressBar::new(7);
     pb.set_style(
@@ -84,7 +85,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             .unwrap(),
     );
 
-    // 1. Categories
+    // 1. Categories: shallow 2-level tree - first 8 are top-level, rest are children of one.
+    let n_top_level = cats_names.len().min(nct);
     crate::generate_table_parallel(
         con,
         "categories",
@@ -93,9 +95,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating categories...",
         |i| {
             let name = cats_names[(i - 1) % cats_names.len()];
-            let parent_id = if i > 4 {
+            let parent_id = if i > n_top_level {
                 let mut rng = SmallRng::seed_from_u64(i as u64);
-                Some(rng.gen_range(1..i))
+                Some(rng.gen_range(1..=n_top_level) as i32)
             } else {
                 None
             };
@@ -103,15 +105,14 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 2. Customers
+    // 2. Customers (lifetime_spend starts at 0, rolled up from real orders below - SPEC §1.7)
     crate::generate_table_parallel(con, "customers", nc, &pb, "Generating customers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let full_name = format!("Cust {}", i);
         let email = format!("u{}@ex.com", i);
-        let country = countries[rng.gen_range(0..countries.len())];
+        let country = weighted_choice(&mut rng, &countries, &country_weights);
         let signup_date = base_date + Duration::days(rng.gen_range(0..2001));
         let is_active = rng.gen_bool(0.9);
-        let lifetime_spend = ((rng.gen_range(0.0..15000.0) * 100.0) as f64).round() / 100.0;
         (
             i as i32,
             full_name,
@@ -119,19 +120,20 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             country,
             signup_date,
             is_active,
-            lifetime_spend,
+            0.0_f64,
         )
     })?;
 
     // 3. Products
     crate::generate_table_parallel(con, "products", np, &pb, "Generating products...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let cat_id = rng.gen_range(1..=nct) as i32;
+        let cat_id = category_popularity.sample(&mut rng) as i32;
         let sku = format!("SKU-{:060}", i);
         let name = format!("Prod {}", i);
-        let cost = ((rng.gen_range(1.0..400.0) * 100.0) as f64).round() / 100.0;
-        let price = ((cost * rng.gen_range(1.1..4.0) * 100.0) as f64).round() / 100.0;
-        let weight = ((rng.gen_range(0.1..20.0) * 1000.0) as f64).round() / 1000.0;
+        let cost = round_to(rng.gen_range(1.0..400.0), 2);
+        // Price is a markup over cost, not independently random (SPEC.md §1.7/§2.3).
+        let price = round_to(cost * rng.gen_range(1.3..3.0), 2);
+        let weight = round_to(rng.gen_range(0.1..20.0), 3);
         let is_active = rng.gen_bool(0.95);
         let stock_qty = rng.gen_range(0..=1000);
         (
@@ -142,16 +144,16 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     // 4. Orders
     crate::generate_table_parallel(con, "orders", no, &pb, "Generating orders...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let cust_id = rng.gen_range(1..=nc) as i32;
+        let cust_id = customer_popularity.sample(&mut rng) as i32;
         let order_date = base_date + Duration::days(rng.gen_range(0..2001));
-        let status = statuses[rng.gen_range(0..statuses.len())];
-        let channel = channels[rng.gen_range(0..channels.len())];
+        let status = weighted_choice(&mut rng, &statuses, &status_weights);
+        let channel = weighted_choice(&mut rng, &channels, &channel_weights);
         let discount = if rng.gen_bool(0.4) {
-            ((rng.gen_range(0.0..30.0) * 100.0) as f64).round() / 100.0
+            round_to(rng.gen_range(0.0..30.0), 2)
         } else {
             0.0
         };
-        let shipping_cost = ((rng.gen_range(0.0..25.0) * 100.0) as f64).round() / 100.0;
+        let shipping_cost = round_to(rng.gen_range(0.0..25.0), 2);
         (
             i as i32,
             cust_id,
@@ -163,7 +165,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // 5. Order Items
+    // 5. Order Items (every order gets >=1 item via a stratified minimum, SPEC.md §2.3)
     crate::generate_table_parallel(
         con,
         "order_items",
@@ -172,19 +174,54 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating order items...",
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
-            let order_id = rng.gen_range(1..=no) as i32;
-            let product_id = rng.gen_range(1..=np) as i32;
-            let quantity = rng.gen_range(1..6);
-            let unit_price = ((rng.gen_range(5.0..500.0) * 100.0) as f64).round() / 100.0;
+            let order_id = if i <= no {
+                i as i32
+            } else {
+                order_popularity.sample(&mut rng) as i32
+            };
+            let product_id = product_popularity.sample(&mut rng) as i32;
+            let quantity = weighted_choice(&mut rng, &qty_values, &qty_weights);
+            let unit_price = round_to(rng.gen_range(5.0..500.0), 2);
             (i as i32, order_id, product_id, quantity, unit_price)
         },
     )?;
 
-    // 6. Reviews
+    // Roll customers.lifetime_spend up from their real orders (SPEC.md §1.7): never generate
+    // two numbers that are supposed to reconcile independently.
+    con.execute_batch(
+        "UPDATE customers SET lifetime_spend = t.total
+         FROM (
+             SELECT o.customer_id AS cid, SUM(oi.quantity * oi.unit_price) AS total
+             FROM orders o JOIN order_items oi ON oi.order_id = o.order_id
+             GROUP BY o.customer_id
+         ) t
+         WHERE customers.customer_id = t.cid;",
+    )?;
+
+    // 6. Reviews: filtered-subset sampled from completed orders' real order_items only
+    // (SPEC.md §2.3) - you cannot review what you haven't received.
+    let eligible_count: i64 = con.query_row(
+        "SELECT COUNT(*) FROM order_items oi JOIN orders o ON oi.order_id = o.order_id
+         WHERE o.status = 'completed'",
+        [],
+        |row| row.get(0),
+    )?;
+    let nr = ((eligible_count as f64) * review_rate).max(20.0) as usize;
+
+    let mut stmt = con.prepare(&format!(
+        "SELECT oi.product_id, o.customer_id FROM order_items oi
+         JOIN orders o ON oi.order_id = o.order_id
+         WHERE o.status = 'completed' USING SAMPLE {} ROWS",
+        nr
+    ))?;
+    let eligible_refs: Vec<(i32, i32)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
     crate::generate_table_parallel(con, "reviews", nr, &pb, "Generating reviews...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let product_id = rng.gen_range(1..=np) as i32;
-        let customer_id = rng.gen_range(1..=nc) as i32;
+        let ref_idx = rng.gen_range(0..eligible_refs.len());
+        let (product_id, customer_id) = eligible_refs[ref_idx];
         let rating = rng.gen_range(1..6) as i8;
         let review_date = base_date + Duration::days(rng.gen_range(0..2001));
         let helpful_votes = rng.gen_range(0..201);
@@ -198,7 +235,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // 7. Marketplace orders (separate partner feed: own id space, status vocabulary, no line items)
+    // 7. Marketplace orders (separate partner feed: own id space, status vocabulary, no line
+    // items - a deliberate lower-fidelity external source, SPEC.md §2.3).
     crate::generate_table_parallel(
         con,
         "marketplace_orders",
@@ -208,14 +246,12 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         |i| {
             let mut rng = SmallRng::seed_from_u64((i as u64) ^ 0xA5A5_5A5A);
             let external_order_id = format!("MKT-{:010}", i);
-            let cust_id = rng.gen_range(1..=nc) as i32;
+            let cust_id = customer_popularity.sample(&mut rng) as i32;
             let order_date = base_date + Duration::days(rng.gen_range(0..2001));
-            let marketplace_name = marketplace_names[rng.gen_range(0..marketplace_names.len())];
-            let partner_status = partner_statuses[rng.gen_range(0..partner_statuses.len())];
-            let gross_amount = ((rng.gen_range(10.0..600.0) * 100.0) as f64).round() / 100.0;
-            let commission_fee = ((gross_amount * rng.gen_range(0.08..0.20) * 100.0) as f64)
-                .round()
-                / 100.0;
+            let marketplace_name = weighted_choice(&mut rng, &marketplace_names, &marketplace_weights);
+            let partner_status = weighted_choice(&mut rng, &partner_statuses, &partner_status_weights);
+            let gross_amount = round_to(rng.gen_range(10.0..600.0), 2);
+            let commission_fee = round_to(gross_amount * rng.gen_range(0.08..0.20), 2);
             (
                 external_order_id,
                 cust_id,

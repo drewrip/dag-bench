@@ -1,3 +1,4 @@
+use crate::common::{round_to, weighted_choice, PopularityWeights};
 use chrono::{Duration, NaiveDate};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -6,12 +7,12 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
-    let sf_adj = sf * 4000.0;
-    let npa = (1000.0 * sf_adj).max(20.0) as usize;
-    let npr = (200.0 * sf_adj).max(10.0) as usize;
-    let ncl = (3000.0 * sf_adj).max(30.0) as usize;
-    let ncll = (9000.0 * sf_adj).max(50.0) as usize;
-    let ndx = (100.0 * sf_adj).max(10.0) as usize;
+    let npa = (3099146.0 * sf).max(20.0) as usize;
+    let npr = (619829.0 * sf).max(10.0) as usize;
+    // SPEC.md §2.8: claims/claim_lines/diagnoses are fan-out ratios off patients/claims.
+    let ncl = ((npa as f64) * 3.0).max(30.0) as usize;
+    let ncll = ((ncl as f64) * 3.0).max(50.0) as usize;
+    let ndx = ((ncl as f64) * 1.75).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -35,24 +36,68 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     let base_date = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
-    let genders = ["M", "F", "U"];
-    let plans = ["HMO", "PPO", "EPO", "HDHP", "Medicare", "Medicaid"];
-    let specialties = [
-        "internal_medicine",
-        "cardiology",
-        "oncology",
-        "orthopedics",
-        "primary_care",
-        "emergency",
-        "radiology",
-        "psychiatry",
+
+    // SPEC.md §3.8 fixed vocabularies.
+    let genders = ["female", "male", "other_unknown"];
+    let gender_weights = [51.0, 48.0, 1.0];
+    let plans = ["PPO", "HMO", "Medicare", "EPO", "Medicaid", "POS"];
+    let plan_weights = [35.0, 30.0, 15.0, 10.0, 7.0, 3.0];
+    let states = [
+        "CA", "TX", "FL", "NY", "PA", "IL", "OH", "GA", "NC", "MI", "NJ", "VA", "WA", "AZ", "MA",
     ];
-    let ctypes = ["professional", "facility", "pharmacy", "dental"];
-    let cstatuses = ["paid", "denied", "pending", "partial"];
-    let denial_reasons = ["not_covered", "prior_auth", "out_of_network"];
-    let states = ["CA", "TX", "NY", "FL", "IL", "WA", "OH", "GA"];
+    let state_weights = [12.0, 9.0, 7.0, 6.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 2.0];
+    let specialties = [
+        "primary_care", "emergency_medicine", "cardiology", "orthopedics", "psychiatry",
+        "general_surgery", "dermatology", "radiology", "pediatrics", "oncology",
+    ];
+    let specialty_weights = [25.0, 12.0, 10.0, 9.0, 8.0, 8.0, 7.0, 7.0, 7.0, 7.0];
+    let claim_types = ["professional", "institutional", "pharmacy", "dental", "vision"];
+    let claim_type_weights = [45.0, 25.0, 18.0, 7.0, 5.0];
+    let claim_statuses = ["paid", "pending", "denied", "partially_paid"];
+    let claim_status_weights = [78.0, 10.0, 7.0, 5.0];
+    let denial_reasons = [
+        "not_medically_necessary", "out_of_network", "missing_authorization",
+        "incorrect_coding", "coverage_terminated", "duplicate_claim",
+    ];
+    let denial_reason_weights = [30.0, 22.0, 20.0, 15.0, 8.0, 5.0];
+
     let cpt_codes: Vec<String> = (1..=50).map(|i| format!("CPT{:05}", i)).collect();
+    // ~10 "common visit" codes account for ~50% of lines (SPEC.md §3.8).
+    let mut cpt_weights = vec![1.25f64; 50];
+    for w in cpt_weights.iter_mut().take(10) {
+        *w = 5.0;
+    }
+    let cpt_base_cost: Vec<f64> = (0..50)
+        .map(|i| {
+            let mut r = SmallRng::seed_from_u64((i as u64) + 7_000);
+            round_to(r.gen_range(10.0..2000.0), 2)
+        })
+        .collect();
+
     let icd_codes: Vec<String> = (1..=100).map(|i| format!("ICD{:04}", i)).collect();
+    // ~15 common chronic/acute diagnoses account for ~40% of rows (SPEC.md §3.8).
+    let mut icd_weights = vec![60.0 / 85.0; 100];
+    for w in icd_weights.iter_mut().take(15) {
+        *w = 40.0 / 15.0;
+    }
+
+    // SPEC.md §2.8: claim volume is driven by a per-patient utilization tier (70% low, 25%
+    // medium, 5% high) rather than a raw Pareto exponent - more interpretable for a
+    // healthcare context and gives downstream "high-utilizer" models a clean signal.
+    let tier_weights = [70.0, 25.0, 5.0];
+    let tier_multipliers = [1.0, 5.0, 20.0];
+    let patient_claim_factors: Vec<f64> = (0..npa)
+        .map(|i| {
+            let mut rng = SmallRng::seed_from_u64((i as u64) + 100_000);
+            tier_multipliers[weighted_choice(&mut rng, &[0usize, 1, 2], &tier_weights)]
+        })
+        .collect();
+    let patient_popularity = PopularityWeights::from_factors(&patient_claim_factors);
+    let provider_popularity = PopularityWeights::new(npr, 0.9, 161);
+    // claim_lines/diagnoses fan out off claims with a mild skew (some encounters are far more
+    // complex than others, SPEC.md §2.8).
+    let claim_line_popularity = PopularityWeights::new(ncl, 0.8, 171);
+    let claim_diag_popularity = PopularityWeights::new(ncl, 0.8, 172);
 
     let pb = ProgressBar::new(5);
     pb.set_style(
@@ -65,10 +110,10 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "patients", npa, &pb, "Generating patients...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let dob = base_date - Duration::days(rng.gen_range(365 * 5..365 * 85));
-        let gender = genders[rng.gen_range(0..genders.len())];
+        let gender = weighted_choice(&mut rng, &genders, &gender_weights);
         let zip = format!("{:05}", rng.gen_range(10000..100000));
-        let plan = plans[rng.gen_range(0..plans.len())];
-        let state = states[rng.gen_range(0..states.len())];
+        let plan = weighted_choice(&mut rng, &plans, &plan_weights);
+        let state = weighted_choice(&mut rng, &states, &state_weights);
         (i as i32, dob, gender, zip, plan, state)
     })?;
 
@@ -76,39 +121,40 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     crate::generate_table_parallel(con, "providers", npr, &pb, "Generating providers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Provider {}", i);
-        let spec = specialties[rng.gen_range(0..specialties.len())];
-        let state = states[rng.gen_range(0..states.len())];
+        let spec = weighted_choice(&mut rng, &specialties, &specialty_weights);
+        let state = weighted_choice(&mut rng, &states, &state_weights);
         let network = rng.gen_bool(0.8);
         let npi = format!("NPI{:010}", i);
         (i as i32, name, spec, state, network, npi)
     })?;
 
-    // 3. Claims
+    // 3. Claims (total_billed/total_allowed/total_paid start as placeholders and are rolled
+    // up from real claim_lines below, SPEC.md §1.7/§2.8)
     crate::generate_table_parallel(con, "claims", ncl, &pb, "Generating claims...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let pat_id = rng.gen_range(1..=npa) as i32;
-        let prov_id = rng.gen_range(1..=npr) as i32;
+        let pat_id = patient_popularity.sample(&mut rng) as i32;
+        let prov_id = provider_popularity.sample(&mut rng) as i32;
         let service = base_date + Duration::days(rng.gen_range(0..1096));
-        let ctype = ctypes[rng.gen_range(0..ctypes.len())];
-        let billed = ((rng.gen_range(100.0..50000.0) * 100.0) as f64).round() / 100.0;
-        let allowed = ((billed * rng.gen_range(0.4..0.95) * 100.0) as f64).round() / 100.0;
-        let paid = if rng.gen_bool(0.9) {
-            ((allowed * rng.gen_range(0.5..1.0) * 100.0) as f64).round() / 100.0
-        } else {
-            0.0
-        };
-        let status = cstatuses[rng.gen_range(0..cstatuses.len())];
+        let ctype = weighted_choice(&mut rng, &claim_types, &claim_type_weights);
+        let status = weighted_choice(&mut rng, &claim_statuses, &claim_status_weights);
         let denial = if status == "denied" {
-            Some(denial_reasons[rng.gen_range(0..denial_reasons.len())])
+            Some(weighted_choice(&mut rng, &denial_reasons, &denial_reason_weights))
         } else {
             None
         };
         (
-            i as i32, pat_id, prov_id, service, ctype, billed, allowed, paid, status, denial,
+            i as i32, pat_id, prov_id, service, ctype, 0.0_f64, 0.0_f64, 0.0_f64, status, denial,
         )
     })?;
 
-    // 4. Claim Lines
+    // Materialize claim status so line-level paid_amount can respect denied claims
+    // (SPEC.md §1.7) instead of being independent of it.
+    let mut stmt = con.prepare("SELECT status FROM claims ORDER BY claim_id")?;
+    let claim_status: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // 4. Claim Lines (every claim gets >=1 line via a stratified minimum, SPEC.md §2.8)
     crate::generate_table_parallel(
         con,
         "claim_lines",
@@ -117,24 +163,60 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Generating claim lines...",
         |i| {
             let mut rng = SmallRng::seed_from_u64(i as u64);
-            let cl_id = rng.gen_range(1..=ncl) as i32;
-            let cpt = &cpt_codes[rng.gen_range(0..cpt_codes.len())];
+            let claim_id = if i <= ncl {
+                i
+            } else {
+                claim_line_popularity.sample(&mut rng)
+            };
+            let cpt_idx = weighted_choice(&mut rng, &(0..cpt_codes.len()).collect::<Vec<_>>(), &cpt_weights);
+            let cpt = &cpt_codes[cpt_idx];
             let qty = rng.gen_range(1..6);
-            let cost = ((rng.gen_range(10.0..5000.0) * 100.0) as f64).round() / 100.0;
-            let allowed = ((rng.gen_range(5.0..4000.0) * 100.0) as f64).round() / 100.0;
-            let paid = ((rng.gen_range(0.0..3500.0) * 100.0) as f64).round() / 100.0;
-            (i as i32, cl_id, cpt.clone(), qty, cost, allowed, paid)
+            let unit_cost = round_to(cpt_base_cost[cpt_idx] * rng.gen_range(0.9..1.1), 2);
+            // Allowed/paid are fractions of the line's own cost, not independent draws
+            // (SPEC.md §1.7): paid <= allowed <= billed is enforced by construction.
+            let allowed = round_to((unit_cost * qty as f64) * rng.gen_range(0.5..0.9), 2);
+            let denied = claim_status[claim_id - 1] == "denied";
+            let paid = if denied {
+                0.0
+            } else {
+                round_to(allowed * rng.gen_range(0.6..1.0), 2)
+            };
+            (i as i32, claim_id as i32, cpt.clone(), qty, unit_cost, allowed, paid)
         },
     )?;
 
-    // 5. Diagnoses
+    // Roll claims totals up from their real claim_lines (SPEC.md §1.7/§2.8): the one place
+    // in this schema where a header total is a literal rollup of its details, since
+    // insurance claims really do reconcile this way operationally.
+    con.execute_batch(
+        "UPDATE claims SET
+             total_billed = t.billed,
+             total_allowed = t.allowed,
+             total_paid = t.paid
+         FROM (
+             SELECT claim_id,
+                    SUM(quantity * unit_cost) AS billed,
+                    SUM(allowed_amount) AS allowed,
+                    SUM(paid_amount) AS paid
+             FROM claim_lines GROUP BY claim_id
+         ) t
+         WHERE claims.claim_id = t.claim_id;",
+    )?;
+
+    // 5. Diagnoses [FIX per SPEC.md §2.8]: references claims.claim_id unambiguously (every
+    // claim gets >=1 diagnosis via a stratified minimum).
     crate::generate_table_parallel(con, "diagnoses", ndx, &pb, "Generating diagnoses...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let cl_id = rng.gen_range(1..=ncl) as i32;
-        let icd = &icd_codes[rng.gen_range(0..icd_codes.len())];
+        let claim_id = if i <= ncl {
+            i
+        } else {
+            claim_diag_popularity.sample(&mut rng)
+        };
+        let icd_idx = weighted_choice(&mut rng, &(0..icd_codes.len()).collect::<Vec<_>>(), &icd_weights);
+        let icd = &icd_codes[icd_idx];
         let primary = rng.gen_bool(0.7);
         let chronic = rng.gen_bool(0.4);
-        (i as i32, cl_id, icd.clone(), primary, chronic)
+        (i as i32, claim_id as i32, icd.clone(), primary, chronic)
     })?;
 
     pb.finish_with_message("p08_healthcare complete");
