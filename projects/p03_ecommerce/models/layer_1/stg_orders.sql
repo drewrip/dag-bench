@@ -5,5 +5,6 @@ select order_id, customer_id, order_date,
     extract('year' from order_date) as order_year,
     extract('month' from order_date) as order_month,
     date_trunc('month',order_date) as order_month_start,
-    status in ('completed','shipped') as is_fulfilled
+    status in ('completed','shipped') as is_fulfilled,
+    'internal' as source_system
 from {{ source('raw','orders') }}

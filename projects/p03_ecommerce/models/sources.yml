@@ -9,3 +9,4 @@ sources:
       - name: orders
       - name: order_items
       - name: reviews
+      - name: marketplace_orders

@@ -13,6 +13,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let no = (8000.0 * sf_adj).max(30.0) as usize;
     let ni = (24000.0 * sf_adj).max(50.0) as usize;
     let nr = (6000.0 * sf_adj).max(20.0) as usize;
+    let nmo = (700.0 * sf_adj).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -20,6 +21,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "DROP TABLE IF EXISTS reviews; DROP TABLE IF EXISTS order_items;
          DROP TABLE IF EXISTS orders;  DROP TABLE IF EXISTS products;
          DROP TABLE IF EXISTS categories; DROP TABLE IF EXISTS customers;
+         DROP TABLE IF EXISTS marketplace_orders;
          CREATE TABLE customers(customer_id INTEGER PRIMARY KEY, full_name VARCHAR,
              email VARCHAR, country VARCHAR, signup_date DATE, is_active BOOLEAN,
              lifetime_spend DECIMAL(12,2));
@@ -34,13 +36,24 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE order_items(item_id INTEGER PRIMARY KEY, order_id INTEGER,
              product_id INTEGER, quantity INTEGER, unit_price DECIMAL(10,2));
          CREATE TABLE reviews(review_id INTEGER PRIMARY KEY, product_id INTEGER,
-             customer_id INTEGER, rating TINYINT, review_date DATE, helpful_votes INTEGER);",
+             customer_id INTEGER, rating TINYINT, review_date DATE, helpful_votes INTEGER);
+         CREATE TABLE marketplace_orders(external_order_id VARCHAR PRIMARY KEY,
+             customer_id INTEGER, order_date DATE, marketplace_name VARCHAR,
+             partner_status VARCHAR, gross_amount DECIMAL(10,2), commission_fee DECIMAL(8,2));",
     )?;
 
     let base_date = NaiveDate::from_ymd_opt(2018, 1, 1).unwrap();
     let countries = ["US", "GB", "DE", "FR", "CA", "AU", "JP", "BR", "IN", "MX"];
     let statuses = ["completed", "pending", "shipped", "cancelled", "refunded"];
-    let channels = ["web", "mobile", "in-store", "marketplace"];
+    let channels = ["web", "mobile", "in-store"];
+    let marketplace_names = ["Amazon", "eBay", "Etsy"];
+    let partner_statuses = [
+        "Shipped",
+        "Delivered",
+        "Awaiting Payment",
+        "Returned",
+        "Cancelled",
+    ];
     let cats_names = [
         "Electronics",
         "Clothing",
@@ -64,7 +77,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         "Baby",
     ];
 
-    let pb = ProgressBar::new(6);
+    let pb = ProgressBar::new(7);
     pb.set_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
@@ -184,6 +197,36 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             helpful_votes,
         )
     })?;
+
+    // 7. Marketplace orders (separate partner feed: own id space, status vocabulary, no line items)
+    crate::generate_table_parallel(
+        con,
+        "marketplace_orders",
+        nmo,
+        &pb,
+        "Generating marketplace orders...",
+        |i| {
+            let mut rng = SmallRng::seed_from_u64((i as u64) ^ 0xA5A5_5A5A);
+            let external_order_id = format!("MKT-{:010}", i);
+            let cust_id = rng.gen_range(1..=nc) as i32;
+            let order_date = base_date + Duration::days(rng.gen_range(0..2001));
+            let marketplace_name = marketplace_names[rng.gen_range(0..marketplace_names.len())];
+            let partner_status = partner_statuses[rng.gen_range(0..partner_statuses.len())];
+            let gross_amount = ((rng.gen_range(10.0..600.0) * 100.0) as f64).round() / 100.0;
+            let commission_fee = ((gross_amount * rng.gen_range(0.08..0.20) * 100.0) as f64)
+                .round()
+                / 100.0;
+            (
+                external_order_id,
+                cust_id,
+                order_date,
+                marketplace_name,
+                partner_status,
+                gross_amount,
+                commission_fee,
+            )
+        },
+    )?;
 
     pb.finish_with_message("p03_ecommerce complete");
     Ok(())
