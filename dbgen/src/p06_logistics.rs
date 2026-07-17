@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let nsup = (267835.0 * sf).max(5.0) as usize;
     let nwh = (1034.0 * sf).max(3.0) as usize;
     // [CHANGE from dbgen]: SKU catalog scales with sf like every other
@@ -23,7 +23,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS purchase_orders; DROP TABLE IF EXISTS inventory;
          DROP TABLE IF EXISTS shipments; DROP TABLE IF EXISTS warehouses;
          DROP TABLE IF EXISTS suppliers;
@@ -43,7 +43,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
              sku VARCHAR, ordered_qty INTEGER, unit_price DECIMAL(10,2),
              order_date DATE, expected_date DATE, received_qty INTEGER,
              status VARCHAR);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_date = NaiveDate::from_ymd_opt(2021, 1, 1).unwrap();
 

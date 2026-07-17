@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let npl = (762872.0 * sf).max(20.0) as usize;
     let nlv = (19074.0 * sf).max(10.0) as usize;
     // Sessions/events/purchases are fan-out ratios off players/sessions.
@@ -18,7 +18,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS purchases; DROP TABLE IF EXISTS events;
          DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS levels;
          DROP TABLE IF EXISTS players;
@@ -37,7 +37,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE purchases(purchase_id INTEGER PRIMARY KEY, player_id INTEGER,
              purchase_ts TIMESTAMP, item_type VARCHAR, item_name VARCHAR,
              price_usd DECIMAL(8,2), currency VARCHAR, is_refunded BOOLEAN);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_ts = NaiveDate::from_ymd_opt(2023, 1, 1)
         .unwrap()

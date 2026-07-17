@@ -109,3 +109,14 @@ pub fn round_to(value: f64, decimals: i32) -> f64 {
     let mult = 10f64.powi(decimals);
     (value * mult).round() / mult
 }
+
+/// Strip `PRIMARY KEY` from a `CREATE TABLE` batch when `--no-constraints` is passed, so
+/// bulk appends skip DuckDB's per-row PK uniqueness check. All schemas here only ever use
+/// inline `PRIMARY KEY` (no `FOREIGN KEY`/`UNIQUE`), so a plain token strip is sufficient.
+pub fn schema_sql(sql: &str, no_constraints: bool) -> String {
+    if no_constraints {
+        sql.replace("PRIMARY KEY", "")
+    } else {
+        sql.to_string()
+    }
+}

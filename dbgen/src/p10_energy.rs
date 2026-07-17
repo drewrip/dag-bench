@@ -7,7 +7,7 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 use rand_distr::{Distribution, Normal};
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let nsb = (4562.0 * sf).max(5.0) as usize;
     // Meters/readings/outages are fan-out ratios off substations/meters.
     let avg_meters_per_substation = 20.0;
@@ -19,7 +19,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS outage_events; DROP TABLE IF EXISTS consumption_readings;
          DROP TABLE IF EXISTS meters; DROP TABLE IF EXISTS substations;
          CREATE TABLE substations(sub_id INTEGER PRIMARY KEY, name VARCHAR,
@@ -34,7 +34,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE outage_events(outage_id INTEGER PRIMARY KEY, sub_id INTEGER,
              start_ts TIMESTAMP, end_ts TIMESTAMP, cause VARCHAR,
              affected_meters INTEGER, severity VARCHAR);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_ts = NaiveDate::from_ymd_opt(2023, 1, 1)
         .unwrap()

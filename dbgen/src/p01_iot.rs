@@ -7,7 +7,7 @@ use rand::prelude::*;
 use rand::rngs::SmallRng;
 use rand_distr::{Distribution, Normal};
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let ns = (6642.0 * sf).max(3.0) as usize;
     // Devices ~= 5 per site on average, so device count scales with site count
     // rather than an unrelated flat constant.
@@ -18,7 +18,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS maintenance_logs; DROP TABLE IF EXISTS readings;
          DROP TABLE IF EXISTS devices; DROP TABLE IF EXISTS sites;
          CREATE TABLE sites(site_id INTEGER PRIMARY KEY, name VARCHAR,
@@ -32,7 +32,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
              error_flag BOOLEAN);
          CREATE TABLE maintenance_logs(log_id INTEGER PRIMARY KEY, device_id INTEGER,
              log_ts TIMESTAMP, action VARCHAR, technician VARCHAR, notes VARCHAR);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_ts = NaiveDate::from_ymd_opt(2023, 1, 1)
         .unwrap()

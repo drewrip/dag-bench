@@ -7,3 +7,4 @@ __pycache__/
 *.duckdb.wal
 errors/
 dbt_packages/
+.DS_Store

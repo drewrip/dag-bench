@@ -197,6 +197,10 @@ struct Cli {
     /// Output database file
     #[arg(short, long, default_value = "data/warehouse.duckdb")]
     output: PathBuf,
+
+    /// Disable primary key / foreign key constraints on generated tables (faster loads)
+    #[arg(long, default_value_t = false)]
+    no_constraints: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -219,16 +223,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("couldn't build pool");
 
     match cli.project {
-        1 => p01_iot::run(cli.sf, &mut pool)?,
-        2 => p02_adtech::run(cli.sf, &mut pool)?,
-        3 => p03_ecommerce::run(cli.sf, &mut pool)?,
-        4 => p04_fraud::run(cli.sf, &mut pool)?,
-        5 => p05_hr::run(cli.sf, &mut pool)?,
-        6 => p06_logistics::run(cli.sf, &mut pool)?,
-        7 => p07_saas::run(cli.sf, &mut pool)?,
-        8 => p08_healthcare::run(cli.sf, &mut pool)?,
-        9 => p09_gaming::run(cli.sf, &mut pool)?,
-        10 => p10_energy::run(cli.sf, &mut pool)?,
+        1 => p01_iot::run(cli.sf, &mut pool, cli.no_constraints)?,
+        2 => p02_adtech::run(cli.sf, &mut pool, cli.no_constraints)?,
+        3 => p03_ecommerce::run(cli.sf, &mut pool, cli.no_constraints)?,
+        4 => p04_fraud::run(cli.sf, &mut pool, cli.no_constraints)?,
+        5 => p05_hr::run(cli.sf, &mut pool, cli.no_constraints)?,
+        6 => p06_logistics::run(cli.sf, &mut pool, cli.no_constraints)?,
+        7 => p07_saas::run(cli.sf, &mut pool, cli.no_constraints)?,
+        8 => p08_healthcare::run(cli.sf, &mut pool, cli.no_constraints)?,
+        9 => p09_gaming::run(cli.sf, &mut pool, cli.no_constraints)?,
+        10 => p10_energy::run(cli.sf, &mut pool, cli.no_constraints)?,
         _ => {
             eprintln!("Project p{:02} not implemented", cli.project);
             std::process::exit(1);

@@ -22,11 +22,14 @@ def run_project(project_name: str) -> None:
         except ValueError:
             pass  # Use default
 
+    no_constraints = "--no-constraints" in sys.argv[2:]
+
     # 3. Check cache
     cache_dir = Path(__file__).parent / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     sf_str = str(sf).replace(".", "_")
-    cache_filename = f"p{project_num}_sf{sf_str}.duckdb"
+    cache_suffix = "_noconstraints" if no_constraints else ""
+    cache_filename = f"p{project_num}_sf{sf_str}{cache_suffix}.duckdb"
     cache_path = cache_dir / cache_filename
     output_path = "data/warehouse.duckdb"
 
@@ -52,6 +55,8 @@ def run_project(project_name: str) -> None:
     # 5. Prepare arguments for the Rust binary
     # The output should be in 'data/warehouse.duckdb' relative to current working directory
     cmd = [dbgen_bin, "-p", str(project_num), "-s", str(sf), "-o", output_path]
+    if no_constraints:
+        cmd.append("--no-constraints")
 
     print(f"Running Rust dbgen: {' '.join(cmd)}")
     try:

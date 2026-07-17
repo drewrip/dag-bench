@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--db", type=str, choices=["duckdb", "postgres"], default="duckdb",
                         help="Target database (default: duckdb).")
     parser.add_argument("--skip-data-gen", action="store_true", help="Skip data generation step.")
+    parser.add_argument("--no-constraints", action="store_true",
+                        help="Generate data without primary/foreign key constraints (faster).")
     
     args = parser.parse_args()
 
@@ -50,7 +52,10 @@ def main():
             cwd_for_gen = abs_project_path
 
             if os.path.exists(gen_script_path):
-                run_command(["python3", gen_script, args.sf], cwd_for_gen)
+                gen_cmd = ["python3", gen_script, args.sf]
+                if args.no_constraints:
+                    gen_cmd.append("--no-constraints")
+                run_command(gen_cmd, cwd_for_gen)
             else:
                 print(f"Warning: {gen_script} not found for {project_path}. Skipping data generation.")
         else:

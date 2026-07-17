@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let npa = (3099146.0 * sf).max(20.0) as usize;
     let npr = (619829.0 * sf).max(10.0) as usize;
     // Claims/claim_lines/diagnoses are fan-out ratios off patients/claims.
@@ -15,7 +15,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let ndx = ((ncl as f64) * 1.75).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS diagnoses; DROP TABLE IF EXISTS claim_lines;
          DROP TABLE IF EXISTS claims; DROP TABLE IF EXISTS providers;
          DROP TABLE IF EXISTS patients;
@@ -32,7 +32,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
              allowed_amount DECIMAL(10,2), paid_amount DECIMAL(10,2));
          CREATE TABLE diagnoses(diag_id INTEGER PRIMARY KEY, claim_id INTEGER,
              icd_code VARCHAR, is_primary BOOLEAN, chronic_flag BOOLEAN);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_date = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
 
@@ -208,7 +209,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
              FROM claim_lines GROUP BY claim_id
          ) t ON c.claim_id = t.claim_id;",
     )?;
-    con.execute_batch("ALTER TABLE claims ADD PRIMARY KEY (claim_id);")?;
+    if !no_constraints {
+        con.execute_batch("ALTER TABLE claims ADD PRIMARY KEY (claim_id);")?;
+    }
 
     // 5. Diagnoses [FIX]: references claims.claim_id unambiguously (every
     // claim gets >=1 diagnosis via a stratified minimum).

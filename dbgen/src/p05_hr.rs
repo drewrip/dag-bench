@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let nd = (122133.0 * sf).max(5.0) as usize;
     let ne = (3257326.0 * sf).max(20.0) as usize;
     // Leave_requests fan out off employees (~2.5/year over an effective ~3
@@ -15,7 +15,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS leave_requests; DROP TABLE IF EXISTS performance_reviews;
          DROP TABLE IF EXISTS salaries; DROP TABLE IF EXISTS employees;
          DROP TABLE IF EXISTS departments;
@@ -33,7 +33,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
              category VARCHAR, notes VARCHAR);
          CREATE TABLE leave_requests(leave_id INTEGER PRIMARY KEY, emp_id INTEGER,
              leave_type VARCHAR, start_date DATE, end_date DATE, approved BOOLEAN);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_date = NaiveDate::from_ymd_opt(2015, 1, 1).unwrap();
     let observation_end = base_date + Duration::days(3651);

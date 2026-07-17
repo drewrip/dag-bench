@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let nc = (3255392.0 * sf).max(10.0) as usize;
     let nct = (32555.0 * sf).max(5.0) as usize;
     let np = (813848.0 * sf).max(20.0) as usize;
@@ -19,7 +19,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let nmo = (1139387.0 * sf).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS reviews; DROP TABLE IF EXISTS order_items;
          DROP TABLE IF EXISTS orders;  DROP TABLE IF EXISTS products;
          DROP TABLE IF EXISTS categories; DROP TABLE IF EXISTS customers;
@@ -42,7 +42,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE marketplace_orders(external_order_id VARCHAR PRIMARY KEY,
              customer_id INTEGER, order_date DATE, marketplace_name VARCHAR,
              partner_status VARCHAR, gross_amount DECIMAL(10,2), commission_fee DECIMAL(8,2));",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_date = NaiveDate::from_ymd_opt(2018, 1, 1).unwrap();
 

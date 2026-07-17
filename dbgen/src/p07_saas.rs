@@ -13,7 +13,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let nac = (343952.0 * sf).max(10.0) as usize;
     // Subscriptions/events/feature_usage are fan-out ratios off accounts.
     let nsb = ((nac as f64) * 1.4).max(10.0) as usize;
@@ -25,7 +25,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS support_tickets; DROP TABLE IF EXISTS feature_usage;
          DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS subscriptions;
          DROP TABLE IF EXISTS accounts;
@@ -43,7 +43,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE support_tickets(ticket_id INTEGER PRIMARY KEY, account_id INTEGER,
              created_ts TIMESTAMP, resolved_ts TIMESTAMP, priority VARCHAR,
              category VARCHAR, csat_score TINYINT, is_resolved BOOLEAN);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_date = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();

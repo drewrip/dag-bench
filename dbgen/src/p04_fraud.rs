@@ -6,7 +6,7 @@ use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
+pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
     let na = (1988346.0 * sf).max(10.0) as usize;
     let nm = (596340.0 * sf).max(10.0) as usize;
     // Transactions fan out off accounts; alerts fan out off flagged txns.
@@ -15,7 +15,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let con = &pool.get().expect("couldn't get connection");
 
-    con.execute_batch(
+    con.execute_batch(&crate::common::schema_sql(
         "DROP TABLE IF EXISTS alerts; DROP TABLE IF EXISTS transactions;
          DROP TABLE IF EXISTS merchants; DROP TABLE IF EXISTS accounts;
          CREATE TABLE accounts(account_id INTEGER PRIMARY KEY, holder_name VARCHAR,
@@ -31,7 +31,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
          CREATE TABLE alerts(alert_id INTEGER PRIMARY KEY, txn_id INTEGER,
              alert_type VARCHAR, severity VARCHAR, created_ts TIMESTAMP,
              resolved BOOLEAN, resolution VARCHAR);",
-    )?;
+        no_constraints,
+    ))?;
 
     let base_ts = NaiveDate::from_ymd_opt(2022, 1, 1)
         .unwrap()
