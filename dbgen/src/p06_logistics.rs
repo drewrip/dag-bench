@@ -9,10 +9,10 @@ use rand::rngs::SmallRng;
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let nsup = (267835.0 * sf).max(5.0) as usize;
     let nwh = (1034.0 * sf).max(3.0) as usize;
-    // SPEC.md §2.6 [CHANGE from dbgen]: SKU catalog scales with sf like every other
+    // [CHANGE from dbgen]: SKU catalog scales with sf like every other
     // dimension, instead of a fixed 50-value pool.
     let n_sku = (10352.0 * sf).max(50.0) as usize;
-    // SPEC.md §2.6: shipments/purchase_orders are fan-out ratios off suppliers; inventory is
+    // Shipments/purchase_orders are fan-out ratios off suppliers; inventory is
     // one row per (warehouse, SKU) per snapshot.
     let avg_shipments_per_supplier = 50.0;
     let avg_po_per_supplier = 20.0;
@@ -47,7 +47,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let base_date = NaiveDate::from_ymd_opt(2021, 1, 1).unwrap();
 
-    // SPEC.md §3.6 fixed vocabularies.
+    // Fixed vocabularies.
     let supplier_categories = [
         "electronics_components", "packaging", "raw_materials", "hardware", "textiles",
         "food_ingredients",
@@ -71,7 +71,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         })
         .collect();
 
-    // SPEC.md §1.3a: shipments/POs skew toward a handful of high-volume suppliers/SKUs;
+    // Shipments/POs skew toward a handful of high-volume suppliers/SKUs;
     // warehouses skew mildly by size.
     let sku_popularity = PopularityWeights::new(n_sku, 1.0, 121);
     let warehouse_popularity = PopularityWeights::new(nwh, 0.8, 131);
@@ -85,7 +85,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 1. Suppliers
     crate::generate_table_parallel(
-        con,
+        pool,
         "suppliers",
         nsup,
         &pb,
@@ -103,7 +103,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     // Materialize is_preferred/lead_time so shipment volume/dates can correlate with them
-    // (SPEC.md §2.6) rather than being independent.
+    // rather than being independent.
     let mut stmt = con.prepare("SELECT is_preferred, lead_time_days FROM suppliers ORDER BY supplier_id")?;
     let supplier_facts: Vec<(bool, i32)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -118,7 +118,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 2. Warehouses
     crate::generate_table_parallel(
-        con,
+        pool,
         "warehouses",
         nwh,
         &pb,
@@ -134,8 +134,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 3. Shipments (received_date derived from the owning supplier's real lead_time, SPEC §1.7)
-    crate::generate_table_parallel(con, "shipments", nsh, &pb, "Generating shipments...", |i| {
+    // 3. Shipments (received_date derived from the owning supplier's real lead_time)
+    crate::generate_table_parallel(pool, "shipments", nsh, &pb, "Generating shipments...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let sup_id = supplier_popularity.sample(&mut rng);
         let wh_id = warehouse_popularity.sample(&mut rng) as i32;
@@ -162,10 +162,10 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // 4. Inventory: one row per (warehouse, SKU, snapshot) for full coverage (SPEC.md §2.6)
+    // 4. Inventory: one row per (warehouse, SKU, snapshot) for full coverage
     // rather than an unrelated flat row count, so joins against shipments/POs by SKU aren't
     // sparse.
-    crate::generate_table_parallel(con, "inventory", nin, &pb, "Generating inventory...", |i| {
+    crate::generate_table_parallel(pool, "inventory", nin, &pb, "Generating inventory...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let idx = i - 1;
         let snapshot_idx = idx % n_snapshots;
@@ -190,9 +190,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 5. Purchase Orders (received_qty close to ordered_qty with a small chance of a real
-    // shortfall, SPEC.md §2.6, rather than fully independent of ordered_qty)
+    // shortfall, rather than fully independent of ordered_qty)
     crate::generate_table_parallel(
-        con,
+        pool,
         "purchase_orders",
         npo,
         &pb,

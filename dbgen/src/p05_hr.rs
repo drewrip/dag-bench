@@ -9,7 +9,7 @@ use rand::rngs::SmallRng;
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let nd = (122133.0 * sf).max(5.0) as usize;
     let ne = (3257326.0 * sf).max(20.0) as usize;
-    // SPEC.md §2.5: leave_requests fan out off employees (~2.5/year over an effective ~3
+    // Leave_requests fan out off employees (~2.5/year over an effective ~3
     // year average tenure within the window).
     let nlr = ((ne as f64) * 7.5).max(10.0) as usize;
 
@@ -38,7 +38,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let base_date = NaiveDate::from_ymd_opt(2015, 1, 1).unwrap();
     let observation_end = base_date + Duration::days(3651);
 
-    // SPEC.md §3.5 fixed vocabularies.
+    // Fixed vocabularies.
     let divisions = [
         "Engineering", "Sales", "Customer Success", "Marketing", "Operations", "Finance",
         "Product", "HR", "Legal",
@@ -59,8 +59,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let leave_types = ["vacation", "sick", "parental", "unpaid", "bereavement", "jury_duty"];
     let leave_type_weights = [55.0, 25.0, 8.0, 5.0, 4.0, 3.0];
 
-    // SPEC.md §2.5: top ~9% of earliest hires are manager-eligible; everyone else reports
-    // into that pool. SPEC.md §1.3a: department sizes and leave-taking are popularity-skewed.
+    // Top ~9% of earliest hires are manager-eligible; everyone else reports
+    // into that pool. Department sizes and leave-taking are popularity-skewed.
     let mgr_id_limit = ((ne as f64 * 0.09).round() as usize).max(2);
     let department_popularity = PopularityWeights::new(nd, 0.9, 91);
     let manager_popularity = PopularityWeights::new(mgr_id_limit, 1.1, 92);
@@ -75,7 +75,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 1. Departments
     crate::generate_table_parallel(
-        con,
+        pool,
         "departments",
         nd,
         &pb,
@@ -92,8 +92,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     // 2. Employees. Job title band determines salary band (below): only manager-eligible
-    // employees (id <= mgr_id_limit) can hold Manager/Director/VP titles (SPEC.md §3.5).
-    crate::generate_table_parallel(con, "employees", ne, &pb, "Generating employees...", |i| {
+    // employees (id <= mgr_id_limit) can hold Manager/Director/VP titles.
+    crate::generate_table_parallel(pool, "employees", ne, &pb, "Generating employees...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let dept_id = department_popularity.sample(&mut rng) as i32;
         let manager_id = if i <= mgr_id_limit {
@@ -119,7 +119,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Materialize hire_date/job_title so salaries/reviews can derive from real tenure and
-    // seniority band instead of independent random figures (SPEC.md §1.7/§2.5).
+    // seniority band instead of independent random figures.
     let mut stmt = con.prepare("SELECT hire_date, job_title, manager_id FROM employees ORDER BY emp_id")?;
     let employee_facts: Vec<(NaiveDate, String, Option<i32>)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
@@ -136,7 +136,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     }
 
     // 3. Salaries: one row at hire plus roughly one more every ~18 months of tenure
-    // (SPEC.md §2.5), precomputed as a per-employee schedule rather than an unrelated flat
+    // precomputed as a per-employee schedule rather than an unrelated flat
     // row count.
     let mut salary_assignments: Vec<(i32, NaiveDate)> = Vec::new();
     for (idx, (hire_date, _title, _mgr)) in employee_facts.iter().enumerate() {
@@ -150,7 +150,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         }
     }
     let ns = salary_assignments.len();
-    crate::generate_table_parallel(con, "salaries", ns, &pb, "Generating salaries...", |i| {
+    crate::generate_table_parallel(pool, "salaries", ns, &pb, "Generating salaries...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let (emp_id, eff_date) = salary_assignments[i - 1];
         let (lo, hi) = band_salary_range(&employee_facts[(emp_id as usize) - 1].1);
@@ -160,7 +160,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 4. Performance Reviews: ~1 per employee per year of tenure, reviewed by their actual
-    // manager (SPEC.md §2.5) rather than an unrelated random employee.
+    // manager rather than an unrelated random employee.
     let mut review_assignments: Vec<(i32, NaiveDate, i32)> = Vec::new();
     for (idx, (hire_date, _title, manager_id)) in employee_facts.iter().enumerate() {
         let emp_id = (idx + 1) as i32;
@@ -175,7 +175,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     }
     let npr = review_assignments.len().max(1);
     crate::generate_table_parallel(
-        con,
+        pool,
         "performance_reviews",
         npr,
         &pb,
@@ -190,9 +190,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 5. Leave Requests (popularity-weighted across employees, SPEC.md §2.5)
+    // 5. Leave Requests (popularity-weighted across employees)
     crate::generate_table_parallel(
-        con,
+        pool,
         "leave_requests",
         nlr,
         &pb,

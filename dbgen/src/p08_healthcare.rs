@@ -9,13 +9,12 @@ use rand::rngs::SmallRng;
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let npa = (3099146.0 * sf).max(20.0) as usize;
     let npr = (619829.0 * sf).max(10.0) as usize;
-    // SPEC.md §2.8: claims/claim_lines/diagnoses are fan-out ratios off patients/claims.
+    // Claims/claim_lines/diagnoses are fan-out ratios off patients/claims.
     let ncl = ((npa as f64) * 3.0).max(30.0) as usize;
     let ncll = ((ncl as f64) * 3.0).max(50.0) as usize;
     let ndx = ((ncl as f64) * 1.75).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
-
     con.execute_batch(
         "DROP TABLE IF EXISTS diagnoses; DROP TABLE IF EXISTS claim_lines;
          DROP TABLE IF EXISTS claims; DROP TABLE IF EXISTS providers;
@@ -37,7 +36,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let base_date = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
 
-    // SPEC.md §3.8 fixed vocabularies.
+    // Fixed vocabularies.
     let genders = ["female", "male", "other_unknown"];
     let gender_weights = [51.0, 48.0, 1.0];
     let plans = ["PPO", "HMO", "Medicare", "EPO", "Medicaid", "POS"];
@@ -62,7 +61,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let denial_reason_weights = [30.0, 22.0, 20.0, 15.0, 8.0, 5.0];
 
     let cpt_codes: Vec<String> = (1..=50).map(|i| format!("CPT{:05}", i)).collect();
-    // ~10 "common visit" codes account for ~50% of lines (SPEC.md §3.8).
+    // ~10 "common visit" codes account for ~50% of lines.
     let mut cpt_weights = vec![1.25f64; 50];
     for w in cpt_weights.iter_mut().take(10) {
         *w = 5.0;
@@ -75,13 +74,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .collect();
 
     let icd_codes: Vec<String> = (1..=100).map(|i| format!("ICD{:04}", i)).collect();
-    // ~15 common chronic/acute diagnoses account for ~40% of rows (SPEC.md §3.8).
+    // ~15 common chronic/acute diagnoses account for ~40% of rows.
     let mut icd_weights = vec![60.0 / 85.0; 100];
     for w in icd_weights.iter_mut().take(15) {
         *w = 40.0 / 15.0;
     }
 
-    // SPEC.md §2.8: claim volume is driven by a per-patient utilization tier (70% low, 25%
+    // Claim volume is driven by a per-patient utilization tier (70% low, 25%
     // medium, 5% high) rather than a raw Pareto exponent - more interpretable for a
     // healthcare context and gives downstream "high-utilizer" models a clean signal.
     let tier_weights = [70.0, 25.0, 5.0];
@@ -95,7 +94,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let patient_popularity = PopularityWeights::from_factors(&patient_claim_factors);
     let provider_popularity = PopularityWeights::new(npr, 0.9, 161);
     // claim_lines/diagnoses fan out off claims with a mild skew (some encounters are far more
-    // complex than others, SPEC.md §2.8).
+    // complex than others).
     let claim_line_popularity = PopularityWeights::new(ncl, 0.8, 171);
     let claim_diag_popularity = PopularityWeights::new(ncl, 0.8, 172);
 
@@ -107,7 +106,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     );
 
     // 1. Patients
-    crate::generate_table_parallel(con, "patients", npa, &pb, "Generating patients...", |i| {
+    crate::generate_table_parallel(pool, "patients", npa, &pb, "Generating patients...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let dob = base_date - Duration::days(rng.gen_range(365 * 5..365 * 85));
         let gender = weighted_choice(&mut rng, &genders, &gender_weights);
@@ -118,7 +117,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 2. Providers
-    crate::generate_table_parallel(con, "providers", npr, &pb, "Generating providers...", |i| {
+    crate::generate_table_parallel(pool, "providers", npr, &pb, "Generating providers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Provider {}", i);
         let spec = weighted_choice(&mut rng, &specialties, &specialty_weights);
@@ -129,8 +128,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 3. Claims (total_billed/total_allowed/total_paid start as placeholders and are rolled
-    // up from real claim_lines below, SPEC.md §1.7/§2.8)
-    crate::generate_table_parallel(con, "claims", ncl, &pb, "Generating claims...", |i| {
+    // up from real claim_lines below)
+    crate::generate_table_parallel(pool, "claims", ncl, &pb, "Generating claims...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let pat_id = patient_popularity.sample(&mut rng) as i32;
         let prov_id = provider_popularity.sample(&mut rng) as i32;
@@ -148,15 +147,15 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Materialize claim status so line-level paid_amount can respect denied claims
-    // (SPEC.md §1.7) instead of being independent of it.
+    // instead of being independent of it.
     let mut stmt = con.prepare("SELECT status FROM claims ORDER BY claim_id")?;
     let claim_status: Vec<String> = stmt
         .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
-    // 4. Claim Lines (every claim gets >=1 line via a stratified minimum, SPEC.md §2.8)
+    // 4. Claim Lines (every claim gets >=1 line via a stratified minimum)
     crate::generate_table_parallel(
-        con,
+        pool,
         "claim_lines",
         ncll,
         &pb,
@@ -173,7 +172,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let qty = rng.gen_range(1..6);
             let unit_cost = round_to(cpt_base_cost[cpt_idx] * rng.gen_range(0.9..1.1), 2);
             // Allowed/paid are fractions of the line's own cost, not independent draws
-            // (SPEC.md §1.7): paid <= allowed <= billed is enforced by construction.
+            // paid <= allowed <= billed is enforced by construction.
             let allowed = round_to((unit_cost * qty as f64) * rng.gen_range(0.5..0.9), 2);
             let denied = claim_status[claim_id - 1] == "denied";
             let paid = if denied {
@@ -185,27 +184,35 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Roll claims totals up from their real claim_lines (SPEC.md §1.7/§2.8): the one place
+    // Roll claims totals up from their real claim_lines: the one place
     // in this schema where a header total is a literal rollup of its details, since
     // insurance claims really do reconcile this way operationally.
+    //
+    // A row-oriented `UPDATE ... FROM` forces DuckDB to rewrite every touched column's
+    // storage in place, which is dramatically slower than rebuilding the table in one
+    // vectorized pass (measured ~30x on this table's scale) - so rebuild via CTAS and
+    // reattach the primary key instead.
     con.execute_batch(
-        "UPDATE claims SET
-             total_billed = t.billed,
-             total_allowed = t.allowed,
-             total_paid = t.paid
-         FROM (
+        "CREATE OR REPLACE TABLE claims AS
+         SELECT c.claim_id, c.patient_id, c.provider_id, c.service_date, c.claim_type,
+                CAST(COALESCE(t.billed, 0.0) AS DECIMAL(12,2)) AS total_billed,
+                CAST(COALESCE(t.allowed, 0.0) AS DECIMAL(12,2)) AS total_allowed,
+                CAST(COALESCE(t.paid, 0.0) AS DECIMAL(12,2)) AS total_paid,
+                c.status, c.denial_reason
+         FROM claims c
+         LEFT JOIN (
              SELECT claim_id,
                     SUM(quantity * unit_cost) AS billed,
                     SUM(allowed_amount) AS allowed,
                     SUM(paid_amount) AS paid
              FROM claim_lines GROUP BY claim_id
-         ) t
-         WHERE claims.claim_id = t.claim_id;",
+         ) t ON c.claim_id = t.claim_id;",
     )?;
+    con.execute_batch("ALTER TABLE claims ADD PRIMARY KEY (claim_id);")?;
 
-    // 5. Diagnoses [FIX per SPEC.md §2.8]: references claims.claim_id unambiguously (every
+    // 5. Diagnoses [FIX]: references claims.claim_id unambiguously (every
     // claim gets >=1 diagnosis via a stratified minimum).
-    crate::generate_table_parallel(con, "diagnoses", ndx, &pb, "Generating diagnoses...", |i| {
+    crate::generate_table_parallel(pool, "diagnoses", ndx, &pb, "Generating diagnoses...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let claim_id = if i <= ncl {
             i

@@ -15,7 +15,7 @@ use rand::rngs::SmallRng;
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let nac = (343952.0 * sf).max(10.0) as usize;
-    // SPEC.md §2.7: subscriptions/events/feature_usage are fan-out ratios off accounts.
+    // Subscriptions/events/feature_usage are fan-out ratios off accounts.
     let nsb = ((nac as f64) * 1.4).max(10.0) as usize;
     let avg_events_per_account = 100.0;
     let avg_feature_usage_per_account = 10.0;
@@ -48,7 +48,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let base_date = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();
 
-    // SPEC.md §3.7 fixed vocabularies.
+    // Fixed vocabularies.
     let industries = [
         "Software/SaaS", "Financial Services", "Retail/E-commerce", "Healthcare",
         "Manufacturing", "Media/Entertainment", "Education", "Government/Public Sector", "Other",
@@ -120,8 +120,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Materialize arr/health_score so downstream tables can correlate with them (SPEC.md
-    // §2.7) instead of drawing account activity independently.
+    // Materialize arr/health_score so downstream tables can correlate with them
+    // instead of drawing account activity independently.
     let mut stmt = con.prepare("SELECT arr, health_score FROM accounts ORDER BY account_id")?;
     let account_facts: Vec<(f64, i8)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -137,8 +137,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let account_engagement_popularity = PopularityWeights::from_factors(&arr_health_factor);
     let account_ticket_popularity = PopularityWeights::from_factors(&ticket_factor);
 
-    // 2. Subscriptions: mrr is a deterministic function of plan/seats plus small noise
-    // (SPEC.md §1.7/§2.7), not independent.
+    // 2. Subscriptions: mrr is a deterministic function of plan/seats plus small noise,
+    // not independent.
     crate::generate_table(
         pool,
         "subscriptions",
@@ -190,13 +190,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
                 Arc::new(Date32Array::from(end_date.clone())),
                 Arc::new(BooleanArray::from(active)),
                 // renewal_date is a denormalized copy of end_date, not an independently
-                // random field (SPEC.md §2.7).
+                // random field.
                 Arc::new(Date32Array::from(end_date)),
             ]
         },
     )?;
 
-    // 3. Events (popularity-weighted by account arr/health, SPEC.md §2.7 [CHANGE from dbgen])
+    // 3. Events (popularity-weighted by account arr/health [CHANGE from dbgen])
     crate::generate_table(
         pool,
         "events",
@@ -248,7 +248,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 4. Feature Usage (popularity-weighted like events, SPEC.md §2.7)
+    // 4. Feature Usage (popularity-weighted like events)
     crate::generate_table(
         pool,
         "feature_usage",
@@ -280,8 +280,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 5. Support Tickets: volume correlates inversely with health_score (SPEC.md §2.7
-    // [CHANGE from dbgen]) rather than being independent of it.
+    // 5. Support Tickets: volume correlates inversely with health_score
+    // [CHANGE from dbgen] rather than being independent of it.
     crate::generate_table(
         pool,
         "support_tickets",

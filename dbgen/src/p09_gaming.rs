@@ -9,7 +9,7 @@ use rand::rngs::SmallRng;
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let npl = (762872.0 * sf).max(20.0) as usize;
     let nlv = (19074.0 * sf).max(10.0) as usize;
-    // SPEC.md §2.9: sessions/events/purchases are fan-out ratios off players/sessions.
+    // Sessions/events/purchases are fan-out ratios off players/sessions.
     let avg_sessions_per_player = 5.0;
     let avg_events_per_session = 8.0;
     let avg_purchases_per_paid_player = 4.0;
@@ -44,7 +44,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .and_hms_opt(0, 0, 0)
         .unwrap();
 
-    // SPEC.md §3.9 fixed vocabularies.
+    // Fixed vocabularies.
     let countries = ["US", "BR", "IN", "UK", "DE", "JP", "KR", "FR", "CA", "MX", "AU", "RU", "IT"];
     let country_weights = [25.0, 10.0, 10.0, 8.0, 6.0, 6.0, 6.0, 6.0, 6.0, 5.0, 4.0, 4.0, 4.0];
     let platforms = ["android", "ios", "steam", "playstation", "xbox", "nintendo_switch"];
@@ -73,7 +73,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     );
 
     // 1. Players
-    crate::generate_table_parallel(con, "players", npl, &pb, "Generating players...", |i| {
+    crate::generate_table_parallel(pool, "players", npl, &pb, "Generating players...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let username = format!("Player_{}", i);
         let country = weighted_choice(&mut rng, &countries, &country_weights);
@@ -85,9 +85,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 2. Levels: contiguous blocks per world, difficulty trends harder with world index, and
-    // unlock_level references a strictly earlier level (SPEC.md §2.9).
+    // unlock_level references a strictly earlier level.
     let n_worlds = worlds.len();
-    crate::generate_table_parallel(con, "levels", nlv, &pb, "Generating levels...", |i| {
+    crate::generate_table_parallel(pool, "levels", nlv, &pb, "Generating levels...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Level_{}", i);
         let world_idx = ((i - 1) * n_worlds / nlv.max(1)).min(n_worlds - 1);
@@ -101,8 +101,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         (i as i32, name, world, diff, par, reward, unlock)
     })?;
 
-    // Materialize is_paid_user so session/purchase volume can correlate with it (SPEC.md
-    // §2.9) instead of drawing player activity independently.
+    // Materialize is_paid_user so session/purchase volume can correlate with it
+    // instead of drawing player activity independently.
     let mut stmt = con.prepare("SELECT is_paid_user FROM players ORDER BY player_id")?;
     let player_paid: Vec<bool> = stmt
         .query_map([], |row| row.get(0))?
@@ -115,8 +115,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .collect();
     let session_popularity = PopularityWeights::from_factors(&session_factors);
 
-    // 3. Sessions (strongly popularity-weighted toward paid/engaged players, SPEC.md §2.9)
-    crate::generate_table_parallel(con, "sessions", nss, &pb, "Generating sessions...", |i| {
+    // 3. Sessions (strongly popularity-weighted toward paid/engaged players)
+    crate::generate_table_parallel(pool, "sessions", nss, &pb, "Generating sessions...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let player_id = session_popularity.sample(&mut rng) as i32;
         let start = base_ts + Duration::seconds(rng.gen_range(0..300 * 86400));
@@ -132,7 +132,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Get samples for events; sessions are already popularity-distributed across players, so
-    // uniform sampling here still reflects player-level skew (SPEC.md §1.3b composition).
+    // uniform sampling here still reflects player-level skew.
     let mut stmt = con.prepare(&format!(
         "SELECT session_id, player_id, session_start FROM sessions USING SAMPLE {} ROWS",
         nev
@@ -141,14 +141,14 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Early levels get seen far more often than late ones (drop-off funnel, SPEC.md §2.9):
+    // Early levels get seen far more often than late ones (drop-off funnel):
     // an unshuffled, monotonically decaying weight over level_id (not a rank shuffle, since
     // the funnel really does follow level order).
     let level_funnel_weights: Vec<f64> = (1..=nlv).map(|k| (k as f64).powf(-0.7)).collect();
     let level_funnel = PopularityWeights::from_factors(&level_funnel_weights);
 
-    // 4. Events (materialized-parent sampled from real sessions, SPEC.md §1.3b)
-    crate::generate_table_parallel(con, "events", nev, &pb, "Generating events...", |i| {
+    // 4. Events (materialized-parent sampled from real sessions)
+    crate::generate_table_parallel(pool, "events", nev, &pb, "Generating events...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let ref_idx = rng.gen_range(0..session_refs.len());
         let (sess_id, player_id, sess_start) = session_refs[ref_idx];
@@ -162,8 +162,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // Purchases are restricted to is_paid_user=true players only (SPEC.md §2.9 [CHANGE from
-    // dbgen]) - free players never generate purchase rows.
+    // Purchases are restricted to is_paid_user=true players only [CHANGE from
+    // dbgen] - free players never generate purchase rows.
     let paid_player_ids: Vec<usize> = player_paid
         .iter()
         .enumerate()
@@ -178,7 +178,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let npu = ((paid_player_ids.len() as f64) * avg_purchases_per_paid_player).max(10.0) as usize;
 
     // 5. Purchases
-    crate::generate_table_parallel(con, "purchases", npu, &pb, "Generating purchases...", |i| {
+    crate::generate_table_parallel(pool, "purchases", npu, &pb, "Generating purchases...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let pool_idx = paid_player_popularity.sample(&mut rng) - 1;
         let player_id = paid_player_ids[pool_idx] as i32;

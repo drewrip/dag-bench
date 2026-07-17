@@ -9,7 +9,7 @@ use rand_distr::{Distribution, Exp, Gamma};
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let nca = (17608.0 * sf).max(10.0) as usize;
-    // SPEC.md §2.2: impressions/clicks/conversions are fan-out ratios (avg per campaign,
+    // Impressions/clicks/conversions are fan-out ratios (avg per campaign,
     // CTR, CVR), not independent base constants.
     let avg_impressions_per_campaign = 2500.0;
     let ctr = 0.03;
@@ -40,7 +40,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let base_date = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
     let base_ts = base_date.and_hms_opt(0, 0, 0).unwrap();
 
-    // SPEC.md §3.2 fixed vocabularies.
+    // Fixed vocabularies.
     let channels = ["search", "social", "display", "video", "native", "email"];
     let channel_weights = [30.0, 25.0, 20.0, 12.0, 8.0, 5.0];
     let objectives = ["conversion", "awareness", "consideration", "retargeting"];
@@ -66,7 +66,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     );
 
     // 1. Campaigns
-    crate::generate_table_parallel(con, "campaigns", nca, &pb, "Generating campaigns...", |i| {
+    crate::generate_table_parallel(pool, "campaigns", nca, &pb, "Generating campaigns...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Campaign {}", i);
         let advertiser = format!("Brand {}", rng.gen_range(1..21));
@@ -83,7 +83,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Materialize each campaign's budget/cpm so impression volume and cost can correlate
-    // with them (SPEC.md §2.2), instead of drawing impression fields independently.
+    // with them, instead of drawing impression fields independently.
     let mut stmt = con.prepare("SELECT budget, cpm_target FROM campaigns ORDER BY campaign_id")?;
     let campaign_facts: Vec<(f64, f64)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -93,7 +93,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 2. Impressions
     crate::generate_table_parallel(
-        con,
+        pool,
         "impressions",
         nimp,
         &pb,
@@ -108,7 +108,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let geo_idx = weighted_choice(&mut rng, &(0..geos.len()).collect::<Vec<_>>(), &geo_weights);
             let geo = geos[geo_idx];
             let placement = weighted_choice(&mut rng, &placements, &placement_weights);
-            // Cost tracks the owning campaign's target CPM (SPEC.md §2.2), not independently.
+            // Cost tracks the owning campaign's target CPM, not independently.
             let cost = round_to((cpm_target / 1000.0) * rng.gen_range(0.7..1.3), 6);
             (
                 i as i64,
@@ -141,12 +141,12 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .collect::<Result<Vec<_>, _>>()?;
 
     // 3. Clicks
-    crate::generate_table_parallel(con, "clicks", ncl, &pb, "Generating clicks...", |i| {
+    crate::generate_table_parallel(pool, "clicks", ncl, &pb, "Generating clicks...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let ref_idx = rng.gen_range(0..imp_refs.len());
         let (imp_id, camp_id, user_id, imp_ts, device) = &imp_refs[ref_idx];
         // Most clicks happen fast after the impression; a long tail happens later
-        // (SPEC.md §2.2: Exponential rather than flat uniform), clipped to a few hours.
+        // (Exponential rather than flat uniform), clipped to a few hours.
         let click_delay: f64 = Exp::new(1.0 / 90.0).unwrap().sample(&mut rng);
         let click_delay = click_delay.min(3600.0 * 4.0);
         let click_ts = *imp_ts + Duration::seconds(click_delay.max(1.0) as i64);
@@ -175,7 +175,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 4. Conversions
     crate::generate_table_parallel(
-        con,
+        pool,
         "conversions",
         ncv,
         &pb,
@@ -184,11 +184,11 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let mut rng = SmallRng::seed_from_u64(i as u64);
             let ref_idx = rng.gen_range(0..click_refs.len());
             let (click_id, camp_id, user_id, click_ts) = click_refs[ref_idx];
-            // Conversions can lag by hours to days, unlike near-instant clicks (SPEC.md §2.2).
+            // Conversions can lag by hours to days, unlike near-instant clicks.
             let lag_days = Gamma::new(2.0, 1.0).unwrap().sample(&mut rng);
             let conv_ts = click_ts + Duration::seconds((lag_days * 86400.0) as i64);
             let ctype = weighted_choice(&mut rng, &ctypes, &ctype_weights);
-            // Revenue correlates with the campaign's target CPM tier (SPEC.md §2.2 / §1.7).
+            // Revenue correlates with the campaign's target CPM tier.
             let cpm_target = campaign_facts[(camp_id as usize) - 1].1;
             let rev = round_to(
                 lognormal_clamped(&mut rng, 15.0 + cpm_target * 3.0, 0.6, 1.0, 5000.0),

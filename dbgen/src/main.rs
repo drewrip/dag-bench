@@ -5,13 +5,14 @@ use indicatif::ProgressBar;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
-use r2d2::{Pool, PooledConnection};
+use r2d2::Pool;
 use rayon::prelude::*;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::Arc;
 use std::time::Duration;
 
+mod arrow_gen;
 mod common;
 mod p01_iot;
 mod p02_adtech;
@@ -24,11 +25,8 @@ mod p08_healthcare;
 mod p09_gaming;
 mod p10_energy;
 
-pub struct SendAppender<'a>(pub duckdb::Appender<'a>);
-unsafe impl<'a> Send for SendAppender<'a> {}
-
 pub fn generate_table_parallel<T, F>(
-    con: &PooledConnection<DuckdbConnectionManager>,
+    pool: &Pool<DuckdbConnectionManager>,
     table_name: &str,
     total_rows: usize,
     pb: &ProgressBar,
@@ -36,14 +34,24 @@ pub fn generate_table_parallel<T, F>(
     generator: F,
 ) -> duckdb::Result<()>
 where
-    T: duckdb::AppenderParams + Send,
+    T: crate::arrow_gen::RowBatch + Send,
     F: Fn(usize) -> T + Sync + Send,
 {
+    // NOTE: a write-Parquet-then-`COPY` variant was tried here (bigger chunks, no
+    // cross-thread DB coordination while writing) and looked ~2.7x faster in an isolated
+    // benchmark - but that benchmark didn't declare a PRIMARY KEY on the target table. Once
+    // measured against our actual schemas (which all declare one upfront), the constraint
+    // dominates either way and the Parquet path came out slightly slower end-to-end (~22.4s
+    // vs ~20.4s on p03 at sf=1). Keep the direct Arrow-appender path below; don't switch
+    // back without re-measuring against a PK-constrained table.
     const CHUNK_SIZE: usize = 1_000_000;
     pb.set_message(msg.to_string());
     let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    let appender = Mutex::new(SendAppender(con.appender(table_name)?));
+    let schema = Arc::new(T::schema());
 
+    // Each chunk grabs its own pooled connection/appender so appends run concurrently
+    // instead of funneling through one shared, serialized Appender (DuckDB's row/vector
+    // append path is cheap per-chunk but `Appender` itself is `!Sync`).
     (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
         let chunk_start = chunk_idx * CHUNK_SIZE + 1;
         let chunk_end = (chunk_start + CHUNK_SIZE).min(total_rows + 1);
@@ -52,8 +60,13 @@ where
             .map(&generator)
             .collect();
 
-        let mut app = appender.lock().unwrap();
-        app.0.append_rows(rows)?;
+        let columns = T::to_columns(rows);
+        let batch = RecordBatch::try_new(schema.clone(), columns)
+            .expect("row batch column/schema mismatch");
+
+        let con = pool.get().expect("couldn't get connection from pool");
+        let mut app = con.appender(table_name)?;
+        app.append_record_batch(batch)?;
         Ok::<(), duckdb::Error>(())
     })?;
 

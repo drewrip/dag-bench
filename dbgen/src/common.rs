@@ -1,4 +1,4 @@
-//! Shared generation helpers implementing SPEC.md §1 (general principles).
+//! Shared generation helpers implementing general principles for data generation.
 //!
 //! These are pure, read-only, `Sync`-safe structures so they can be built once per table
 //! and then captured by reference inside the per-row `Fn(usize) -> T` closures that
@@ -9,7 +9,7 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, LogNormal};
 
-/// Pareto/Zipf-shaped popularity weights for foreign-key fan-out (SPEC.md §1.3a).
+/// Pareto/Zipf-shaped popularity weights for foreign-key fan-out.
 ///
 /// A minority of parent rows should receive a disproportionate share of child rows (heavy
 /// customers, hot SKUs, popular campaigns). `s` is the skew exponent: ~0.8 for mild skew,
@@ -81,7 +81,7 @@ impl PopularityWeights {
     }
 }
 
-/// Weighted categorical draw over a fixed vocabulary (SPEC.md §1.4 / §3). `weights` need
+/// Weighted categorical draw over a fixed vocabulary. `weights` need
 /// not sum to 1; they're normalized internally.
 pub fn weighted_choice<T: Copy>(rng: &mut impl Rng, items: &[T], weights: &[f64]) -> T {
     debug_assert_eq!(items.len(), weights.len());
@@ -97,7 +97,7 @@ pub fn weighted_choice<T: Copy>(rng: &mut impl Rng, items: &[T], weights: &[f64]
     items[items.len() - 1]
 }
 
-/// Log-normal draw (SPEC.md §1.4) parametrized by the desired median (not the mean) and the
+/// Log-normal draw parametrized by the desired median (not the mean) and the
 /// log-space spread `sigma` (typically 0.5-0.9), clamped to `[lo, hi]`.
 pub fn lognormal_clamped(rng: &mut impl Rng, median: f64, sigma: f64, lo: f64, hi: f64) -> f64 {
     let dist = LogNormal::new(median.max(1e-9).ln(), sigma).unwrap();

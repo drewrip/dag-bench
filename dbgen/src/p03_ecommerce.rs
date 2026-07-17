@@ -10,7 +10,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let nc = (3255392.0 * sf).max(10.0) as usize;
     let nct = (32555.0 * sf).max(5.0) as usize;
     let np = (813848.0 * sf).max(20.0) as usize;
-    // SPEC.md §2.3: orders/order_items/reviews are fan-out ratios off their parents.
+    // Orders/order_items/reviews are fan-out ratios off their parents.
     let avg_orders_per_customer = 4.0;
     let avg_items_per_order = 2.8;
     let review_rate = 0.225; // of eligible (completed) order_items
@@ -19,7 +19,6 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let nmo = (1139387.0 * sf).max(10.0) as usize;
 
     let con = &pool.get().expect("couldn't get connection");
-
     con.execute_batch(
         "DROP TABLE IF EXISTS reviews; DROP TABLE IF EXISTS order_items;
          DROP TABLE IF EXISTS orders;  DROP TABLE IF EXISTS products;
@@ -47,7 +46,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     let base_date = NaiveDate::from_ymd_opt(2018, 1, 1).unwrap();
 
-    // SPEC.md §3.3 fixed vocabularies.
+    // Fixed vocabularies.
     let countries = ["US", "CA", "GB", "DE", "FR", "AU", "JP", "BR", "IN", "MX", "IT", "ES", "NL", "SE", "KR"];
     let country_weights = [40.0, 8.0, 8.0, 6.0, 5.0, 5.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 3.0, 2.0, 2.0];
     let statuses = ["completed", "cancelled", "returned", "pending", "processing"];
@@ -71,7 +70,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let qty_values = [1, 2, 3, 4, 5, 6, 7, 8];
     let qty_weights = [35.0, 25.0, 15.0, 10.0, 7.0, 4.0, 2.0, 2.0];
 
-    // SPEC.md §1.3a: a few categories/products/customers/orders should dominate rather than
+    // A few categories/products/customers/orders should dominate rather than
     // uniform draws.
     let category_popularity = PopularityWeights::new(nct, 1.0, 31);
     let customer_popularity = PopularityWeights::new(nc, 1.1, 42);
@@ -88,7 +87,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     // 1. Categories: shallow 2-level tree - first 8 are top-level, rest are children of one.
     let n_top_level = cats_names.len().min(nct);
     crate::generate_table_parallel(
-        con,
+        pool,
         "categories",
         nct,
         &pb,
@@ -105,8 +104,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // 2. Customers (lifetime_spend starts at 0, rolled up from real orders below - SPEC §1.7)
-    crate::generate_table_parallel(con, "customers", nc, &pb, "Generating customers...", |i| {
+    // 2. Customers (lifetime_spend starts at 0, rolled up from real orders below)
+    crate::generate_table_parallel(pool, "customers", nc, &pb, "Generating customers...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let full_name = format!("Cust {}", i);
         let email = format!("u{}@ex.com", i);
@@ -125,13 +124,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 3. Products
-    crate::generate_table_parallel(con, "products", np, &pb, "Generating products...", |i| {
+    crate::generate_table_parallel(pool, "products", np, &pb, "Generating products...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let cat_id = category_popularity.sample(&mut rng) as i32;
         let sku = format!("SKU-{:060}", i);
         let name = format!("Prod {}", i);
         let cost = round_to(rng.gen_range(1.0..400.0), 2);
-        // Price is a markup over cost, not independently random (SPEC.md §1.7/§2.3).
+        // Price is a markup over cost, not independently random.
         let price = round_to(cost * rng.gen_range(1.3..3.0), 2);
         let weight = round_to(rng.gen_range(0.1..20.0), 3);
         let is_active = rng.gen_bool(0.95);
@@ -142,7 +141,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 4. Orders
-    crate::generate_table_parallel(con, "orders", no, &pb, "Generating orders...", |i| {
+    crate::generate_table_parallel(pool, "orders", no, &pb, "Generating orders...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let cust_id = customer_popularity.sample(&mut rng) as i32;
         let order_date = base_date + Duration::days(rng.gen_range(0..2001));
@@ -165,9 +164,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         )
     })?;
 
-    // 5. Order Items (every order gets >=1 item via a stratified minimum, SPEC.md §2.3)
+    // 5. Order Items (every order gets >=1 item via a stratified minimum)
     crate::generate_table_parallel(
-        con,
+        pool,
         "order_items",
         ni,
         &pb,
@@ -186,8 +185,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Roll customers.lifetime_spend up from their real orders (SPEC.md §1.7): never generate
+    // Roll customers.lifetime_spend up from their real orders: never generate
     // two numbers that are supposed to reconcile independently.
+    //
+    // Kept as an `UPDATE` (unlike the claims rollup in p08) since this only touches one
+    // numeric column on the smaller `customers` table - a CTAS rebuild here would have to
+    // re-copy the wider `full_name`/`email` string columns for no benefit and measured
+    // slower end-to-end.
     con.execute_batch(
         "UPDATE customers SET lifetime_spend = t.total
          FROM (
@@ -199,26 +203,22 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     // 6. Reviews: filtered-subset sampled from completed orders' real order_items only
-    // (SPEC.md §2.3) - you cannot review what you haven't received.
-    let eligible_count: i64 = con.query_row(
-        "SELECT COUNT(*) FROM order_items oi JOIN orders o ON oi.order_id = o.order_id
-         WHERE o.status = 'completed'",
-        [],
-        |row| row.get(0),
-    )?;
-    let nr = ((eligible_count as f64) * review_rate).max(20.0) as usize;
-
+    // - you cannot review what you haven't received. Only "roughly" a 20-25% rate is
+    // required, so a single-pass Bernoulli percentage sample (each
+    // eligible item independently kept w.p. `review_rate`) is equivalent in distribution to
+    // the old COUNT(*) + exact-ROWS-reservoir-sample, but needs one join scan instead of two.
     let mut stmt = con.prepare(&format!(
         "SELECT oi.product_id, o.customer_id FROM order_items oi
          JOIN orders o ON oi.order_id = o.order_id
-         WHERE o.status = 'completed' USING SAMPLE {} ROWS",
-        nr
+         WHERE o.status = 'completed' USING SAMPLE {} PERCENT (bernoulli)",
+        review_rate * 100.0
     ))?;
     let eligible_refs: Vec<(i32, i32)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<Result<Vec<_>, _>>()?;
+    let nr = eligible_refs.len().max(20);
 
-    crate::generate_table_parallel(con, "reviews", nr, &pb, "Generating reviews...", |i| {
+    crate::generate_table_parallel(pool, "reviews", nr, &pb, "Generating reviews...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let ref_idx = rng.gen_range(0..eligible_refs.len());
         let (product_id, customer_id) = eligible_refs[ref_idx];
@@ -236,9 +236,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 7. Marketplace orders (separate partner feed: own id space, status vocabulary, no line
-    // items - a deliberate lower-fidelity external source, SPEC.md §2.3).
+    // items - a deliberate lower-fidelity external source).
     crate::generate_table_parallel(
-        con,
+        pool,
         "marketplace_orders",
         nmo,
         &pb,

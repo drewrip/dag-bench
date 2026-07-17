@@ -9,7 +9,7 @@ use rand::rngs::SmallRng;
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let na = (1988346.0 * sf).max(10.0) as usize;
     let nm = (596340.0 * sf).max(10.0) as usize;
-    // SPEC.md §2.4: transactions fan out off accounts; alerts fan out off flagged txns.
+    // Transactions fan out off accounts; alerts fan out off flagged txns.
     let avg_txn_per_account = 20.0;
     let nt = ((na as f64) * avg_txn_per_account).max(50.0) as usize;
 
@@ -38,7 +38,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .and_hms_opt(0, 0, 0)
         .unwrap();
 
-    // SPEC.md §3.4 fixed vocabularies.
+    // Fixed vocabularies.
     let account_types = ["checking", "savings", "credit_card", "business"];
     let account_type_weights = [45.0, 30.0, 20.0, 5.0];
     let countries_acc = ["US", "CA", "UK", "DE", "FR", "MX", "AU", "JP", "BR", "IN"];
@@ -71,7 +71,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let resolutions = ["false_positive", "customer_verified", "confirmed_fraud"];
     let resolution_weights = [45.0, 30.0, 25.0];
 
-    // SPEC.md §1.3a: transactions skew toward a few high-activity accounts and merchants.
+    // Transactions skew toward a few high-activity accounts and merchants.
     let account_popularity = PopularityWeights::new(na, 1.0, 71);
     let merchant_popularity = PopularityWeights::new(nm, 1.1, 82);
 
@@ -83,7 +83,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     );
 
     // 1. Accounts
-    crate::generate_table_parallel(con, "accounts", na, &pb, "Generating accounts...", |i| {
+    crate::generate_table_parallel(pool, "accounts", na, &pb, "Generating accounts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let holder_name = format!("Holder {}", i);
         let atype = weighted_choice(&mut rng, &account_types, &account_type_weights);
@@ -103,7 +103,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // 2. Merchants
-    crate::generate_table_parallel(con, "merchants", nm, &pb, "Generating merchants...", |i| {
+    crate::generate_table_parallel(pool, "merchants", nm, &pb, "Generating merchants...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let name = format!("Merchant {}", i);
         let cat = weighted_choice(&mut rng, &merchant_categories, &merchant_category_weights);
@@ -113,8 +113,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         (i as i32, name, cat, country, risk, avg_amount)
     })?;
 
-    // Materialize risk tier / frozen status so transactions can correlate with them
-    // (SPEC.md §2.4), instead of drawing is_flagged/is_declined independently.
+    // Materialize risk tier / frozen status so transactions can correlate with them,
+    // instead of drawing is_flagged/is_declined independently.
     let mut stmt = con.prepare("SELECT risk_tier FROM merchants ORDER BY merchant_id")?;
     let merchant_risk: Vec<String> = stmt
         .query_map([], |row| row.get(0))?
@@ -126,7 +126,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 3. Transactions
     crate::generate_table_parallel(
-        con,
+        pool,
         "transactions",
         nt,
         &pb,
@@ -140,13 +140,13 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
             let channel = weighted_choice(&mut rng, &txn_channels, &txn_channel_weights);
             let curr = weighted_choice(&mut rng, &currencies, &currency_weights);
 
-            // Decline odds spike sharply for frozen accounts (SPEC.md §2.4).
+            // Decline odds spike sharply for frozen accounts.
             let frozen = account_frozen[acc_id - 1];
             let decline_rate = if frozen { 0.85 } else { 0.05 };
             let declined = rng.gen_bool(decline_rate);
 
-            // Flag odds scale with amount and merchant risk tier (SPEC.md §2.4), tuned so
-            // ~3-5% of transactions end up flagged overall (SPEC.md §1.6 filter budget).
+            // Flag odds scale with amount and merchant risk tier, tuned so
+            // ~3-5% of transactions end up flagged overall.
             let risk = merchant_risk[merch_id - 1].as_str();
             let base_flag_rate: f64 = match risk {
                 "high" => 0.10,
@@ -168,7 +168,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Get flagged IDs for alerts, sized off the actual flagged count (SPEC.md §1.3c) rather
+    // Get flagged IDs for alerts, sized off the actual flagged count rather
     // than an unrelated flat constant.
     let flagged_count: i64 =
         con.query_row("SELECT COUNT(*) FROM transactions WHERE is_flagged", [], |row| {
@@ -182,8 +182,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .query_map([], |row| row.get(0))?
         .collect::<Result<Vec<i32>, _>>()?;
 
-    // 4. Alerts (filtered-subset sampled from flagged transactions, SPEC.md §1.3c/§2.4)
-    crate::generate_table_parallel(con, "alerts", nal, &pb, "Generating alerts...", |i| {
+    // 4. Alerts (filtered-subset sampled from flagged transactions)
+    crate::generate_table_parallel(pool, "alerts", nal, &pb, "Generating alerts...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let txn_id = if !flagged_ids.is_empty() {
             flagged_ids[rng.gen_range(0..flagged_ids.len())]

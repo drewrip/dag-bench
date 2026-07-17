@@ -9,7 +9,7 @@ use rand_distr::{Distribution, Normal};
 
 pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<()> {
     let nsb = (4562.0 * sf).max(5.0) as usize;
-    // SPEC.md §2.10: meters/readings/outages are fan-out ratios off substations/meters.
+    // Meters/readings/outages are fan-out ratios off substations/meters.
     let avg_meters_per_substation = 20.0;
     let avg_readings_per_meter = 500.0;
     let avg_outages_per_substation = 3.5;
@@ -41,7 +41,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         .and_hms_opt(0, 0, 0)
         .unwrap();
 
-    // SPEC.md §3.10 fixed vocabularies.
+    // Fixed vocabularies.
     let regions = ["north_america", "europe", "apac", "latin_america"];
     let region_weights = [35.0, 30.0, 25.0, 10.0];
     let meter_types = ["residential", "commercial", "industrial"];
@@ -67,7 +67,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
 
     // 1. Substations
     crate::generate_table_parallel(
-        con,
+        pool,
         "substations",
         nsb,
         &pb,
@@ -84,8 +84,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
         },
     )?;
 
-    // Materialize substation capacity so meter count/rating can correlate with it (SPEC.md
-    // §2.10) instead of an unrelated flat distribution.
+    // Materialize substation capacity so meter count/rating can correlate with it
+    // instead of an unrelated flat distribution.
     let mut stmt = con.prepare("SELECT capacity_mw FROM substations ORDER BY sub_id")?;
     let substation_capacity: Vec<f64> = stmt
         .query_map([], |row| row.get(0))?
@@ -93,7 +93,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     let substation_popularity = PopularityWeights::from_factors(&substation_capacity);
 
     // 2. Meters
-    crate::generate_table_parallel(con, "meters", nmt, &pb, "Generating meters...", |i| {
+    crate::generate_table_parallel(pool, "meters", nmt, &pb, "Generating meters...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
         let sub_id = substation_popularity.sample(&mut rng) as i32;
         let cust_id = rng.gen_range(1..=((nmt as f64 * 1.05) as i32).max(1));
@@ -119,8 +119,8 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     })?;
 
     // Materialize meter_type/tariff so kwh can be drawn per-tariff instead of one global
-    // distribution (SPEC.md §2.10 [CHANGE from dbgen]), and so outages can size
-    // affected_meters off each substation's real downstream meter count (SPEC.md §1.7).
+    // distribution [CHANGE from dbgen], and so outages can size
+    // affected_meters off each substation's real downstream meter count.
     let mut stmt = con.prepare("SELECT sub_id, meter_type FROM meters ORDER BY meter_id")?;
     let meter_facts: Vec<(i32, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
@@ -131,9 +131,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     }
     let meter_popularity = PopularityWeights::new(nmt, 0.9, 191);
 
-    // 3. Consumption Readings (kwh mean scales with tariff class, SPEC.md §2.10)
+    // 3. Consumption Readings (kwh mean scales with tariff class)
     crate::generate_table_parallel(
-        con,
+        pool,
         "consumption_readings",
         ncr,
         &pb,
@@ -159,9 +159,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>) -> duckdb::Result<
     )?;
 
     // 4. Outage Events (affected_meters as a fraction of the substation's real downstream
-    // meter count, severity correlated with that fraction - SPEC.md §1.7/§2.10)
+    // meter count, severity correlated with that fraction)
     crate::generate_table_parallel(
-        con,
+        pool,
         "outage_events",
         noe,
         &pb,
