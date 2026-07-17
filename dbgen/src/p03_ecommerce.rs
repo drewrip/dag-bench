@@ -26,7 +26,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
          DROP TABLE IF EXISTS marketplace_orders;
          CREATE TABLE customers(customer_id INTEGER PRIMARY KEY, full_name VARCHAR,
              email VARCHAR, country VARCHAR, signup_date DATE, is_active BOOLEAN,
-             lifetime_spend DECIMAL(12,2));
+             lifetime_spend DECIMAL(20,2));
          CREATE TABLE categories(category_id INTEGER PRIMARY KEY, name VARCHAR,
              parent_id INTEGER, display_rank INTEGER);
          CREATE TABLE products(product_id INTEGER PRIMARY KEY, category_id INTEGER,
