@@ -1,14 +1,15 @@
 use clap::Parser;
 use duckdb::arrow::array::{ArrayRef, RecordBatch};
-use duckdb::{params, Config, DuckdbConnectionManager};
+use duckdb::{Config, DuckdbConnectionManager};
 use indicatif::ProgressBar;
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use r2d2::Pool;
 use rayon::prelude::*;
-use std::fs::{self, File};
-use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -37,36 +38,65 @@ where
     T: crate::arrow_gen::RowBatch + Send,
     F: Fn(usize) -> T + Sync + Send,
 {
-    // NOTE: a write-Parquet-then-`COPY` variant was tried here (bigger chunks, no
-    // cross-thread DB coordination while writing) and looked ~2.7x faster in an isolated
-    // benchmark - but that benchmark didn't declare a PRIMARY KEY on the target table. Once
-    // measured against our actual schemas (which all declare one upfront), the constraint
-    // dominates either way and the Parquet path came out slightly slower end-to-end (~22.4s
-    // vs ~20.4s on p03 at sf=1). Keep the direct Arrow-appender path below; don't switch
-    // back without re-measuring against a PK-constrained table.
-    const CHUNK_SIZE: usize = 1_000_000;
+    const CHUNK_SIZE: usize = 100_000;
     pb.set_message(msg.to_string());
     let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let schema = Arc::new(T::schema());
 
-    // Each chunk grabs its own pooled connection/appender so appends run concurrently
-    // instead of funneling through one shared, serialized Appender (DuckDB's row/vector
-    // append path is cheap per-chunk but `Appender` itself is `!Sync`).
+    let tmp_dir = tempfile::tempdir().expect("couldn't create tmp dir");
+
+    // Each chunk is generated in parallel and written to its own Parquet file, then all
+    // chunks are read back and appended in parallel below.
     (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
         let chunk_start = chunk_idx * CHUNK_SIZE + 1;
         let chunk_end = (chunk_start + CHUNK_SIZE).min(total_rows + 1);
-        let rows: Vec<T> = (chunk_start..chunk_end)
-            .into_par_iter()
-            .map(&generator)
-            .collect();
+        // Deliberately sequential within a chunk: parallelism already comes from the
+        // outer `into_par_iter()` over chunks. Nesting a second `into_par_iter()` here
+        // let rayon's work-stealing scheduler have many more chunks "open" (each holding
+        // a fully materialized `Vec<T>`) than there are cores, since a thread stuck
+        // helping with one chunk's inner split lets other threads start new outer chunks
+        // instead of finishing existing ones - unbounded memory instead of a per-core cap.
+        let rows: Vec<T> = (chunk_start..chunk_end).map(&generator).collect();
 
         let columns = T::to_columns(rows);
         let batch = RecordBatch::try_new(schema.clone(), columns)
             .expect("row batch column/schema mismatch");
 
+        let file = File::create(
+            tmp_dir
+                .path()
+                .join(format!("{}_{}.parquet", table_name, chunk_idx)),
+        )
+        .expect("couldn't create parquet chunk file");
+        let props = WriterProperties::builder()
+            .set_compression(Compression::SNAPPY)
+            .build();
+        let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props))
+            .expect("couldn't create parquet writer");
+        writer.write(&batch).expect("writing batch");
+        writer.close().expect("closing parquet writer");
+        Ok::<(), duckdb::Error>(())
+    })?;
+
+    // Load each Parquet chunk back in parallel and append it through its own pooled
+    // connection/appender, instead of one big `COPY ... FROM '*.parquet'` that would
+    // otherwise pull every chunk into memory at once to satisfy a single statement.
+    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
+        let path = tmp_dir
+            .path()
+            .join(format!("{}_{}.parquet", table_name, chunk_idx));
+        let file = File::open(&path).expect("couldn't open parquet chunk file");
+        let reader = ParquetRecordBatchReaderBuilder::try_new(file)
+            .expect("couldn't create parquet reader")
+            .build()
+            .expect("couldn't build parquet reader");
+
         let con = pool.get().expect("couldn't get connection from pool");
         let mut app = con.appender(table_name)?;
-        app.append_record_batch(batch)?;
+        for batch in reader {
+            let batch = batch.expect("couldn't read parquet chunk batch");
+            app.append_record_batch(batch)?;
+        }
         Ok::<(), duckdb::Error>(())
     })?;
 
@@ -111,74 +141,6 @@ where
         Ok::<(), duckdb::Error>(())
     })?;
 
-    pb.inc(1);
-    Ok(())
-}
-
-pub fn generate_table<F>(
-    pool: &Pool<DuckdbConnectionManager>,
-    table_name: &str,
-    total_rows: usize,
-    pb: &ProgressBar,
-    msg: &str,
-    generator: F,
-) -> duckdb::Result<()>
-where
-    F: Fn(usize, usize) -> Vec<ArrayRef> + Sync,
-{
-    const CHUNK_SIZE: usize = 10_000;
-    pb.set_message(msg.to_string());
-    let n_chunks = (total_rows + CHUNK_SIZE - 1) / CHUNK_SIZE;
-
-    // Create temp directory
-    let tmp_dir = Path::new("tmp_data/");
-    fs::create_dir(tmp_dir).expect("couldn't create tmp dir");
-
-    (0..n_chunks).into_par_iter().try_for_each(|chunk_idx| {
-        let chunk_start = chunk_idx * CHUNK_SIZE + 1;
-        let chunk_end = (chunk_start + CHUNK_SIZE).min(total_rows + 1);
-
-        // `generator` should generate chunk_end - chunk_start rows, but in columnar form.
-        let arrays: Vec<ArrayRef> = generator(chunk_start, chunk_end);
-
-        let batch = RecordBatch::try_from_iter(
-            arrays
-                .into_iter()
-                .enumerate()
-                .map(|(i, a)| (format!("c{}", i), a)),
-        )
-        .unwrap();
-
-        let file: File =
-            File::create(tmp_dir.join(format!("{}_{}.parquet", table_name, chunk_idx))).unwrap();
-
-        // WriterProperties can be used to set Parquet file options
-        let props = WriterProperties::builder()
-            .set_compression(Compression::SNAPPY)
-            .build();
-
-        let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).unwrap();
-
-        writer.write(&batch).expect("Writing batch");
-
-        // writer must be closed to write footer
-        writer.close().unwrap();
-        Ok::<(), duckdb::Error>(())
-    })?;
-
-    // Connect to duckdb and `COPY` all Parquet files in the temporary directory into `table_name`
-    let con = pool.get().expect("couldn't get connection from pool");
-    con.execute(
-        &format!(
-            "COPY {} FROM '{}' (FORMAT parquet)",
-            table_name,
-            tmp_dir.join("*").to_str().unwrap()
-        ),
-        params![],
-    )
-    .unwrap();
-
-    fs::remove_dir_all(tmp_dir).expect("couldn't delete tmp dir");
     pb.inc(1);
     Ok(())
 }

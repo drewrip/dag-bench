@@ -1,19 +1,16 @@
-use std::sync::Arc;
-
 use crate::common::{round_to, weighted_choice, PopularityWeights};
-use chrono::{Duration, NaiveDate};
-use duckdb::arrow::array::{
-    BooleanArray, Date32Array, Float64Array, Int32Array, Int64Array, Int8Array, StringArray,
-    TimestampMillisecondArray,
-};
-use duckdb::arrow::datatypes::{ArrowTimestampType, Date32Type, TimestampMillisecondType};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 use duckdb::DuckdbConnectionManager;
 use indicatif::{ProgressBar, ProgressStyle};
 use r2d2::Pool;
 use rand::prelude::*;
 use rand::rngs::SmallRng;
 
-pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bool) -> duckdb::Result<()> {
+pub fn run(
+    sf: f64,
+    pool: &mut Pool<DuckdbConnectionManager>,
+    no_constraints: bool,
+) -> duckdb::Result<()> {
     let nac = (343952.0 * sf).max(10.0) as usize;
     // Subscriptions/events/feature_usage are fan-out ratios off accounts.
     let nsb = ((nac as f64) * 1.4).max(10.0) as usize;
@@ -51,8 +48,15 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
 
     // Fixed vocabularies.
     let industries = [
-        "Software/SaaS", "Financial Services", "Retail/E-commerce", "Healthcare",
-        "Manufacturing", "Media/Entertainment", "Education", "Government/Public Sector", "Other",
+        "Software/SaaS",
+        "Financial Services",
+        "Retail/E-commerce",
+        "Healthcare",
+        "Manufacturing",
+        "Media/Entertainment",
+        "Education",
+        "Government/Public Sector",
+        "Other",
     ];
     let industry_weights = [20.0, 15.0, 12.0, 12.0, 10.0, 10.0, 10.0, 6.0, 5.0];
     let countries = ["US", "UK", "CA", "DE", "AU", "FR", "IN", "BR", "JP"];
@@ -60,18 +64,46 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
     let plans = ["starter", "professional", "business", "enterprise"];
     let plan_weights = [35.0, 35.0, 20.0, 10.0];
     let plan_per_seat_rate = [20.0, 50.0, 90.0, 150.0];
-    let etypes = ["page_view", "feature_used", "login", "api_call", "export", "report_generated", "invite_sent"];
+    let etypes = [
+        "page_view",
+        "feature_used",
+        "login",
+        "api_call",
+        "export",
+        "report_generated",
+        "invite_sent",
+    ];
     let etype_weights = [30.0, 25.0, 15.0, 12.0, 8.0, 6.0, 4.0];
     let platforms = ["web", "api", "ios", "android"];
     let platform_weights = [65.0, 20.0, 8.0, 7.0];
     let features = [
-        "dashboards", "reporting", "alerts", "integrations", "api_access", "sso", "automation",
-        "exports", "search", "collaboration", "audit_logs", "custom_fields", "mobile_app",
+        "dashboards",
+        "reporting",
+        "alerts",
+        "integrations",
+        "api_access",
+        "sso",
+        "automation",
+        "exports",
+        "search",
+        "collaboration",
+        "audit_logs",
+        "custom_fields",
+        "mobile_app",
     ];
-    let feature_weights = [22.0, 18.0, 15.0, 8.0, 7.0, 6.0, 6.0, 5.0, 4.0, 3.0, 2.0, 2.0, 2.0];
+    let feature_weights = [
+        22.0, 18.0, 15.0, 8.0, 7.0, 6.0, 6.0, 5.0, 4.0, 3.0, 2.0, 2.0, 2.0,
+    ];
     let priorities = ["low", "medium", "high", "urgent"];
     let priority_weights = [40.0, 35.0, 18.0, 7.0];
-    let ticket_cats = ["technical", "billing", "bug", "onboarding", "feature_request", "account_access"];
+    let ticket_cats = [
+        "technical",
+        "billing",
+        "bug",
+        "onboarding",
+        "feature_request",
+        "account_access",
+    ];
     let ticket_cat_weights = [30.0, 18.0, 18.0, 15.0, 12.0, 7.0];
 
     let pb = ProgressBar::new(5);
@@ -82,44 +114,19 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
     );
 
     // 1. Accounts
-    crate::generate_table(
-        pool,
-        "accounts",
-        nac,
-        &pb,
-        "Generating accounts...",
-        |start, end| {
-            let mut rng = SmallRng::seed_from_u64(start as u64);
-            let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
-            let name: Vec<String> = (start..end).map(|i| format!("Account {}", i)).collect();
-            let industry: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &industries, &industry_weights))
-                .collect();
-            let country: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &countries, &country_weights))
-                .collect();
-            let arr: Vec<f64> = (start..end)
-                .map(|_| round_to(rng.gen_range(5000.0..500000.0), 2))
-                .collect();
-            let created: Vec<i32> = (start..end)
-                .map(|_| {
-                    Date32Type::from_naive_date(base_date + Duration::days(rng.gen_range(0..701)))
-                })
-                .collect();
-            let csm: Vec<i32> = (start..end).map(|_| rng.gen_range(1..21)).collect();
-            let health: Vec<i8> = (start..end).map(|_| rng.gen_range(1..=100) as i8).collect();
-            vec![
-                Arc::new(Int64Array::from(i)),
-                Arc::new(StringArray::from(name)),
-                Arc::new(StringArray::from(industry)),
-                Arc::new(StringArray::from(country)),
-                Arc::new(Float64Array::from(arr)),
-                Arc::new(Date32Array::from(created)),
-                Arc::new(Int32Array::from(csm)),
-                Arc::new(Int8Array::from(health)),
-            ]
-        },
-    )?;
+    crate::generate_table_parallel(pool, "accounts", nac, &pb, "Generating accounts...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let name = format!("Account {}", i);
+        let industry = weighted_choice(&mut rng, &industries, &industry_weights);
+        let country = weighted_choice(&mut rng, &countries, &country_weights);
+        let arr = round_to(rng.gen_range(5000.0..500000.0), 2);
+        let created = base_date + Duration::days(rng.gen_range(0..701));
+        let csm = rng.gen_range(1..21);
+        let health = rng.gen_range(1..=100) as i8;
+        (
+            i as i32, name, industry, country, arr, created, csm, health,
+        )
+    })?;
 
     // Materialize arr/health_score so downstream tables can correlate with them
     // instead of drawing account activity independently.
@@ -140,211 +147,113 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
 
     // 2. Subscriptions: mrr is a deterministic function of plan/seats plus small noise,
     // not independent.
-    crate::generate_table(
+    crate::generate_table_parallel(
         pool,
         "subscriptions",
         nsb,
         &pb,
         "Generating subscriptions...",
-        |start, end| {
-            let mut rng = SmallRng::seed_from_u64(start as u64);
-            let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
-            let acc_id: Vec<i32> = (start..end)
-                .map(|_| rng.gen_range(1..=nac) as i32)
-                .collect();
-            let plan_idx: Vec<usize> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &(0..plans.len()).collect::<Vec<_>>(), &plan_weights))
-                .collect();
-            let plan: Vec<&str> = plan_idx.iter().map(|&p| plans[p]).collect();
-            let seats: Vec<i32> = (start..end).map(|_| rng.gen_range(1..201)).collect();
-            let mrr: Vec<f64> = plan_idx
-                .iter()
-                .zip(seats.iter())
-                .map(|(&p, &s)| {
-                    round_to(
-                        (s as f64) * plan_per_seat_rate[p] * rng.gen_range(0.9..1.1),
-                        2,
-                    )
-                })
-                .collect();
-            let start_date: Vec<i32> = (start..end)
-                .map(|_| {
-                    Date32Type::from_naive_date(base_date + Duration::days(rng.gen_range(0..601)))
-                })
-                .collect();
-            let end_date: Vec<i32> = start_date
-                .iter()
-                .map(|s| {
-                    Date32Type::from_naive_date(
-                        Date32Type::to_naive_date_opt(*s).unwrap() + Duration::days(365),
-                    )
-                })
-                .collect();
-            let active: Vec<bool> = (start..end).map(|_| rng.gen_bool(0.9)).collect();
-            vec![
-                Arc::new(Int64Array::from(i)),
-                Arc::new(Int32Array::from(acc_id)),
-                Arc::new(StringArray::from(plan)),
-                Arc::new(Int32Array::from(seats)),
-                Arc::new(Float64Array::from(mrr)),
-                Arc::new(Date32Array::from(start_date)),
-                Arc::new(Date32Array::from(end_date.clone())),
-                Arc::new(BooleanArray::from(active)),
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = rng.gen_range(1..=nac) as i32;
+            let plan_idx = weighted_choice(
+                &mut rng,
+                &(0..plans.len()).collect::<Vec<_>>(),
+                &plan_weights,
+            );
+            let plan = plans[plan_idx];
+            let seats = rng.gen_range(1..201);
+            let mrr = round_to(
+                (seats as f64) * plan_per_seat_rate[plan_idx] * rng.gen_range(0.9..1.1),
+                2,
+            );
+            let start_date = base_date + Duration::days(rng.gen_range(0..601));
+            let end_date = start_date + Duration::days(365);
+            let active = rng.gen_bool(0.9);
+            (
+                i as i32,
+                acc_id,
+                plan,
+                seats,
+                mrr,
+                start_date,
+                end_date,
+                active,
                 // renewal_date is a denormalized copy of end_date, not an independently
                 // random field.
-                Arc::new(Date32Array::from(end_date)),
-            ]
+                end_date,
+            )
         },
     )?;
 
-    // 3. Events (popularity-weighted by account arr/health [CHANGE from dbgen])
-    crate::generate_table(
-        pool,
-        "events",
-        nev,
-        &pb,
-        "Generating events...",
-        |start, end| {
-            let mut rng = SmallRng::seed_from_u64(start as u64);
-            let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
-            let acc_id: Vec<i32> = (start..end)
-                .map(|_| account_engagement_popularity.sample(&mut rng) as i32)
-                .collect();
-            let user_id: Vec<i32> = acc_id
-                .iter()
-                .map(|&a| {
-                    // roughly one synthetic user pool per account, sized off seat count
-                    let pool_size = 20;
-                    (a - 1) * pool_size + rng.gen_range(1..=pool_size)
-                })
-                .collect();
-            let etype: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &etypes, &etype_weights))
-                .collect();
-            let ts: Vec<i64> = (start..end)
-                .map(|_| {
-                    TimestampMillisecondType::from_naive_datetime(
-                        base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)),
-                        None,
-                    )
-                    .unwrap()
-                })
-                .collect();
-            let session: Vec<String> = acc_id
-                .iter()
-                .map(|&a| format!("sess_{}_{}", a, rng.gen_range(1..500)))
-                .collect();
-            let platform: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &platforms, &platform_weights))
-                .collect();
-            vec![
-                Arc::new(Int64Array::from(i)),
-                Arc::new(Int32Array::from(acc_id)),
-                Arc::new(Int32Array::from(user_id)),
-                Arc::new(StringArray::from(etype)),
-                Arc::new(TimestampMillisecondArray::from(ts)),
-                Arc::new(StringArray::from(session)),
-                Arc::new(StringArray::from(platform)),
-            ]
-        },
-    )?;
+    // 3. Events (popularity-weighted by account arr/health)
+    crate::generate_table_parallel(pool, "events", nev, &pb, "Generating events...", |i| {
+        let mut rng = SmallRng::seed_from_u64(i as u64);
+        let acc_id = account_engagement_popularity.sample(&mut rng) as i32;
+        // roughly one synthetic user pool per account, sized off seat count
+        let pool_size = 20;
+        let user_id = (acc_id - 1) * pool_size + rng.gen_range(1..=pool_size);
+        let etype = weighted_choice(&mut rng, &etypes, &etype_weights);
+        let ts = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+        let session = format!("sess_{}_{}", acc_id, rng.gen_range(1..500));
+        let platform = weighted_choice(&mut rng, &platforms, &platform_weights);
+        (
+            i as i64, acc_id, user_id, etype, ts, session, platform,
+        )
+    })?;
 
     // 4. Feature Usage (popularity-weighted like events)
-    crate::generate_table(
+    crate::generate_table_parallel(
         pool,
         "feature_usage",
         nfu,
         &pb,
         "Generating feature usage...",
-        |start, end| {
-            let mut rng = SmallRng::seed_from_u64(start as u64);
-            let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
-            let acc_id: Vec<i32> = (start..end)
-                .map(|_| account_engagement_popularity.sample(&mut rng) as i32)
-                .collect();
-            let feature: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &features, &feature_weights))
-                .collect();
-            let date: Vec<i32> = (start..end)
-                .map(|_| {
-                    Date32Type::from_naive_date(base_date + Duration::days(rng.gen_range(0..701)))
-                })
-                .collect();
-            let count: Vec<i32> = (start..end).map(|_| rng.gen_range(1..1001)).collect();
-            vec![
-                Arc::new(Int64Array::from(i)),
-                Arc::new(Int32Array::from(acc_id)),
-                Arc::new(StringArray::from(feature)),
-                Arc::new(Date32Array::from(date)),
-                Arc::new(Int32Array::from(count)),
-            ]
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = account_engagement_popularity.sample(&mut rng) as i32;
+            let feature = weighted_choice(&mut rng, &features, &feature_weights);
+            let date = base_date + Duration::days(rng.gen_range(0..701));
+            let count = rng.gen_range(1..1001);
+            (i as i32, acc_id, feature, date, count)
         },
     )?;
 
     // 5. Support Tickets: volume correlates inversely with health_score
-    // [CHANGE from dbgen] rather than being independent of it.
-    crate::generate_table(
+    // rather than being independent of it.
+    crate::generate_table_parallel(
         pool,
         "support_tickets",
         nst,
         &pb,
         "Generating support tickets...",
-        |start, end| {
-            let mut rng = SmallRng::seed_from_u64(start as u64);
-            let i: Vec<i64> = (start..end).map(|i| i as i64).collect();
-            let acc_id: Vec<i32> = (start..end)
-                .map(|_| account_ticket_popularity.sample(&mut rng) as i32)
-                .collect();
-            let created: Vec<i64> = (start..end)
-                .map(|_| {
-                    TimestampMillisecondType::from_naive_datetime(
-                        base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)),
-                        None,
-                    )
-                    .unwrap()
-                })
-                .collect();
-            let resolved: Vec<Option<i64>> = (start..end)
-                .map(|_| {
-                    if rng.gen_bool(0.8) {
-                        Some(
-                            TimestampMillisecondType::from_naive_datetime(
-                                base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)),
-                                None,
-                            )
-                            .unwrap(),
-                        )
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let priority: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &priorities, &priority_weights))
-                .collect();
-            let cat: Vec<&str> = (start..end)
-                .map(|_| weighted_choice(&mut rng, &ticket_cats, &ticket_cat_weights))
-                .collect();
-            let csat: Vec<Option<i8>> = (start..end)
-                .map(|_| {
-                    if rng.gen_bool(0.7) {
-                        Some(rng.gen_range(1..6) as i8)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            let is_resolved: Vec<bool> = (start..end).map(|_| rng.gen_bool(0.8)).collect();
-            vec![
-                Arc::new(Int64Array::from(i)),
-                Arc::new(Int32Array::from(acc_id)),
-                Arc::new(TimestampMillisecondArray::from(created)),
-                Arc::new(TimestampMillisecondArray::from(resolved)),
-                Arc::new(StringArray::from(priority)),
-                Arc::new(StringArray::from(cat)),
-                Arc::new(Int8Array::from(csat)),
-                Arc::new(BooleanArray::from(is_resolved)),
-            ]
+        |i| {
+            let mut rng = SmallRng::seed_from_u64(i as u64);
+            let acc_id = account_ticket_popularity.sample(&mut rng) as i32;
+            let created: NaiveDateTime = base_ts + Duration::seconds(rng.gen_range(0..700 * 86400));
+            let resolved: Option<NaiveDateTime> = if rng.gen_bool(0.8) {
+                Some(base_ts + Duration::seconds(rng.gen_range(0..700 * 86400)))
+            } else {
+                None
+            };
+            let priority = weighted_choice(&mut rng, &priorities, &priority_weights);
+            let cat = weighted_choice(&mut rng, &ticket_cats, &ticket_cat_weights);
+            let csat: Option<i8> = if rng.gen_bool(0.7) {
+                Some(rng.gen_range(1..6) as i8)
+            } else {
+                None
+            };
+            let is_resolved = rng.gen_bool(0.8);
+            (
+                i as i32,
+                acc_id,
+                created,
+                resolved,
+                priority,
+                cat,
+                csat,
+                is_resolved,
+            )
         },
     )?;
 

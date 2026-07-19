@@ -67,6 +67,15 @@ impl Col for Option<i64> {
     }
 }
 
+impl Col for Option<i8> {
+    fn arrow_type() -> DataType {
+        DataType::Int8
+    }
+    fn to_array(vals: Vec<Option<i8>>) -> ArrayRef {
+        Arc::new(Int8Array::from(vals))
+    }
+}
+
 impl<'a> Col for &'a str {
     fn arrow_type() -> DataType {
         DataType::Utf8
@@ -106,6 +115,19 @@ impl Col for NaiveDateTime {
         let micros: Vec<i64> = vals
             .into_iter()
             .map(|d| d.and_utc().timestamp_micros())
+            .collect();
+        Arc::new(TimestampMicrosecondArray::from(micros))
+    }
+}
+
+impl Col for Option<NaiveDateTime> {
+    fn arrow_type() -> DataType {
+        DataType::Timestamp(duckdb::arrow::datatypes::TimeUnit::Microsecond, None)
+    }
+    fn to_array(vals: Vec<Option<NaiveDateTime>>) -> ArrayRef {
+        let micros: Vec<Option<i64>> = vals
+            .into_iter()
+            .map(|d| d.map(|d| d.and_utc().timestamp_micros()))
             .collect();
         Arc::new(TimestampMicrosecondArray::from(micros))
     }
