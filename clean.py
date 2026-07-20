@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Recursively delete .duckdb files inside data/ directories under projects/."""
+"""Recursively delete .duckdb files inside data/ directories under projects/ and in dbgen/.cache/."""
 
 import sys
 from pathlib import Path
 
 PROJECTS_ROOT = Path("projects")
+DBGEN_CACHE_ROOT = Path("dbgen/.cache")
 
 
 def clean() -> int:
@@ -22,6 +23,12 @@ def clean() -> int:
                 duckdb_file.unlink()
                 print(f"Deleted: {duckdb_file}")
                 deleted += 1
+
+    if DBGEN_CACHE_ROOT.is_dir():
+        for duckdb_file in DBGEN_CACHE_ROOT.rglob("*.duckdb"):
+            duckdb_file.unlink()
+            print(f"Deleted: {duckdb_file}")
+            deleted += 1
 
     print(f"\nTotal deleted: {deleted}")
     return deleted

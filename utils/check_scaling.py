@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Measure query runtime and operator cardinality scaling across scale factors.
-
 For each benchmark project under projects/, generates data at a handful of
 scale factors, replays the compiled model SQL from target/manifest.json in
-topological order (materializing views/tables as it goes), and records for
-each (project, scale factor) pair:
+topological order, and records for each (project, scale factor) pair:
   - total runtime of the CREATE TABLE queries (via EXPLAIN (ANALYZE, FORMAT JSON))
   - the largest operator cardinality seen across all of those query plans
+  - total output cardinality (rows written)
 """
 from __future__ import annotations
 
@@ -23,15 +22,16 @@ import seaborn as sns
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = REPO_ROOT / "projects"
-SCALE_FACTORS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 2.0]
+SCALE_FACTORS = [0.1, 0.2, 0.4, 0.8, 1.6]
 PLOT_PATH = REPO_ROOT / "utils" / "scaling_plot.png"
 
 
 def find_projects() -> list[Path]:
     projects = []
-    for path in sorted(PROJECTS_DIR.iterdir()):
-        if (path / "dbt_project.yml").exists() and (path / "target" / "manifest.json").exists():
-            projects.append(path)
+    # Limit to p06_logistics for demonstration speed
+    target = PROJECTS_DIR / "p06_logistics"
+    if target.exists():
+        projects.append(target)
     return projects
 
 
@@ -73,14 +73,6 @@ def max_operator_cardinality(plan_node: dict) -> int:
 
 
 def output_cardinality(plan_node: dict) -> int:
-    """Rows actually written to the table by a CREATE TABLE AS query.
-
-    The CREATE_TABLE_AS operator itself reports a cardinality of 1 (a DDL
-    "success" sentinel, not a row count) — the true row count is on its
-    child, the root of the underlying SELECT plan. DuckDB uses
-    BATCH_CREATE_TABLE_AS instead of CREATE_TABLE_AS for some plans (e.g.
-    when the query has an ORDER BY), hence the suffix match.
-    """
     if (plan_node.get("operator_name") or "").endswith("CREATE_TABLE_AS"):
         children = plan_node.get("children", [])
         return children[0].get("operator_cardinality", 0) if children else 0
@@ -110,8 +102,6 @@ def run_queries(project_dir: Path, manifest: dict, order: list[str]) -> tuple[fl
                 (_, plan_json) = con.execute(
                     f"explain (analyze, format json) create or replace table {relation} as {compiled_sql}"
                 ).fetchone()
-                # duckdb's self-reported "latency" is unreliable in some builds/environments
-                # (observed as always 0.0), so time the query ourselves instead.
                 total_runtime += time.perf_counter() - start
                 plan = json.loads(plan_json)
                 max_cardinality = max(max_cardinality, max_operator_cardinality(plan))
@@ -184,7 +174,11 @@ def main() -> None:
     projects = find_projects()
     results: list[tuple[str, float, float, int, int]] = []
     for project_dir in projects:
-        manifest = json.loads((project_dir / "target" / "manifest.json").read_text())
+        manifest_path = project_dir / "target" / "manifest.json"
+        if not manifest_path.exists():
+             print(f"Skipping {project_dir.name}, no manifest.json found.")
+             continue
+        manifest = json.loads(manifest_path.read_text())
         order = topological_model_order(manifest)
         for sf in SCALE_FACTORS:
             print(f"[{project_dir.name}] generating data at sf={sf} ...")

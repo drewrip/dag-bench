@@ -19,7 +19,7 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
     let n_snapshots = 3usize;
     let nsh = ((nsup as f64) * avg_shipments_per_supplier).max(20.0) as usize;
     let npo = ((nsup as f64) * avg_po_per_supplier).max(10.0) as usize;
-    let nin = nwh * n_sku * n_snapshots;
+    let nin = nsh * n_snapshots;
 
     let con = &pool.get().expect("couldn't get connection");
 
@@ -168,12 +168,9 @@ pub fn run(sf: f64, pool: &mut Pool<DuckdbConnectionManager>, no_constraints: bo
     // sparse.
     crate::generate_table_parallel(pool, "inventory", nin, &pb, "Generating inventory...", |i| {
         let mut rng = SmallRng::seed_from_u64(i as u64);
-        let idx = i - 1;
-        let snapshot_idx = idx % n_snapshots;
-        let tmp = idx / n_snapshots;
-        let sku_idx = tmp % n_sku;
-        let wh_idx = tmp / n_sku;
-        let wh_id = (wh_idx + 1) as i32;
+        let snapshot_idx = rng.gen_range(0..n_snapshots);
+        let wh_id = rng.gen_range(1..=nwh) as i32;
+        let sku_idx = rng.gen_range(0..n_sku);
         let sku = &skus[sku_idx];
         let on_hand = rng.gen_range(0..10001);
         let reserved = rng.gen_range(0..501);
