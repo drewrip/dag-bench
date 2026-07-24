@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: anomaly_summary
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [region, anomaly_date]
+      - quality_baseline:
+          not_null_columns: [region, anomaly_date, anomalies, affected_meters, avg_z]
+          range_checks:
+            - {column: anomalies, min: 0}
+            - {column: affected_meters, min: 0}
+            - {column: avg_z, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+
+  - name: substation_reliability
+    tests:
+      - unique:
+          column_name: sub_id
+      - quality_baseline:
+          not_null_columns: [sub_id, sub_name, region, capacity_mw, period_kwh, avg_pf, outages, total_cml, days_with_data]
+          range_checks:
+            - {column: capacity_mw, min: 0, max: 500}
+            - {column: period_kwh, min: 0}
+            - {column: avg_pf, min: 0, max: 1}
+            - {column: outages, min: 0}
+            - {column: total_cml, min: 0}
+            - {column: days_with_data, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']

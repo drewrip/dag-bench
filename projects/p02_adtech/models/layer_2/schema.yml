@@ -1,0 +1,92 @@
+version: 2
+
+models:
+  - name: campaign_daily_impressions
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [campaign_id, imp_day, device, geo]
+    columns:
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: imp_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: device
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['mobile']
+      - name: geo
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US']
+      - name: impressions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: unique_users
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: spend
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cpm
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: click_attribution
+    tests:
+      - not_empty
+      - unique:
+          column_name: click_id
+    columns:
+      - name: click_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: click_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: device
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['mobile', 'desktop', 'tablet', 'ctv']
+      - name: geo
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US']
+      - name: placement
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['banner', 'native', 'video', 'interstitial']
+      - name: impression_cost
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: click_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: time_to_click_sec
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

@@ -1,0 +1,142 @@
+version: 2
+
+models:
+  - name: current_salary
+    tests:
+      - not_empty
+      - unique:
+          column_name: emp_id
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: full_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+      - name: location
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+      - name: employment_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: tenure_years
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: base_salary
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 50000
+              max_value: 350000
+      - name: bonus
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_comp
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: dept_headcount
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [dept_name, division, location]
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+      - name: location
+        tests:
+          - dbt_utils.at_least_one
+      - name: active_hc
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_hc
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: female_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_tenure
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: leave_agg
+    tests:
+      - not_empty
+      - unique:
+          column_name: emp_id
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_leave_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: sick_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: annual_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: unapproved
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: review_agg
+    tests:
+      - not_empty
+      - unique:
+          column_name: emp_id
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: review_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: best_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: worst_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: low_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: last_review
+        tests:
+          - dbt_utils.at_least_one

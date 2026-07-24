@@ -1,0 +1,270 @@
+version: 2
+
+models:
+  - name: stg_customers
+    tests:
+      - not_empty
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: full_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: email
+        tests:
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US','CA','GB','DE','FR','AU','JP','BR','IN','MX','IT','ES','NL','SE','KR']
+      - name: signup_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: lifetime_spend
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: days_since_signup
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: stg_marketplace_orders
+    tests:
+      - not_empty
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: customer_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: marketplace_name
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['amazon','ebay','walmart marketplace','etsy']
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['completed','pending','refunded','cancelled']
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['marketplace']
+      - name: gross_amount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: commission_fee
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: net_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month_start
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_fulfilled
+        tests:
+          - dbt_utils.at_least_one
+      - name: source_system
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_order_items
+    tests:
+      - not_empty
+    columns:
+      - name: item_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: order_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: product_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: quantity
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 8
+      - name: unit_price
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 5
+              max_value: 500
+      - name: line_total
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.expression_is_true:
+              expression: "= quantity*unit_price"
+
+  - name: stg_orders
+    tests:
+      - not_empty
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: customer_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['completed','cancelled','returned','pending','processing']
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['web','mobile_app','phone','in_store_kiosk']
+      - name: discount_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 30
+      - name: shipping_cost
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 25
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month_start
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_fulfilled
+        tests:
+          - dbt_utils.at_least_one
+      - name: source_system
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_products
+    tests:
+      - not_empty
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: category_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: sku
+        tests:
+          - dbt_utils.at_least_one
+      - name: product_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: price
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cost
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: weight_kg
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 20
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: stock_qty
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000
+      - name: gross_margin
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: margin_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_reviews
+    tests:
+      - not_empty
+    columns:
+      - name: review_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: product_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: customer_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: rating
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: review_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: helpful_votes
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 200
+      - name: is_positive
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_negative
+        tests:
+          - dbt_utils.at_least_one

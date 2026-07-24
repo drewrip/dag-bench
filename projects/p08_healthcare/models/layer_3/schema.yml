@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: chronic_flags
+    tests:
+      - not_empty
+      - unique:
+          column_name: claim_id
+      - dbt_utils.expression_is_true:
+          expression: "(has_chronic and chronic_count > 0) or (not has_chronic and chronic_count = 0)"
+    columns:
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: chronic_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: icd_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: has_chronic
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: provider_perf
+    tests:
+      - not_empty
+      - unique:
+          column_name: provider_id
+    columns:
+      - name: provider_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: provider_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: is_in_network
+        tests:
+          - dbt_utils.at_least_one
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: denied
+        tests:
+          - dbt_utils.at_least_one
+      - name: denial_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: pay_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1

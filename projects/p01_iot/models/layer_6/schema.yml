@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: iot_operations_report
+    tests:
+      - not_empty
+    columns:
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: site_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: days_with_data
+        tests:
+          - dbt_utils.at_least_one
+      - name: overall_avg_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_error_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: recent_anomalies
+        tests:
+          - dbt_utils.at_least_one
+      - name: critical_devices
+        tests:
+          - dbt_utils.at_least_one
+      - name: healthy_devices
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_device_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

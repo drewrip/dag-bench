@@ -1,0 +1,181 @@
+version: 2
+
+models:
+  - name: inventory_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: inv_id
+    columns:
+      - name: inv_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: sku
+        tests:
+          - dbt_utils.at_least_one
+      - name: qty_on_hand
+        tests:
+          - dbt_utils.at_least_one
+      - name: qty_reserved
+        tests:
+          - dbt_utils.at_least_one
+      - name: qty_available
+        tests:
+          - dbt_utils.at_least_one
+      - name: reorder_point
+        tests:
+          - dbt_utils.at_least_one
+      - name: snapshot_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: needs_reorder
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: capacity_pct
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: po_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: po_id
+    columns:
+      - name: po_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: sku
+        tests:
+          - dbt_utils.at_least_one
+      - name: ordered_qty
+        tests:
+          - dbt_utils.at_least_one
+      - name: unit_price
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: expected_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: received_qty
+        tests:
+          - dbt_utils.at_least_one
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['received', 'approved', 'partially_received', 'submitted', 'draft', 'cancelled']
+      - name: received_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: ordered_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: promised_lead
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: reliability_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: fill_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: shipment_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: shipment_id
+    columns:
+      - name: shipment_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: sku
+        tests:
+          - dbt_utils.at_least_one
+      - name: quantity
+        tests:
+          - dbt_utils.at_least_one
+      - name: unit_cost
+        tests:
+          - dbt_utils.at_least_one
+      - name: shipped_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: received_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['delivered', 'in_transit', 'delayed', 'customs_hold', 'cancelled']
+      - name: freight_cost
+        tests:
+          - dbt_utils.at_least_one
+      - name: cargo_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: transit_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_delivered
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_problematic
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: reliability_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: lead_time_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_preferred
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_region
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: is_late
+        tests:
+          - dbt_utils.at_least_one

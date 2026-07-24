@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: utilization
+    tests:
+      - not_empty
+      - unique:
+          column_name: plan_type
+    columns:
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['PPO', 'HMO', 'Medicare', 'EPO', 'Medicaid', 'POS']
+      - name: members
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: pmpm
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: high_cost_members
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_cost_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: plan_cost
+    tests:
+      - not_empty
+      - unique:
+          column_name: plan_type
+      - dbt_utils.expression_is_true:
+          expression: "high_cost_members <= members"
+    columns:
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['PPO', 'HMO', 'Medicare', 'EPO', 'Medicaid', 'POS']
+      - name: members
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_cost_members
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_decile
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 10
+
+  - name: specialty_eff
+    tests:
+      - not_empty
+      - unique:
+          column_name: specialty
+    columns:
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: providers
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_denial_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_pay_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: eff_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 10

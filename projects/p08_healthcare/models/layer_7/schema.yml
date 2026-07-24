@@ -1,0 +1,228 @@
+version: 2
+
+models:
+  - name: rpt_high_cost_patients
+    tests:
+      - not_empty
+      - unique:
+          column_name: patient_id
+    columns:
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['pediatric', 'adult', 'senior']
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: chronic_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: has_chronic
+        tests:
+          - dbt_utils.at_least_one
+      - name: cost_decile
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 2
+      - name: is_high_cost
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_monthly_claims
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [svc_month, claim_type, plan_type]
+    columns:
+      - name: svc_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['professional', 'institutional', 'pharmacy', 'dental', 'vision']
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: denials
+        tests:
+          - dbt_utils.at_least_one
+      - name: denial_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_plan_utilization
+    tests:
+      - not_empty
+      - unique:
+          column_name: plan_type
+    columns:
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['PPO', 'HMO', 'Medicare', 'EPO', 'Medicaid', 'POS']
+      - name: members
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: pmpm
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_cost_members
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_cost_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_provider_performance
+    tests:
+      - not_empty
+      - unique:
+          column_name: provider_id
+    columns:
+      - name: provider_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: provider_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: is_in_network
+        tests:
+          - dbt_utils.at_least_one
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: denial_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: pay_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+      - name: specialty_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_specialty_efficiency
+    tests:
+      - not_empty
+      - unique:
+          column_name: specialty
+    columns:
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: providers
+        tests:
+          - dbt_utils.at_least_one
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_denial_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_pay_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: eff_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 10
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one

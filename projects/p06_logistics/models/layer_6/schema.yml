@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: supply_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: category
+    columns:
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['electronics_components', 'packaging', 'raw_materials', 'hardware', 'textiles', 'food_ingredients']
+      - name: avg_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: suppliers
+        tests:
+          - dbt_utils.at_least_one
+      - name: inventory
+        tests:
+          - dbt_utils.at_least_one
+      - name: reorder_alerts
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['SUPPLIER_RISK', 'INVENTORY_RISK', 'NORMAL']
+
+  - name: top_suppliers
+    tests:
+      - not_empty
+      - unique:
+          column_name: supplier_id
+    columns:
+      - name: supplier_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['electronics_components', 'packaging', 'raw_materials', 'hardware', 'textiles', 'food_ingredients']
+      - name: is_preferred
+        tests:
+          - dbt_utils.at_least_one
+      - name: delivery_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_transit
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_cargo_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_fill_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_lead
+        tests:
+          - dbt_utils.at_least_one
+      - name: score
+        tests:
+          - dbt_utils.at_least_one
+      - name: overall_rank
+        tests:
+          - dbt_utils.at_least_one
+      - name: rank_in_cat
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              inclusive: true

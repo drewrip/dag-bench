@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: platform_summary
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [platform, monetization_tier]
+    columns:
+      - name: platform
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['android','ios','steam','playstation','xbox','nintendo_switch']
+      - name: monetization_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Whale','Dolphin','Minnow','Free']
+      - name: players
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_cr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

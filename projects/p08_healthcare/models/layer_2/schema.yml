@@ -1,0 +1,161 @@
+version: 2
+
+models:
+  - name: claims_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: claim_id
+    columns:
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: provider_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: service_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_allowed
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+      - name: denial_reason
+        tests:
+          - dbt_utils.at_least_one
+      - name: billed_gap
+        tests:
+          - dbt_utils.at_least_one
+      - name: allowed_gap
+        tests:
+          - dbt_utils.at_least_one
+      - name: has_payment
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_denied
+        tests:
+          - dbt_utils.at_least_one
+      - name: svc_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: svc_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['female', 'male', 'other_unknown']
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: patient_state
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_years
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: is_in_network
+        tests:
+          - dbt_utils.at_least_one
+      - name: provider_name
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: line_rollup
+    tests:
+      - not_empty
+      - unique:
+          column_name: claim_id
+      - dbt_utils.expression_is_true:
+          expression: "unique_cpts <= lines"
+    columns:
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: lines
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: billed
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: unique_cpts
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_unit_cost
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: patient_claim_summary
+    tests:
+      - not_empty
+      - unique:
+          column_name: patient_id
+      - dbt_utils.expression_is_true:
+          expression: "denied <= total_claims"
+    columns:
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_claims
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: total_billed
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: denied
+        tests:
+          - dbt_utils.at_least_one
+      - name: last_service
+        tests:
+          - dbt_utils.at_least_one

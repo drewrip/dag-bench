@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: stg_meters
+    tests:
+      - unique:
+          column_name: meter_id
+      - quality_baseline:
+          not_null_columns: [meter_id, sub_id, customer_id, meter_type, tariff_class, install_date, is_smart, rated_capacity_kw, sub_name, region, capacity_mw, voltage_kv]
+          range_checks:
+            - {column: rated_capacity_kw, min: 0}
+            - {column: capacity_mw, min: 0, max: 500}
+    columns:
+      - name: meter_type
+        tests:
+          - accepted_values:
+              values: ['residential', 'commercial', 'industrial']
+      - name: tariff_class
+        tests:
+          - accepted_values:
+              values: ['residential_standard', 'residential_tou', 'commercial_standard', 'commercial_demand', 'industrial_demand']
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: voltage_kv
+        tests:
+          - accepted_values:
+              values: [11, 33, 66, 110, 132, 220]
+
+  - name: stg_outages
+    tests:
+      - unique:
+          column_name: outage_id
+      - quality_baseline:
+          not_null_columns: [outage_id, sub_id, start_ts, end_ts, cause, affected_meters, severity, duration_min, cml, is_major]
+          range_checks:
+            - {column: affected_meters, min: 0}
+            - {column: duration_min, min: 0}
+            - {column: cml, min: 0}
+    columns:
+      - name: end_ts
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= start_ts"
+      - name: cause
+        tests:
+          - accepted_values:
+              values: ['weather', 'equipment_failure', 'vegetation', 'vehicle_accident', 'animal_contact', 'planned_maintenance', 'cyberattack']
+      - name: severity
+        tests:
+          - accepted_values:
+              values: ['minor', 'moderate', 'major', 'critical']
+
+  - name: stg_readings
+    tests:
+      - unique:
+          column_name: reading_id
+      - quality_baseline:
+          not_null_columns: [reading_id, meter_id, read_ts, kwh, voltage_v, power_factor, is_estimated, read_hour, read_day, hour_of_day, is_valid]
+          range_checks:
+            - {column: kwh, min: 0}
+            - {column: voltage_v, min: 100, max: 350}
+            - {column: power_factor, min: 0, max: 1}
+            - {column: hour_of_day, min: 0, max: 23}
+
+  - name: stg_substations
+    tests:
+      - unique:
+          column_name: sub_id
+      - quality_baseline:
+          not_null_columns: [sub_id, sub_name, region, capacity_mw, voltage_kv, lat, lon]
+          range_checks:
+            - {column: capacity_mw, min: 0, max: 500}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: voltage_kv
+        tests:
+          - accepted_values:
+              values: [11, 33, 66, 110, 132, 220]

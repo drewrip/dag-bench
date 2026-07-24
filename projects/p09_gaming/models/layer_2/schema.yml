@@ -1,0 +1,143 @@
+version: 2
+
+models:
+  - name: level_stats
+    tests:
+      - not_empty
+      - unique:
+          column_name: level_id
+    columns:
+      - name: level_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: world
+        tests:
+          - dbt_utils.at_least_one
+      - name: difficulty
+        tests:
+          - dbt_utils.at_least_one
+      - name: completions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: failures
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: players
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: completion_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: player_event_stats
+    tests:
+      - not_empty
+      - unique:
+          column_name: player_id
+    columns:
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: events
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: completions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: failures
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: levels_touched
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: completion_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: player_revenue
+    tests:
+      - not_empty
+      - unique:
+          column_name: player_id
+    columns:
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: purchases
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_purchase
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: item_types
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: player_session_stats
+    tests:
+      - not_empty
+      - unique:
+          column_name: player_id
+    columns:
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: sessions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_sec
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_sec
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: coins
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: last_session
+        tests:
+          - dbt_utils.at_least_one

@@ -1,0 +1,65 @@
+version: 2
+
+models:
+  - name: anomaly_detection
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: ts_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: mean_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: std_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: z_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_anomaly
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: [true, false]
+
+  - name: site_reliability
+    tests:
+      - not_empty
+    columns:
+      - name: site_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: site_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+      - name: days_with_data
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: overall_avg_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_readings_per_device
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_errors
+        tests:
+          - dbt_utils.at_least_one
+      - name: error_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

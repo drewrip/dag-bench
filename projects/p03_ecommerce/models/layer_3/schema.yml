@@ -1,0 +1,122 @@
+version: 2
+
+models:
+  - name: customer_ltv
+    tests:
+      - not_empty
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+      - name: days_since_signup
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: fulfilled_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_gp
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_order_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: lifespan_days
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: monthly_channel_revenue
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [order_year, order_month, channel]
+    columns:
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 12
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['web','mobile_app','phone','in_store_kiosk','marketplace']
+      - name: orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: unique_customers
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: gross_profit
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: product_performance
+    tests:
+      - not_empty
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: category_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: orders_containing
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: units_sold
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: net_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: gross_profit
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_margin_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: review_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_rating
+        tests:
+          - dbt_utils.at_least_one
+      - name: pos_pct
+        tests:
+          - dbt_utils.at_least_one

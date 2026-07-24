@@ -1,0 +1,198 @@
+version: 2
+
+models:
+  - name: stg_departments
+    tests:
+      - not_empty
+    columns:
+      - name: dept_id
+        tests:
+          - dbt_utils.at_least_one
+          - unique
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Engineering', 'Sales', 'Customer Success', 'Marketing', 'Operations', 'Finance', 'Product', 'HR', 'Legal']
+      - name: location
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['New York', 'San Francisco', 'Austin', 'London', 'Berlin', 'Remote']
+      - name: budget
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 100000
+              max_value: 10000000
+      - name: headcount_target
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 5
+              max_value: 101
+
+  - name: stg_employees
+    tests:
+      - not_empty
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+          - unique
+      - name: dept_id
+        tests:
+          - dbt_utils.at_least_one
+          - relationships:
+              to: ref('stg_departments')
+              field: dept_id
+      - name: manager_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: full_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['female', 'male', 'nonbinary_other']
+      - name: hire_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: job_title
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['IC1', 'IC2', 'IC3', 'IC4', 'IC5', 'Manager', 'Senior Manager', 'Director', 'VP']
+      - name: employment_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['full_time', 'contractor', 'part_time', 'intern']
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: tenure_years
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+      - name: location
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_leaves
+    tests:
+      - not_empty
+    columns:
+      - name: leave_id
+        tests:
+          - dbt_utils.at_least_one
+          - unique
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: leave_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['vacation', 'sick', 'parental', 'unpaid', 'bereavement', 'jury_duty']
+      - name: start_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: end_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: approved
+        tests:
+          - dbt_utils.at_least_one
+      - name: leave_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 30
+
+  - name: stg_reviews
+    tests:
+      - not_empty
+    columns:
+      - name: review_id
+        tests:
+          - dbt_utils.at_least_one
+          - unique
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: review_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['exceeds_expectations', 'meets_expectations', 'needs_improvement', 'unsatisfactory']
+      - name: is_high_performer
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_low_performer
+        tests:
+          - dbt_utils.at_least_one
+      - name: review_year
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_salaries
+    tests:
+      - not_empty
+    columns:
+      - name: salary_id
+        tests:
+          - dbt_utils.at_least_one
+          - unique
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: effective_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: base_salary
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 50000
+              max_value: 350000
+      - name: bonus
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: currency
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['USD']
+      - name: total_comp
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 50000
+      - name: recency_rank
+        tests:
+          - dbt_utils.at_least_one

@@ -1,0 +1,127 @@
+version: 2
+
+models:
+  - name: account_engagement
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_events
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: unique_users
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: sessions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: last_seen
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: feature_breadth
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: features_used
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_usage
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: last_usage
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: mrr_by_plan
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [plan, is_active]
+    columns:
+      - name: plan
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['starter', 'professional', 'business', 'enterprise']
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: seats
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: support_health
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_tickets
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: urgent_tickets
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: resolved
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_csat
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: avg_ttr
+        tests:
+          - dbt_utils.at_least_one

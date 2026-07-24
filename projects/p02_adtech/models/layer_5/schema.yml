@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: adtech_final_report
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [channel, objective]
+    columns:
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['search', 'social', 'display', 'video', 'native', 'email']
+      - name: objective
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['conversion', 'awareness', 'consideration', 'retargeting']
+      - name: campaigns
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: spend
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: impressions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: clicks
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: conversions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_ctr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_cvr
+        tests:
+          - dbt_utils.at_least_one
+          # cvr_pct upstream isn't bounded at 100 (see campaign_funnel), so its
+          # average isn't either.
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_roas
+        tests:
+          - dbt_utils.at_least_one
+      - name: roas_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: spend_share_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: revenue_share_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one

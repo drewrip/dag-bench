@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: supply_chain_view
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [category, supplier_name]
+    columns:
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['electronics_components', 'packaging', 'raw_materials', 'hardware', 'textiles', 'food_ingredients']
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: score
+        tests:
+          - dbt_utils.at_least_one
+      - name: delivery_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_fill_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['SUPPLIER_RISK', 'INVENTORY_RISK', 'NORMAL']
+      - name: reorder_alerts
+        tests:
+          - dbt_utils.at_least_one
+      - name: inventory
+        tests:
+          - dbt_utils.at_least_one
+      - name: rank_in_cat
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 3
+              inclusive: true

@@ -1,0 +1,217 @@
+version: 2
+
+models:
+  - name: rpt_attrition_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: dept_name
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: employees
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: high_risk
+        tests:
+          - dbt_utils.at_least_one
+      - name: medium_risk
+        tests:
+          - dbt_utils.at_least_one
+      - name: pct_high_risk
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: avg_risk
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 8
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_division_kpis
+    tests:
+      - not_empty
+      - unique:
+          column_name: dept_name
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: headcount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: payroll
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_base
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 50000
+              max_value: 350000
+      - name: attrition_risk
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_risk_emps
+        tests:
+          - dbt_utils.at_least_one
+      - name: pay_equity
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_headcount_summary
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [dept_name, division, location]
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+      - name: location
+        tests:
+          - dbt_utils.at_least_one
+      - name: active_hc
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_hc
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: female_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: female_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_tenure
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_pay_equity
+    tests:
+      - not_empty
+      - unique:
+          column_name: dept_name
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: female_avg
+        tests:
+          - dbt_utils.at_least_one
+      - name: male_avg
+        tests:
+          - dbt_utils.at_least_one
+      - name: f_m_ratio
+        tests:
+          - dbt_utils.at_least_one
+      - name: equity_status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Gap', 'Inverted', 'Equitable']
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_perf_distribution
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [dept_name, perf_band]
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: perf_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['High', 'Meets', 'Below']
+      - name: emp_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_salary
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_leave_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: pct_of_dept
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_top_earners
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [division, rank_in_division]
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: full_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: division
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_comp
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_perf
+        tests:
+          - dbt_utils.at_least_one
+      - name: tenure_years
+        tests:
+          - dbt_utils.at_least_one
+      - name: rank_in_division
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one

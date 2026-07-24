@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: segment_summary
+    tests:
+      - not_empty
+    columns:
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['CRITICAL', 'AT_RISK', 'NEUTRAL', 'HEALTHY']
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: industry_avg_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

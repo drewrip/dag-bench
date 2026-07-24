@@ -1,0 +1,189 @@
+version: 2
+
+models:
+  - name: rpt_churn_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: name
+        tests:
+          - dbt_utils.at_least_one
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'UK', 'CA', 'DE', 'AU', 'FR', 'IN', 'BR', 'JP']
+      - name: arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['CRITICAL', 'AT_RISK', 'NEUTRAL', 'HEALTHY']
+      - name: composite_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: risk_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_industry_benchmark
+    tests:
+      - not_empty
+      - unique:
+          column_name: industry
+    columns:
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: total_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: arr_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_mrr_by_plan
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [plan, is_active]
+    columns:
+      - name: plan
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['starter', 'professional', 'business', 'enterprise']
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: seats
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: mrr_share_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_segment_analysis
+    tests:
+      - not_empty
+    columns:
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['CRITICAL', 'AT_RISK', 'NEUTRAL', 'HEALTHY']
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: arr_share_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: industry_avg_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one

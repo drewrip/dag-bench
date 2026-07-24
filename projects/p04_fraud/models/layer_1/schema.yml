@@ -1,0 +1,178 @@
+version: 2
+
+models:
+  - name: stg_accounts
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+      - dbt_utils.accepted_range:
+          column_name: credit_limit
+          min_value: 500
+          max_value: 50000
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: holder_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['checking', 'savings', 'credit_card', 'business']
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'CA', 'UK', 'DE', 'FR', 'MX', 'AU', 'JP', 'BR', 'IN']
+      - name: credit_limit
+        tests:
+          - dbt_utils.at_least_one
+      - name: opened_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_frozen
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_age_days
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_alerts
+    tests:
+      - not_empty
+      - unique:
+          column_name: alert_id
+    columns:
+      - name: alert_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: alert_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['unusual_amount', 'velocity', 'geo_anomaly', 'card_not_present', 'identity_theft']
+      - name: severity
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['low', 'medium', 'high', 'critical']
+      - name: created_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: resolved
+        tests:
+          - dbt_utils.at_least_one
+      - name: resolution
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['false_positive', 'customer_verified', 'confirmed_fraud']
+      - name: is_critical
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_confirmed_fraud
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_merchants
+    tests:
+      - not_empty
+      - unique:
+          column_name: merchant_id
+      - dbt_utils.accepted_range:
+          column_name: avg_txn_amount
+          min_value: 5
+          max_value: 500
+    columns:
+      - name: merchant_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['grocery', 'restaurant', 'online_retail', 'gas_station', 'electronics', 'travel', 'entertainment', 'utilities', 'other']
+      - name: merchant_country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'GB', 'CN', 'NG', 'RU', 'MX', 'DE']
+      - name: risk_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['low', 'medium', 'high']
+      - name: avg_txn_amount
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_risky
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_transactions
+    tests:
+      - not_empty
+      - unique:
+          column_name: txn_id
+      - dbt_utils.accepted_range:
+          column_name: amount
+          min_value: 1
+          max_value: 5000
+    columns:
+      - name: txn_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: amount
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['card_present', 'online', 'mobile_wallet', 'card_not_present', 'atm']
+      - name: currency
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['USD', 'EUR', 'GBP', 'CAD', 'other']
+      - name: is_declined
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: response_code
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['approved', 'insufficient_funds', 'do_not_honor', 'expired_card', 'invalid_pin', 'fraud_suspected']
+      - name: txn_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: hour_of_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_large
+        tests:
+          - dbt_utils.at_least_one

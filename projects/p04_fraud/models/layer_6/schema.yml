@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: category_fraud_profile
+    tests:
+      - not_empty
+      - unique:
+          column_name: merchant_category
+      - dbt_utils.accepted_range:
+          column_name: max_risk_quartile
+          min_value: 1
+          max_value: 4
+    columns:
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchants
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_flag_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_risk_quartile
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: country_exposure
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_country
+      - dbt_utils.accepted_range:
+          column_name: avg_risk_score
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_risk_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_risk_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_txns
+        tests:
+          - dbt_utils.at_least_one

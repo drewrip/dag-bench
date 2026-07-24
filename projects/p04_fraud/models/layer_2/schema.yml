@@ -1,0 +1,117 @@
+version: 2
+
+models:
+  - name: account_daily_velocity
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['account_id', 'txn_day']
+      - dbt_utils.expression_is_true:
+          expression: "flagged_count <= txns_per_day"
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: txns_per_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: daily_spend
+        tests:
+          - dbt_utils.at_least_one
+      - name: distinct_merchants
+        tests:
+          - dbt_utils.at_least_one
+      - name: flagged_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_txn
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: txn_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: txn_id
+    columns:
+      - name: txn_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: amount
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+      - name: currency
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_declined
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: response_code
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: hour_of_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_large
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: credit_limit
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_age_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_frozen
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_tier
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_risky
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_txn_amount
+        tests:
+          - dbt_utils.at_least_one
+      - name: amount_vs_avg
+        tests:
+          - dbt_utils.at_least_one

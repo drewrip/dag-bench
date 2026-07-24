@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: outage_by_region
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [region, cause, severity]
+      - quality_baseline:
+          not_null_columns: [region, cause, severity, outages, total_min, total_cml, avg_hrs, major_outages]
+          range_checks:
+            - {column: outages, min: 0}
+            - {column: total_min, min: 0}
+            - {column: total_cml, min: 0}
+            - {column: avg_hrs, min: 0}
+            - {column: major_outages, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: cause
+        tests:
+          - accepted_values:
+              values: ['weather', 'equipment_failure', 'vegetation', 'vehicle_accident', 'animal_contact', 'planned_maintenance', 'cyberattack']
+      - name: severity
+        tests:
+          - accepted_values:
+              values: ['minor', 'moderate', 'major', 'critical']
+
+  - name: region_monthly
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [region, month]
+      - quality_baseline:
+          not_null_columns: [region, month, monthly_kwh, avg_voltage, avg_meters, kwh_per_meter]
+          range_checks:
+            - {column: monthly_kwh, min: 0}
+            - {column: avg_meters, min: 0}
+            - {column: kwh_per_meter, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']

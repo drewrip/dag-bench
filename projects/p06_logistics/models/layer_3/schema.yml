@@ -1,0 +1,127 @@
+version: 2
+
+models:
+  - name: po_stats
+    tests:
+      - not_empty
+      - unique:
+          column_name: supplier_id
+    columns:
+      - name: supplier_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_pos
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: completed
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_fill_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_lead
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_ordered
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_received
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: supplier_perf
+    tests:
+      - not_empty
+      - unique:
+          column_name: supplier_id
+    columns:
+      - name: supplier_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: supplier_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['electronics_components', 'packaging', 'raw_materials', 'hardware', 'textiles', 'food_ingredients']
+      - name: is_preferred
+        tests:
+          - dbt_utils.at_least_one
+      - name: on_time
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: problems
+        tests:
+          - dbt_utils.at_least_one
+      - name: total
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: avg_transit
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_cargo_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: delivery_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+              inclusive: true
+
+  - name: wh_inventory_status
+    tests:
+      - not_empty
+      - unique:
+          column_name: wh_id
+    columns:
+      - name: wh_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: wh_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: sku_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: total_on_hand
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_available
+        tests:
+          - dbt_utils.at_least_one
+      - name: skus_needing_reorder
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: avg_capacity_util
+        tests:
+          - dbt_utils.at_least_one

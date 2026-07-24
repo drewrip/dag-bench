@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: channel_ytd_summary
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [channel, order_year]
+    columns:
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['web','mobile_app','phone','in_store_kiosk','marketplace']
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: ytd_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_mom_growth
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: unique_customers
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: top_products_by_category
+    tests:
+      - not_empty
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: category_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: net_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: gross_profit
+        tests:
+          - dbt_utils.at_least_one
+      - name: units_sold
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_rating
+        tests:
+          - dbt_utils.at_least_one
+      - name: pos_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: rank_in_cat
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 10
+      - name: category_revenue_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: vip_customers
+    tests:
+      - not_empty
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+      - name: value_segment
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['VIP','High']
+      - name: frequency_segment
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Loyal','Repeat','One-time']
+      - name: total_revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 200
+      - name: total_gp
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_order_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

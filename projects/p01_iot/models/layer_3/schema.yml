@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: daily_site_stats
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - site_id
+            - stat_date
+    columns:
+      - name: site_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+      - name: stat_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: active_devices
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: site_avg_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_min_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_max_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: site_avg_humidity
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_errors
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_valid_readings
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: device_health_score
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: site_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+      - name: device_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_min_battery
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_error_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_valid
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_readings
+        tests:
+          - dbt_utils.at_least_one
+      - name: maintenance_actions
+        tests:
+          - dbt_utils.at_least_one
+      - name: last_maintenance_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: health_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

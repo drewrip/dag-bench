@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: account_risk_score
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+      - dbt_utils.accepted_range:
+          column_name: risk_score
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: flag_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: risky_merchant_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']
+
+  - name: daily_fraud_kpis
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['txn_day', 'merchant_category']
+      - dbt_utils.expression_is_true:
+          expression: "flagged <= txns"
+    columns:
+      - name: txn_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: confirmed_fraud
+        tests:
+          - dbt_utils.at_least_one
+      - name: volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_amount
+        tests:
+          - dbt_utils.at_least_one

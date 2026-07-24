@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: hourly_consumption
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [meter_id, read_hour]
+      - quality_baseline:
+          not_null_columns: [meter_id, read_hour, valid_kwh, valid_readings, estimated, avg_voltage, avg_pf]
+          range_checks:
+            - {column: valid_kwh, min: 0}
+            - {column: valid_readings, min: 0}
+            - {column: estimated, min: 0}
+            - {column: avg_voltage, min: 100, max: 350}
+            - {column: avg_pf, min: 0, max: 1}
+
+  - name: meter_daily
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [meter_id, read_day]
+      - quality_baseline:
+          not_null_columns: [meter_id, read_day, meter_type, tariff_class, region, sub_id, daily_kwh, peak_reading, estimated_readings, avg_voltage, avg_pf]
+          range_checks:
+            - {column: daily_kwh, min: 0}
+            - {column: peak_reading, min: 0}
+            - {column: estimated_readings, min: 0}
+    columns:
+      - name: meter_type
+        tests:
+          - accepted_values:
+              values: ['residential', 'commercial', 'industrial']
+      - name: tariff_class
+        tests:
+          - accepted_values:
+              values: ['residential_standard', 'residential_tou', 'commercial_standard', 'commercial_demand', 'industrial_demand']
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+
+  - name: outage_enriched
+    tests:
+      - unique:
+          column_name: outage_id
+      - quality_baseline:
+          not_null_columns: [outage_id, sub_id, start_ts, end_ts, cause, affected_meters, severity, duration_min, cml, is_major, region, capacity_mw, customer_hours_lost, duration_hrs]
+          range_checks:
+            - {column: customer_hours_lost, min: 0}
+            - {column: duration_hrs, min: 0}
+    columns:
+      - name: cause
+        tests:
+          - accepted_values:
+              values: ['weather', 'equipment_failure', 'vegetation', 'vehicle_accident', 'animal_contact', 'planned_maintenance', 'cyberattack']
+      - name: severity
+        tests:
+          - accepted_values:
+              values: ['minor', 'moderate', 'major', 'critical']
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']

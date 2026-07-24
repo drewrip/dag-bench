@@ -1,0 +1,161 @@
+version: 2
+
+models:
+  - name: stg_campaigns
+    tests:
+      - not_empty
+      - unique:
+          column_name: campaign_id
+      - dbt_utils.expression_is_true:
+          expression: "end_date >= start_date"
+    columns:
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: advertiser
+        tests:
+          - dbt_utils.at_least_one
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['search', 'social', 'display', 'video', 'native', 'email']
+      - name: objective
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['conversion', 'awareness', 'consideration', 'retargeting']
+      - name: start_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: end_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: budget
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cpm_target
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: flight_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: stg_clicks
+    tests:
+      - not_empty
+      - unique:
+          column_name: click_id
+    columns:
+      - name: click_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: imp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: click_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: device
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['mobile', 'desktop', 'tablet', 'ctv']
+      - name: click_day
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_conversions
+    tests:
+      - not_empty
+      - unique:
+          column_name: conv_id
+    columns:
+      - name: conv_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: click_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: conv_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: conv_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['purchase', 'lead', 'signup', 'app_install', 'subscription']
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: conv_day
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_impressions
+    tests:
+      - not_empty
+      - unique:
+          column_name: imp_id
+    columns:
+      - name: imp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: imp_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: device
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['mobile', 'desktop', 'tablet', 'ctv']
+      - name: geo
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'UK', 'CA', 'DE', 'AU', 'FR', 'BR', 'IN', 'JP', 'MX', 'IT', 'ES', 'NL', 'SE', 'KR']
+      - name: placement
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['banner', 'native', 'video', 'interstitial']
+      - name: cost_usd
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: imp_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: imp_day
+        tests:
+          - dbt_utils.at_least_one

@@ -1,0 +1,240 @@
+version: 2
+
+models:
+  - name: stg_accounts
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: name
+        tests:
+          - dbt_utils.at_least_one
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'UK', 'CA', 'DE', 'AU', 'FR', 'IN', 'BR', 'JP']
+      - name: arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: created_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: csm_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: health_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 100
+      - name: implied_mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: age_days
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_events
+    tests:
+      - not_empty
+      - unique:
+          column_name: event_id
+    columns:
+      - name: event_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: event_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - page_view
+                - feature_used
+                - login
+                - api_call
+                - export
+                - report_generated
+                - invite_sent
+      - name: event_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: session_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: platform
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['web', 'api', 'ios', 'android']
+      - name: event_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: event_week
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_feature_usage
+    tests:
+      - not_empty
+      - unique:
+          column_name: fu_id
+    columns:
+      - name: fu_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: feature_name
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - dashboards
+                - reporting
+                - alerts
+                - integrations
+                - api_access
+                - sso
+                - automation
+                - exports
+                - search
+                - collaboration
+                - audit_logs
+                - custom_fields
+                - mobile_app
+      - name: usage_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: usage_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 1000
+      - name: usage_month
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_subscriptions
+    tests:
+      - not_empty
+      - unique:
+          column_name: sub_id
+    columns:
+      - name: sub_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: plan
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['starter', 'professional', 'business', 'enterprise']
+      - name: seats
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 200
+      - name: mrr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: start_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: end_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+      - name: arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: stg_tickets
+    tests:
+      - not_empty
+      - unique:
+          column_name: ticket_id
+    columns:
+      - name: ticket_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: created_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: resolved_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: priority
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['low', 'medium', 'high', 'urgent']
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - technical
+                - billing
+                - bug
+                - onboarding
+                - feature_request
+                - account_access
+      - name: csat_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: is_resolved
+        tests:
+          - dbt_utils.at_least_one
+      - name: ttr_hours
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_urgent
+        tests:
+          - dbt_utils.at_least_one

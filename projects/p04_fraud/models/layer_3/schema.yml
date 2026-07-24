@@ -1,0 +1,136 @@
+version: 2
+
+models:
+  - name: account_risk_profile
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+      - dbt_utils.accepted_range:
+          column_name: flag_rate_pct
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: credit_limit
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_age_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_daily_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_daily_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_spend
+        tests:
+          - dbt_utils.at_least_one
+      - name: flagged_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: risky_merchant_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: flag_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: alert_enriched
+    tests:
+      - not_empty
+      - unique:
+          column_name: alert_id
+    columns:
+      - name: alert_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: alert_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: severity
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_confirmed_fraud
+        tests:
+          - dbt_utils.at_least_one
+      - name: resolved
+        tests:
+          - dbt_utils.at_least_one
+      - name: txn_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: amount
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_tier
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_large
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: merchant_fraud_stats
+    tests:
+      - not_empty
+      - unique:
+          column_name: merchant_id
+      - dbt_utils.accepted_range:
+          column_name: flag_rate_pct
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: merchant_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_tier
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: flagged_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: flag_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_txn
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_txn
+        tests:
+          - dbt_utils.at_least_one

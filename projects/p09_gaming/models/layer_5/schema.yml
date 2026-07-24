@@ -1,0 +1,82 @@
+version: 2
+
+models:
+  - name: country_kpis
+    tests:
+      - not_empty
+      - unique:
+          column_name: country
+    columns:
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US','BR','IN','UK','DE','JP','KR','FR','CA','MX','AU','RU','IT']
+      - name: players
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: arpu
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: paying
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: conversion_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: monetization
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [monetization_tier, engagement_tier]
+    columns:
+      - name: monetization_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Whale','Dolphin','Minnow','Free']
+      - name: engagement_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Power','Regular','Casual','Churned']
+      - name: players
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_sessions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

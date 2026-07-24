@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: division_kpis
+    tests:
+      - not_empty
+      - unique:
+          column_name: dept_name
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: headcount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: payroll
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_base
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 50000
+              max_value: 350000
+      - name: attrition_risk
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 8
+      - name: high_risk_emps
+        tests:
+          - dbt_utils.at_least_one
+      - name: pay_equity
+        tests:
+          - dbt_utils.at_least_one

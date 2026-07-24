@@ -1,0 +1,89 @@
+version: 2
+
+models:
+  - name: player_segments
+    tests:
+      - not_empty
+      - unique:
+          column_name: player_id
+    columns:
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+      - name: platform
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+      - name: sessions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: active_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: completion_rate
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: monetization_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Whale','Dolphin','Minnow','Free']
+      - name: engagement_tier
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Power','Regular','Casual','Churned']
+      - name: playtime_quintile
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+
+  - name: world_perf
+    tests:
+      - not_empty
+      - unique:
+          column_name: world
+    columns:
+      - name: world
+        tests:
+          - dbt_utils.at_least_one
+      - name: completions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: failures
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_cr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: level_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

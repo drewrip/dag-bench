@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: attrition_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: emp_id
+    columns:
+      - name: emp_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: full_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: tenure_years
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_comp
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_perf_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: sick_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 8
+      - name: attrition_risk
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']
+
+  - name: dept_performance_dist
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [dept_name, perf_band]
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: perf_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['High', 'Meets', 'Below']
+      - name: emp_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_salary
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_leave_days
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: pay_equity
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [dept_name, gender]
+    columns:
+      - name: dept_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['female', 'male', 'nonbinary_other']
+      - name: headcount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_salary
+        tests:
+          - dbt_utils.at_least_one
+      - name: pay_index
+        tests:
+          - dbt_utils.at_least_one

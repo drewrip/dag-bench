@@ -1,0 +1,137 @@
+version: 2
+
+models:
+  - name: stg_devices
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: site_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: device_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['temperature_sensor', 'humidity_sensor', 'pressure_sensor', 'multi_sensor', 'gateway']
+      - name: model
+        tests:
+          - dbt_utils.at_least_one
+      - name: firmware
+        tests:
+          - dbt_utils.at_least_one
+      - name: installed_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_active
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: [true, false]
+      - name: site_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america', 'middle_east_africa']
+      - name: latitude
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: -90
+              max_value: 90
+      - name: longitude
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: -180
+              max_value: 180
+
+  - name: stg_maintenance
+    tests:
+      - not_empty
+    columns:
+      - name: log_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: device_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: log_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: action
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['routine_inspection', 'battery_replacement', 'firmware_update', 'repair', 'recalibration', 'decommission']
+      - name: technician
+        tests:
+          - dbt_utils.at_least_one
+      - name: log_month
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_readings
+    tests:
+      - not_empty
+    columns:
+      - name: reading_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: device_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: temperature_c
+        tests:
+          - dbt_utils.at_least_one
+      - name: humidity_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: pressure_hpa
+        tests:
+          - dbt_utils.at_least_one
+      - name: battery_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: rssi_dbm
+        tests:
+          - dbt_utils.at_least_one
+      - name: error_flag
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: [true, false]
+      - name: ts_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: ts_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: hour_of_day
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 23
+      - name: is_valid
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: [true, false]

@@ -1,0 +1,81 @@
+version: 2
+
+models:
+  - name: high_cost_patients
+    tests:
+      - not_empty
+      - unique:
+          column_name: patient_id
+    columns:
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['pediatric', 'adult', 'senior']
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_claims
+        tests:
+          - dbt_utils.at_least_one
+      - name: chronic_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: has_chronic
+        tests:
+          - dbt_utils.at_least_one
+      - name: cost_decile
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 10
+      - name: is_high_cost
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: monthly_trend
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [svc_month, claim_type, plan_type]
+      - dbt_utils.expression_is_true:
+          expression: "denials <= claims"
+    columns:
+      - name: svc_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['professional', 'institutional', 'pharmacy', 'dental', 'vision']
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+      - name: claims
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: billed
+        tests:
+          - dbt_utils.at_least_one
+      - name: paid
+        tests:
+          - dbt_utils.at_least_one
+      - name: denials
+        tests:
+          - dbt_utils.at_least_one

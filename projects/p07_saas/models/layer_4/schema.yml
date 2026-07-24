@@ -1,0 +1,95 @@
+version: 2
+
+models:
+  - name: churn_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: name
+        tests:
+          - dbt_utils.at_least_one
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'UK', 'CA', 'DE', 'AU', 'FR', 'IN', 'BR', 'JP']
+      - name: arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: composite_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['CRITICAL', 'AT_RISK', 'NEUTRAL', 'HEALTHY']
+      - name: risk_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: industry_bench
+    tests:
+      - not_empty
+      - unique:
+          column_name: industry
+    columns:
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100
+      - name: total_arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

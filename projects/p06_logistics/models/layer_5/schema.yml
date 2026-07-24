@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: category_scores
+    tests:
+      - not_empty
+      - unique:
+          column_name: category
+    columns:
+      - name: category
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['electronics_components', 'packaging', 'raw_materials', 'hardware', 'textiles', 'food_ingredients']
+      - name: suppliers
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: avg_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: best
+        tests:
+          - dbt_utils.at_least_one
+      - name: worst
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: region_health
+    tests:
+      - not_empty
+      - unique:
+          column_name: region
+    columns:
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: inventory
+        tests:
+          - dbt_utils.at_least_one
+      - name: available
+        tests:
+          - dbt_utils.at_least_one
+      - name: reorder_alerts
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: avg_utilization
+        tests:
+          - dbt_utils.at_least_one

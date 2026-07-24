@@ -1,0 +1,185 @@
+version: 2
+
+models:
+  - name: category_product_counts
+    tests:
+      - not_empty
+    columns:
+      - name: category_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: product_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: active_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_price
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_margin_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_stock
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: customer_order_counts
+    tests:
+      - not_empty
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: total_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: fulfilled_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: first_order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: last_order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_shipping
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+
+  - name: order_line_facts
+    tests:
+      - not_empty
+    columns:
+      - name: item_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: order_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: product_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: quantity
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 8
+      - name: unit_price
+        tests:
+          - dbt_utils.at_least_one
+      - name: line_total
+        tests:
+          - dbt_utils.at_least_one
+      - name: customer_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['completed','cancelled','returned','pending','processing']
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+      - name: discount_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: shipping_cost
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_fulfilled
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: margin_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: product_cost
+        tests:
+          - dbt_utils.at_least_one
+      - name: line_cost
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: disc_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: line_gross_profit
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: product_review_agg
+    tests:
+      - not_empty
+    columns:
+      - name: product_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: review_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_rating
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: total_votes
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: pos_reviews
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: neg_reviews
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: pos_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

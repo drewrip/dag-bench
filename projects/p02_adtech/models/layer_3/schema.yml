@@ -1,0 +1,136 @@
+version: 2
+
+models:
+  - name: campaign_funnel
+    tests:
+      - not_empty
+      - unique:
+          column_name: campaign_id
+    columns:
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['search', 'social', 'display', 'video', 'native', 'email']
+      - name: advertiser
+        tests:
+          - dbt_utils.at_least_one
+      - name: objective
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['conversion', 'awareness', 'consideration', 'retargeting']
+      - name: budget
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_impressions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_reach
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_spend
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_clicks
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_conversions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: ctr_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: cvr_pct
+        tests:
+          - dbt_utils.at_least_one
+          # Not bounded at 100: total_conversions and total_clicks come from
+          # differently-filtered joins (conversion_with_click vs click_attribution),
+          # so the ratio can legitimately exceed 100%.
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: cpc
+        tests:
+          - dbt_utils.at_least_one
+      - name: cpa
+        tests:
+          - dbt_utils.at_least_one
+      - name: roas
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: conversion_with_click
+    tests:
+      - not_empty
+      - unique:
+          column_name: conv_id
+    columns:
+      - name: conv_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: campaign_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: user_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: conv_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: conv_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['purchase']
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: conv_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: click_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: device
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['mobile', 'desktop', 'tablet', 'ctv']
+      - name: geo
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US']
+      - name: hours_to_convert
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0

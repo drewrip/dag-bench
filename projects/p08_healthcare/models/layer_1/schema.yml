@@ -1,0 +1,221 @@
+version: 2
+
+models:
+  - name: stg_patients
+    tests:
+      - not_empty
+      - unique:
+          column_name: patient_id
+    columns:
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: dob
+        tests:
+          - dbt_utils.at_least_one
+      - name: gender
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['female', 'male', 'other_unknown']
+      - name: zip_code
+        tests:
+          - dbt_utils.at_least_one
+      - name: plan_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['PPO', 'HMO', 'Medicare', 'EPO', 'Medicaid', 'POS']
+      - name: state
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_years
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 120
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['pediatric', 'adult', 'senior']
+
+  - name: stg_providers
+    tests:
+      - not_empty
+      - unique:
+          column_name: provider_id
+    columns:
+      - name: provider_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: provider_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: specialty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - primary_care
+                - emergency_medicine
+                - cardiology
+                - orthopedics
+                - psychiatry
+                - general_surgery
+                - dermatology
+                - radiology
+                - pediatrics
+                - oncology
+      - name: prov_state
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_in_network
+        tests:
+          - dbt_utils.at_least_one
+      - name: npi
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_claims
+    tests:
+      - not_empty
+      - unique:
+          column_name: claim_id
+    columns:
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: patient_id
+        tests:
+          - dbt_utils.at_least_one
+          - relationships:
+              to: ref('stg_patients')
+              field: patient_id
+      - name: provider_id
+        tests:
+          - dbt_utils.at_least_one
+          - relationships:
+              to: ref('stg_providers')
+              field: provider_id
+      - name: service_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['professional', 'institutional', 'pharmacy', 'dental', 'vision']
+      - name: total_billed
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_allowed
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: total_paid
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: status
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['paid', 'pending', 'denied', 'partially_paid']
+      - name: denial_reason
+        tests:
+          - dbt_utils.at_least_one
+      - name: billed_gap
+        tests:
+          - dbt_utils.at_least_one
+      - name: allowed_gap
+        tests:
+          - dbt_utils.at_least_one
+      - name: has_payment
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_denied
+        tests:
+          - dbt_utils.at_least_one
+      - name: svc_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: svc_month
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_claim_lines
+    tests:
+      - not_empty
+      - unique:
+          column_name: line_id
+    columns:
+      - name: line_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+          - relationships:
+              to: ref('stg_claims')
+              field: claim_id
+      - name: cpt_code
+        tests:
+          - dbt_utils.at_least_one
+      - name: quantity
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: unit_cost
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: allowed_amount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: paid_amount
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: billed_total
+        tests:
+          - dbt_utils.at_least_one
+      - name: patient_responsibility
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_diagnoses
+    tests:
+      - not_empty
+      - unique:
+          column_name: diag_id
+    columns:
+      - name: diag_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: claim_id
+        tests:
+          - dbt_utils.at_least_one
+          - relationships:
+              to: ref('stg_claims')
+              field: claim_id
+      - name: icd_code
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_primary
+        tests:
+          - dbt_utils.at_least_one
+      - name: chronic_flag
+        tests:
+          - dbt_utils.at_least_one

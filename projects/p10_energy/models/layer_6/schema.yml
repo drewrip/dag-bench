@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: grid_kpis
+    tests:
+      - unique:
+          column_name: region
+      - quality_baseline:
+          not_null_columns: [region, total_kwh, avg_pf, total_outages, total_cml, latest_month_kwh]
+          range_checks:
+            - {column: total_kwh, min: 0}
+            - {column: avg_pf, min: 0, max: 1}
+            - {column: total_outages, min: 0}
+            - {column: total_cml, min: 0}
+            - {column: latest_month_kwh, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+
+  - name: tariff_summary
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [region, tariff_class, meter_type]
+      - quality_baseline:
+          not_null_columns: [region, tariff_class, meter_type, meters, avg_daily_kwh, total_kwh, avg_pf]
+          range_checks:
+            - {column: meters, min: 0}
+            - {column: avg_daily_kwh, min: 0}
+            - {column: total_kwh, min: 0}
+    columns:
+      - name: region
+        tests:
+          - accepted_values:
+              values: ['north_america', 'europe', 'apac', 'latin_america']
+      - name: tariff_class
+        tests:
+          - accepted_values:
+              values: ['residential_standard', 'residential_tou', 'commercial_standard', 'commercial_demand', 'industrial_demand']
+      - name: meter_type
+        tests:
+          - accepted_values:
+              values: ['residential', 'commercial', 'industrial']

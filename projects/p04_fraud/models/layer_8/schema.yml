@@ -1,0 +1,166 @@
+version: 2
+
+models:
+  - name: rpt_category_fraud
+    tests:
+      - not_empty
+      - unique:
+          column_name: merchant_category
+      - dbt_utils.accepted_range:
+          column_name: share_of_fraud_pct
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchants
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_flag_rate
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_risk_quartile
+        tests:
+          - dbt_utils.at_least_one
+      - name: share_of_fraud_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_fraud_country_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_country
+      - dbt_utils.accepted_range:
+          column_name: pct_high_risk
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_risk_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_risk_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: pct_high_risk
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_fraud_trend_daily
+    tests:
+      - not_empty
+      - unique:
+          column_name: txn_day
+    columns:
+      - name: txn_day
+        tests:
+          - dbt_utils.at_least_one
+      - name: daily_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: daily_confirmed
+        tests:
+          - dbt_utils.at_least_one
+      - name: daily_volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: prev_day_flagged
+        tests:
+          - dbt_utils.at_least_one
+      - name: flagged_chg_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: cumulative_fraud
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_high_risk_accounts
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['HIGH']
+      - name: risk_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: flag_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_spend
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_txns
+        tests:
+          - dbt_utils.at_least_one
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: rpt_merchant_risk
+    tests:
+      - not_empty
+      - unique:
+          column_name: merchant_id
+    columns:
+      - name: merchant_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: merchant_category
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_tier
+        tests:
+          - dbt_utils.at_least_one
+      - name: flag_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_volume
+        tests:
+          - dbt_utils.at_least_one
+      - name: rank_in_cat
+        tests:
+          - dbt_utils.at_least_one
+      - name: risk_quartile
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: [1]
+      - name: report_ts
+        tests:
+          - dbt_utils.at_least_one

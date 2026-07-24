@@ -1,0 +1,200 @@
+version: 2
+
+models:
+  - name: stg_players
+    tests:
+      - not_empty
+      - unique:
+          column_name: player_id
+    columns:
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: username
+        tests:
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US','BR','IN','UK','DE','JP','KR','FR','CA','MX','AU','RU','IT']
+      - name: platform
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['android','ios','steam','playstation','xbox','nintendo_switch']
+      - name: created_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: age_group
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['18_24','25_34','13_17','35_44','45_plus','under_13']
+      - name: is_paid_user
+        tests:
+          - dbt_utils.at_least_one
+      - name: account_age_days
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+
+  - name: stg_levels
+    tests:
+      - not_empty
+      - unique:
+          column_name: level_id
+    columns:
+      - name: level_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: level_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: world
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Forest','Desert','Ice Caverns','Volcano','Sky Kingdom','Void']
+      - name: difficulty
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['easy','medium','hard','expert']
+      - name: par_time_sec
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 60
+              max_value: 600
+      - name: reward_coins
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 10
+              max_value: 500
+
+  - name: stg_sessions
+    tests:
+      - not_empty
+      - unique:
+          column_name: session_id
+      - dbt_utils.expression_is_true:
+          expression: "session_end >= session_start"
+    columns:
+      - name: session_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: session_start
+        tests:
+          - dbt_utils.at_least_one
+      - name: session_end
+        tests:
+          - dbt_utils.at_least_one
+      - name: platform
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['android','ios','steam','playstation','xbox','nintendo_switch']
+      - name: version
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['2.4.0','2.5.0','2.6.1','2.7.0']
+      - name: coins_earned
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000
+      - name: duration_sec
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 60
+              max_value: 7200
+      - name: session_day
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_events
+    tests:
+      - not_empty
+      - unique:
+          column_name: event_id
+    columns:
+      - name: event_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: session_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: event_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['level_start','level_complete','item_collected','level_fail',
+                       'tutorial_step','achievement_unlocked','purchase_prompt_shown',
+                       'session_start','session_end']
+      - name: event_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: level_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: value
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000
+      - name: is_completion
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_failure
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: stg_purchases
+    tests:
+      - not_empty
+      - unique:
+          column_name: purchase_id
+    columns:
+      - name: purchase_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: player_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: purchase_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: item_type
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['coin_pack','skin','booster','battle_pass','character_unlock','remove_ads']
+      - name: item_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: price_usd
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0.99
+              max_value: 99.99
+      - name: is_refunded
+        tests:
+          - dbt_utils.at_least_one
+      - name: is_valid
+        tests:
+          - dbt_utils.at_least_one

@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: device_maintenance_summary
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: total_actions
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: last_maintenance_ts
+        tests:
+          - dbt_utils.at_least_one
+      - name: distinct_action_types
+        tests:
+          - dbt_utils.at_least_one
+      - name: battery_replacements
+        tests:
+          - dbt_utils.at_least_one
+      - name: repairs
+        tests:
+          - dbt_utils.at_least_one
+
+  - name: hourly_device_stats
+    tests:
+      - not_empty
+      - dbt_utils.expression_is_true:
+          expression: "valid_readings <= reading_count"
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_hour
+    columns:
+      - name: device_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: ts_hour
+        tests:
+          - dbt_utils.at_least_one
+      - name: reading_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: valid_readings
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: min_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_temp
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_humidity
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_pressure
+        tests:
+          - dbt_utils.at_least_one
+      - name: min_battery
+        tests:
+          - dbt_utils.at_least_one
+      - name: error_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: error_rate_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

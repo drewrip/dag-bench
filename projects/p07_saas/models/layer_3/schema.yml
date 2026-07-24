@@ -1,0 +1,78 @@
+version: 2
+
+models:
+  - name: account_health
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_id
+    columns:
+      - name: account_id
+        tests:
+          - dbt_utils.at_least_one
+      - name: name
+        tests:
+          - dbt_utils.at_least_one
+      - name: industry
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values:
+                - Software/SaaS
+                - Financial Services
+                - Retail/E-commerce
+                - Healthcare
+                - Manufacturing
+                - Media/Entertainment
+                - Education
+                - Government/Public Sector
+                - Other
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['US', 'UK', 'CA', 'DE', 'AU', 'FR', 'IN', 'BR', 'JP']
+      - name: arr
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: age_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: raw_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 100
+      - name: total_events
+        tests:
+          - dbt_utils.at_least_one
+      - name: active_days
+        tests:
+          - dbt_utils.at_least_one
+      - name: features_used
+        tests:
+          - dbt_utils.at_least_one
+      - name: feature_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: urgent_tickets
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_csat
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: composite_health
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              max_value: 100

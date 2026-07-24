@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: executive_fraud_view
+    tests:
+      - not_empty
+      - unique:
+          column_name: account_country
+      - dbt_utils.accepted_range:
+          column_name: avg_risk_score
+          min_value: 0
+          max_value: 100
+    columns:
+      - name: account_country
+        tests:
+          - dbt_utils.at_least_one
+      - name: accounts
+        tests:
+          - dbt_utils.at_least_one
+      - name: avg_risk_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: high_risk_count
+        tests:
+          - dbt_utils.at_least_one
+      - name: cumulative_fraud
+        tests:
+          - dbt_utils.at_least_one
+      - name: category_avg_flag_rate
+        tests:
+          - dbt_utils.at_least_one

@@ -1,0 +1,64 @@
+version: 2
+
+models:
+  - name: device_risk_ranking
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: health_score
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: risk_rank_in_region
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: risk_quintile
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 5
+      - name: health_band
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['CRITICAL', 'WARNING', 'FAIR', 'GOOD']
+
+  - name: network_anomaly_summary
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - region
+            - anomaly_date
+    columns:
+      - name: region
+        tests:
+          - dbt_utils.at_least_one
+      - name: anomaly_date
+        tests:
+          - dbt_utils.at_least_one
+      - name: anomaly_count
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: affected_devices
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: avg_z_score
+        tests:
+          - dbt_utils.at_least_one
+      - name: max_z_score
+        tests:
+          - dbt_utils.at_least_one

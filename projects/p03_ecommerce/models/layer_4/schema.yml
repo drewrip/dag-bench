@@ -1,0 +1,114 @@
+version: 2
+
+models:
+  - name: category_revenue_rank
+    tests:
+      - not_empty
+    columns:
+      - name: category_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: category_name
+        tests:
+          - dbt_utils.at_least_one
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: gp
+        tests:
+          - dbt_utils.at_least_one
+      - name: units
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: revenue_rank
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: gp_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: revenue_share_pct
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: customer_segments
+    tests:
+      - not_empty
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - dbt_utils.at_least_one
+      - name: country
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_gp
+        tests:
+          - dbt_utils.at_least_one
+      - name: total_orders
+        tests:
+          - dbt_utils.at_least_one
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: avg_order_value
+        tests:
+          - dbt_utils.at_least_one
+      - name: value_segment
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['VIP','High','Mid','Low']
+      - name: frequency_segment
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['Loyal','Repeat','One-time']
+
+  - name: monthly_growth
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [order_year, order_month, channel]
+    columns:
+      - name: order_year
+        tests:
+          - dbt_utils.at_least_one
+      - name: order_month
+        tests:
+          - dbt_utils.at_least_one
+      - name: channel
+        tests:
+          - dbt_utils.at_least_one
+          - accepted_values:
+              values: ['web','mobile_app','phone','in_store_kiosk','marketplace']
+      - name: orders
+        tests:
+          - dbt_utils.at_least_one
+      - name: unique_customers
+        tests:
+          - dbt_utils.at_least_one
+      - name: revenue
+        tests:
+          - dbt_utils.at_least_one
+      - name: gross_profit
+        tests:
+          - dbt_utils.at_least_one
+      - name: prev_month_rev
+        tests:
+          - dbt_utils.at_least_one
+      - name: mom_growth_pct
+        tests:
+          - dbt_utils.at_least_one
+      - name: ytd_revenue
+        tests:
+          - dbt_utils.at_least_one
