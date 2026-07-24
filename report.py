@@ -134,13 +134,84 @@ def get_duckdb_path(project_path):
     return None
 
 
-def sample_rows_for_node(con, node_detail):
-    """Run SELECT * FROM <node> LIMIT 10 against the project's duckdb warehouse."""
+def get_existing_relations(con):
+    """Set of (database, schema, name) for every table/view actually present in the warehouse."""
+    rows = con.execute(
+        "SELECT table_catalog, table_schema, table_name FROM information_schema.tables"
+    ).fetchall()
+    return {tuple(row) for row in rows}
+
+
+def qualified_name(node_detail):
     database, schema, alias = node_detail['database'], node_detail['schema'], node_detail['alias']
     if not (database and schema and alias):
-        return None, None, 'No table location known for this node.'
+        return None
+    return f'"{database}"."{schema}"."{alias}"'
+
+
+def build_sample_ref(node_id, node_details, existing_relations, ctes, resolved, in_progress):
+    """Return a SQL expression that yields node_id's rows, inlining any dependency that
+    isn't actually materialized in the warehouse as a CTE built from its compiled SQL
+    (recursively), so a node can be sampled even if it (or an ancestor) was never built.
+    Appends (alias, sql) pairs to `ctes` in dependency order as needed. `resolved` caches
+    node_id -> ref so a dependency shared by multiple branches is only inlined once.
+    """
+    if node_id in resolved:
+        return resolved[node_id]
+
+    detail = node_details[node_id]
+    qname = qualified_name(detail)
+    key = (detail['database'], detail['schema'], detail['alias'])
+    if qname and key in existing_relations:
+        resolved[node_id] = qname
+        return qname
+
+    if node_id in in_progress:
+        return None  # guard against cycles; shouldn't happen in a DAG
+    sql = detail.get('compiled_sql')
+    if not sql:
+        return None
+
+    in_progress.add(node_id)
     try:
-        result = con.execute(f'SELECT * FROM "{database}"."{schema}"."{alias}" LIMIT 10')
+        for parent_id in detail['parents']:
+            parent_detail = node_details.get(parent_id)
+            if not parent_detail:
+                continue
+            parent_qname = qualified_name(parent_detail)
+            parent_ref = build_sample_ref(parent_id, node_details, existing_relations, ctes, resolved, in_progress)
+            if parent_ref and parent_qname and parent_ref != parent_qname:
+                sql = sql.replace(parent_qname, parent_ref)
+    finally:
+        in_progress.discard(node_id)
+
+    # Computed after recursing so the index reflects CTEs already added by dependencies.
+    alias_name = f'sample_cte_{len(ctes)}'
+    ctes.append((alias_name, sql))
+    resolved[node_id] = alias_name
+    return alias_name
+
+
+def sample_rows_for_node(con, node_id, node_details, existing_relations):
+    """Fetch up to 10 sample rows for a node from the project's duckdb warehouse.
+
+    Queries the materialized relation directly when it exists; otherwise falls back to
+    running the node's (and any un-materialized ancestors') compiled SQL directly, so
+    every node can produce a sample as long as its lineage bottoms out at real tables.
+    """
+    ctes = []
+    ref = build_sample_ref(node_id, node_details, existing_relations, ctes, {}, set())
+    if ref is None:
+        return None, None, 'No table location or compiled SQL known for this node.'
+
+    if ctes:
+        with_clause = 'WITH ' + ', '.join(f'{alias} AS ({sql})' for alias, sql in ctes) + ' '
+    else:
+        with_clause = ''
+    query = f'{with_clause}SELECT * FROM {ref} LIMIT 10'
+
+    try:
+        result = con.execute(query)
         columns = [d[0] for d in result.description]
         rows = result.fetchall()
         return columns, rows, None
@@ -279,16 +350,22 @@ def analyze_project(project):
             'children': sorted(G.successors(n)),
         }
 
+    existing_relations = get_existing_relations(duckdb_con) if duckdb_con is not None else None
+    for n, d in G.nodes(data=True):
         if duckdb_con is not None:
-            sample_columns, sample_rows, sample_error = sample_rows_for_node(duckdb_con, node_details[n])
+            sample_columns, sample_rows, sample_error = sample_rows_for_node(
+                duckdb_con, n, node_details, existing_relations
+            )
         else:
             sample_columns, sample_rows, sample_error = None, None, 'No duckdb warehouse found for this project.'
         node_details[n]['sample_columns'] = sample_columns
         node_details[n]['sample_rows'] = sample_rows
         node_details[n]['sample_error'] = sample_error
 
+        res_type = d['type']
+        materialized = node_details[n]['materialized']
         color = node_color(res_type, materialized)
-        title = f"{res_type} · {node.get('name')}"
+        title = f"{res_type} · {node_details[n]['name']}"
         if materialized:
             title += f" · {materialized}"
         viz_nodes.append({
