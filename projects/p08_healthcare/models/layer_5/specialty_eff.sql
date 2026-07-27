@@ -4,3 +4,5 @@ select specialty, count(distinct provider_id) as providers,
     rank() over (order by avg(denial_rate)) as eff_rank
 from {{ ref('provider_perf') }}
 group by specialty
+order by eff_rank
+limit 10

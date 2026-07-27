@@ -4,3 +4,4 @@ select merchant_id, merchant_name, merchant_category, risk_tier,
 from {{ ref('merchant_risk_rank') }}
 where risk_quartile=1
 order by flag_rate_pct desc
+limit 25

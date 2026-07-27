@@ -4,3 +4,4 @@ select dept_name, division, location,
     round(CAST(avg(tenure_years) AS NUMERIC),2) as avg_tenure
 from {{ ref('stg_employees') }}
 group by dept_name, division, location
+having count(*) > 0

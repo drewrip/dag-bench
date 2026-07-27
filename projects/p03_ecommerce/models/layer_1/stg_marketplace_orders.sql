@@ -1,5 +1,6 @@
 select external_order_id as order_id, customer_id, order_date,
     lower(marketplace_name) as marketplace_name,
+    split_part(external_order_id, '-', 2) as marketplace_order_code,
     case
         when partner_status in ('Shipped','Delivered') then 'completed'
         when partner_status = 'Awaiting Payment' then 'pending'

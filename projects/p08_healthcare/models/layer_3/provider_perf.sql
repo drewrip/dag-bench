@@ -6,3 +6,4 @@ select ce.provider_id, ce.provider_name, ce.specialty, ce.is_in_network,
     round(sum(ce.total_paid)/nullif(sum(ce.total_billed),0),4) as pay_rate
 from {{ ref('claims_enriched') }} ce
 group by ce.provider_id, ce.provider_name, ce.specialty, ce.is_in_network
+having count(*) filter (where ce.is_denied) > 0

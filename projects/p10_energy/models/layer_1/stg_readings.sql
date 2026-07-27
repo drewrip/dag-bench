@@ -3,3 +3,4 @@ select reading_id, meter_id, read_ts, kwh, voltage_v, power_factor, is_estimated
     extract('hour' from read_ts) as hour_of_day,
     kwh>0 and not is_estimated as is_valid
 from {{ source('grid','consumption_readings') }}
+where kwh >= 0

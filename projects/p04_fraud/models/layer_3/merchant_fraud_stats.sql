@@ -5,3 +5,4 @@ select merchant_id, merchant_name, merchant_category, risk_tier,
     round(avg(amount),2) as avg_txn, max(amount) as max_txn
 from {{ ref('txn_enriched') }}
 group by merchant_id, merchant_name, merchant_category, risk_tier
+having count(*) >= 10

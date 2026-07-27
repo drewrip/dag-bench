@@ -3,3 +3,4 @@ select customer_id, full_name, lower(trim(email)) as email,
     coalesce(lifetime_spend,0.0) as lifetime_spend,
     {{ datediff("signup_date", "current_date", "day") }} as days_since_signup
 from {{ source('raw','customers') }}
+where email not ilike '%@test.%' and email not ilike '%example.com'

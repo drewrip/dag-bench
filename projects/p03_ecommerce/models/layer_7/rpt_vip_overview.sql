@@ -6,3 +6,4 @@ select value_segment, frequency_segment, country,
 from {{ ref('vip_customers') }}
 group by value_segment, frequency_segment, country
 order by segment_revenue desc
+limit 20

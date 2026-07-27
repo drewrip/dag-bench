@@ -5,3 +5,4 @@ select supplier_id, supplier_name, count(*) as total_pos,
     sum(ordered_value) as total_ordered, sum(received_value) as total_received
 from {{ ref('po_enriched') }}
 group by supplier_id, supplier_name
+having count(*) >= 3

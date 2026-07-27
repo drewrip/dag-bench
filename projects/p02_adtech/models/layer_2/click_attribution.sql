@@ -6,3 +6,6 @@ from {{ ref('stg_clicks') }} cl
 join {{ ref('stg_impressions') }} i using (imp_id)
 where i.geo = 'US'
   and cl.click_day >= date '2023-01-01' and cl.click_day < date '2023-07-01'
+  and exists (
+    select 1 from {{ ref('stg_conversions') }} cv where cv.click_id = cl.click_id
+  )

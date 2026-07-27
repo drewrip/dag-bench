@@ -7,3 +7,4 @@ select e.level_id, lv.world, lv.difficulty,
 from {{ ref('stg_events') }} e
 join {{ ref('stg_levels') }} lv using (level_id)
 group by e.level_id, lv.world, lv.difficulty
+having count(distinct e.player_id) >= 10

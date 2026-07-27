@@ -12,3 +12,4 @@ select channel, objective,
     rank() over (order by sum(total_revenue)/nullif(sum(total_spend),0) desc) as roas_rank
 from {{ ref('campaign_funnel') }}
 group by channel, objective
+having count(distinct campaign_id) >= 2

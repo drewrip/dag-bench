@@ -8,3 +8,4 @@ select lf.product_id, lf.category_id, lf.category_name,
 from {{ ref('order_line_facts') }} lf
 left join {{ ref('product_review_agg') }} r using (product_id)
 group by lf.product_id,lf.category_id,lf.category_name,r.review_count,r.avg_rating,r.pos_pct
+having sum(lf.quantity) > 0

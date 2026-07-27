@@ -5,3 +5,4 @@ select txn_id, account_id, merchant_id, amount, txn_ts, channel, currency,
     extract('hour' from txn_ts) as hour_of_day,
     amount>1000 as is_large
 from {{ source('src','transactions') }}
+where not is_declined

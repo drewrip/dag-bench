@@ -6,4 +6,5 @@ from {{ ref('stg_substations') }} s
 left join {{ ref('substation_load') }} sl using (sub_id)
 left join (select region, sum(outages) as outages, sum(total_cml) as total_cml
            from {{ ref('outage_by_region') }} group by region) obr on obr.region=s.region
+where exists (select 1 from {{ ref('stg_outages') }} o where o.sub_id = s.sub_id)
 group by s.sub_id, s.sub_name, s.region, s.capacity_mw, obr.outages, obr.total_cml

@@ -4,3 +4,4 @@ select region, cause, severity,
     count(*) filter (where is_major) as major_outages
 from {{ ref('outage_enriched') }}
 group by region, cause, severity
+having sum(cml) > 100

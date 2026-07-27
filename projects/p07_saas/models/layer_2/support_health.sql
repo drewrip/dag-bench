@@ -5,3 +5,4 @@ select account_id, count(*) as total_tickets,
     round(CAST((avg(ttr_hours) filter (where is_resolved)) AS NUMERIC),1) as avg_ttr
 from {{ ref('stg_tickets') }}
 group by account_id
+having count(*) filter (where is_urgent) < count(*)

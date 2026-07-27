@@ -6,4 +6,5 @@ select d.region, ad.ts_hour::DATE as anomaly_date,
 from {{ ref('anomaly_detection') }} ad
 join {{ ref('stg_devices') }} d using (device_id)
 where ad.is_anomaly
+  and ad.ts_hour >= (select max(ts_hour) from {{ ref('anomaly_detection') }}) - interval '30 days'
 group by d.region, ad.ts_hour::DATE

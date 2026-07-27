@@ -5,3 +5,4 @@ select shipment_id, supplier_id, wh_id, sku, quantity, unit_cost,
     status='delivered' as is_delivered,
     status in ('delayed','lost') as is_problematic
 from {{ source('sc','shipments') }}
+where shipped_date is not null

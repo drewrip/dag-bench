@@ -6,3 +6,4 @@ select channel, objective, campaigns, spend, impressions,
     current_timestamp as report_ts
 from {{ ref('channel_performance') }}
 order by roas_rank
+limit 10
