@@ -9,3 +9,5 @@ errors/
 dbt_packages/
 .DS_Store
 scaling_plot.png
+*.svg
+*.tar.gz
