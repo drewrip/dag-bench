@@ -14,5 +14,11 @@ anywhere:
 
 ```sh
 python3 paper/draw.py                            # all 10 DAG figures -> paper/figures/
+python3 paper/draw.py -p p01_iot                 # one benchmark project
+python3 paper/draw.py paper/example-dag          # any dbt project, by path
 python3 paper/table.py -o paper/figures/table.tex
 ```
+
+`draw.py` takes dbt projects either way: positional arguments are paths to a
+project directory (anything holding `target/manifest.json`), and `--project`/`-p`
+is a shortcut for a benchmark project under `projects/`.

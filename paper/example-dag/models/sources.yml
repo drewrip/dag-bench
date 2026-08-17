@@ -1,0 +1,7 @@
+version: 2
+sources:
+  - name: raw
+    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
+    tables:
+      - name: S1
+      - name: S2

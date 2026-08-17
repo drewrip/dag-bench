@@ -24,19 +24,32 @@ the algorithm used by d3-dag (https://github.com/erikbrinkman/d3-dag):
                    distinguishing sources/staging/marts by shape+color
                    so the figure is legible in black-and-white print.
 
+Positional arguments are paths to dbt projects (any directory containing
+target/manifest.json); --project/-p is a shortcut for a benchmark project
+in projects/, named by its directory.
+
 Usage:
     python3 paper/draw.py                    # draws all 10 benchmark pipelines
-    python3 paper/draw.py p01_iot
-    python3 paper/draw.py p01_iot tpch tpcds --outdir paper/figures
-    python3 paper/draw.py synth/multi-sink/p01_ecommerce --direction LR
+    python3 paper/draw.py -p p01_iot
+    python3 paper/draw.py -p p01_iot -p tpch -p tpcds --outdir paper/figures
+    python3 paper/draw.py -p synth/multi-sink/p01_ecommerce --direction TB
+    python3 paper/draw.py paper/example-dag             # a project by path
+    python3 paper/draw.py ~/work/my_dbt_project --pdf   # ...anywhere on disk
+    python3 paper/draw.py -p p01_iot --title "IoT pipeline" --font "Times New Roman, serif"
+
+PDF output needs one of: cairosvg (pure Python, `pip install cairosvg`),
+rsvg-convert (librsvg), or inkscape; --pdf-converter picks one explicitly.
 
 Output goes to paper/figures/, the "compiled" artifacts dropped straight
 into the paper.
 """
 import argparse
+import importlib.util
 import json
 import os
 import random
+import shutil
+import subprocess
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_DIR = os.path.join(REPO_ROOT, 'projects')
@@ -57,14 +70,36 @@ STAGE_RESOURCES = {'model', 'seed', 'snapshot'}
 # ---------------------------------------------------------------------------
 
 
-def load_manifest(project):
-    path = os.path.join(ROOT_DIR, project, 'target', 'manifest.json')
+def load_manifest(project_dir):
+    path = os.path.join(project_dir, 'target', 'manifest.json')
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"{path} not found; run `dbt parse` inside {ROOT_DIR}/{project} first"
+            f"{path} not found; run `dbt parse` inside {project_dir} first"
         )
     with open(path) as f:
         return json.load(f)
+
+
+def resolve_benchmark(name):
+    """Benchmark shortcut (--project): a directory name under projects/."""
+    name = name.strip('/')
+    project_dir = os.path.join(ROOT_DIR, name)
+    if not os.path.isdir(project_dir):
+        raise FileNotFoundError(
+            f"no benchmark project {name!r} in {ROOT_DIR}; pass a path instead "
+            "if the project lives elsewhere"
+        )
+    # keep the benchmark's nested name in the figure filename, as before
+    return name.replace('/', '__'), name.replace('/', ' / '), project_dir
+
+
+def resolve_path(path):
+    """A dbt project given directly by path."""
+    project_dir = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(project_dir):
+        raise FileNotFoundError(f"{path} is not a directory")
+    name = os.path.basename(project_dir.rstrip(os.sep)) or 'project'
+    return name, name, project_dir
 
 
 class Node:
@@ -92,8 +127,7 @@ def build_graph(manifest):
     nodes = {}
 
     for uid, src in manifest['sources'].items():
-        label = f"{src['source_name']}.{src['name']}"
-        nodes[uid] = Node(uid, label, 'source')
+        nodes[uid] = Node(uid, src['name'], 'source')
 
     for uid, n in manifest['nodes'].items():
         if n['resource_type'] not in STAGE_RESOURCES:
@@ -454,15 +488,22 @@ def edge_path(points, direction):
 
 
 def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
-                node_gap, canvas_w, canvas_h, title, project_label):
+                node_gap, canvas_w, canvas_h, title, project_label, font):
     margin = 48
     legend_h = 40
     title_h = 34 if title else 0
 
+    # n.y is the *center* of a layer measured from the first layer's center,
+    # while canvas_h already budgets a full node along the layer axis, so the
+    # layer axis needs half a node of lead-in. Without it the first layer's
+    # nodes are clipped by the left (LR) / top (TB) edge and all the slack
+    # piles up at the opposite end.
+    depth_lead = (node_width if direction == 'LR' else node_height) / 2.0
+
     def transform(n):
         if direction == 'TB':
-            return n.x + margin, n.y + margin + title_h
-        return n.y + margin, n.x + margin + title_h
+            return n.x + margin, n.y + margin + title_h + depth_lead
+        return n.y + margin + depth_lead, n.x + margin + title_h
 
     def boundary_point(uid, is_source):
         """Point on the node's edge (not its center) that an edge should
@@ -487,7 +528,7 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{svg_w:.0f}" '
         f'height="{svg_h:.0f}" viewBox="0 0 {svg_w:.0f} {svg_h:.0f}" '
-        f'font-family="Helvetica, Arial, sans-serif">'
+        f'font-family="{escape_xml(font)}">'
     )
     parts.append(f'<rect x="0" y="0" width="{svg_w:.0f}" height="{svg_h:.0f}" fill="white"/>')
 
@@ -547,18 +588,23 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
     legend_items = [
         ('Source', PALETTE['source']),
         ('View', PALETTE['model']),
-        ('Table / incremental', PALETTE['table']),
+        ('Table', PALETTE['table']),
     ]
     ly = svg_h - legend_h / 2.0 - 4
-    lx = margin
+    # swatch (16) + 6 gap + label text, then a gap between items; the text
+    # width is estimated at ~6.2px/char for 11px Helvetica so the whole strip
+    # can be centered on the canvas.
+    item_gap = 26.0
+    item_widths = [22.0 + 6.2 * len(label) for label, _ in legend_items]
+    lx = (svg_w - (sum(item_widths) + item_gap * (len(legend_items) - 1))) / 2.0
     parts.append('<g font-size="11" fill="#1c1c1c">')
-    for label, style in legend_items:
+    for (label, style), item_w in zip(legend_items, item_widths):
         parts.append(
             f'<rect x="{lx:.1f}" y="{ly - 7:.1f}" width="16" height="14" rx="3" '
             f'fill="{style["fill"]}" stroke="{style["stroke"]}" stroke-width="1.5"/>'
         )
         parts.append(f'<text x="{lx + 22:.1f}" y="{ly + 4:.1f}">{escape_xml(label)}</text>')
-        lx += 24 + 9 * len(label) + 26
+        lx += item_w + item_gap
     parts.append('</g>')
 
     parts.append('</svg>')
@@ -566,16 +612,78 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
 
 
 # ---------------------------------------------------------------------------
+# SVG -> PDF conversion
+# ---------------------------------------------------------------------------
+
+# Tried in order by --pdf-converter auto. cairosvg is pure Python (plus
+# libcairo) and needs no subprocess, so it wins when it is importable;
+# the CLI tools are the fallback for machines without it.
+PDF_CONVERTERS = ('cairosvg', 'rsvg-convert', 'inkscape')
+
+
+def _convert_cairosvg(svg_path, pdf_path):
+    import cairosvg  # noqa: PLC0415 - optional dependency, imported on demand
+    cairosvg.svg2pdf(url=svg_path, write_to=pdf_path)
+
+
+def _convert_rsvg(svg_path, pdf_path):
+    subprocess.run(
+        ['rsvg-convert', '-f', 'pdf', '-o', pdf_path, svg_path],
+        check=True, capture_output=True,
+    )
+
+
+def _convert_inkscape(svg_path, pdf_path):
+    subprocess.run(
+        ['inkscape', svg_path, '--export-type=pdf', f'--export-filename={pdf_path}'],
+        check=True, capture_output=True,
+    )
+
+
+def converter_available(name):
+    if name == 'cairosvg':
+        return importlib.util.find_spec('cairosvg') is not None
+    return shutil.which(name) is not None
+
+
+def svg_to_pdf(svg_path, converter='auto'):
+    """Writes <svg_path>.pdf next to the SVG; returns (pdf_path, converter)."""
+    if converter == 'auto':
+        candidates = [c for c in PDF_CONVERTERS if converter_available(c)]
+        if not candidates:
+            raise RuntimeError(
+                "no SVG->PDF converter found; install cairosvg "
+                "(`pip install cairosvg`) or librsvg/inkscape"
+            )
+        converter = candidates[0]
+    elif not converter_available(converter):
+        raise RuntimeError(f"requested --pdf-converter {converter} is not available")
+
+    pdf_path = os.path.splitext(svg_path)[0] + '.pdf'
+    fn = {
+        'cairosvg': _convert_cairosvg,
+        'rsvg-convert': _convert_rsvg,
+        'inkscape': _convert_inkscape,
+    }[converter]
+    try:
+        fn(svg_path, pdf_path)
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b'').decode(errors='replace').strip()
+        raise RuntimeError(f"{converter} failed on {svg_path}: {stderr}") from e
+    return pdf_path, converter
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
 
-def draw_project(project, outdir, direction, node_width, node_height,
-                  layer_gap, node_gap, dummy_gap, title):
-    manifest = load_manifest(project)
+def draw_project(name, label, project_dir, outdir, direction, node_width,
+                  node_height, layer_gap, node_gap, dummy_gap, title, font):
+    manifest = load_manifest(project_dir)
     nodes, edges = build_graph(manifest)
     if not nodes:
-        raise ValueError(f"{project}: no model/seed/snapshot/source nodes found")
+        raise ValueError(f"{label}: no model/seed/snapshot/source nodes found")
 
     assign_layers(nodes, edges)
     layered_edges, chains = insert_dummy_nodes(nodes, edges)
@@ -585,15 +693,13 @@ def draw_project(project, outdir, direction, node_width, node_height,
         node_width, node_height, dummy_gap, direction,
     )
 
-    project_label = project.replace('/', ' / ')
     svg = render_svg(
         nodes, chains, direction, node_width, node_height, layer_gap,
-        node_gap, canvas_w, canvas_h, title, project_label,
+        node_gap, canvas_w, canvas_h, title, label, font,
     )
 
     os.makedirs(outdir, exist_ok=True)
-    out_name = project.strip('/').replace('/', '__') + '.svg'
-    out_path = os.path.join(outdir, out_name)
+    out_path = os.path.join(outdir, name + '.svg')
     with open(out_path, 'w') as f:
         f.write(svg)
     return out_path, len([n for n in nodes.values() if not n.is_dummy]), len(edges)
@@ -602,34 +708,72 @@ def draw_project(project, outdir, direction, node_width, node_height,
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        'projects', nargs='*', default=DEFAULT_PROJECTS,
+        'paths', nargs='*', metavar='PATH',
         help=(
-            f"project directory name(s) relative to {os.path.relpath(ROOT_DIR, REPO_ROOT)}/, e.g. p01_iot tpch "
-            f"synth/multi-sink/p01_ecommerce (default: the 10 benchmark pipelines, {', '.join(DEFAULT_PROJECTS)})"
+            'path(s) to dbt project(s) to draw - any directory holding '
+            'target/manifest.json, e.g. paper/example-dag'
+        ),
+    )
+    parser.add_argument(
+        '--project', '-p', dest='projects', action='append', default=[],
+        metavar='NAME',
+        help=(
+            f"benchmark project to draw, named by its directory under "
+            f"{os.path.relpath(ROOT_DIR, REPO_ROOT)}/, e.g. p01_iot, tpch, "
+            "synth/multi-sink/p01_ecommerce (repeatable). With no PATH and no "
+            f"--project, the 10 benchmark pipelines are drawn: {', '.join(DEFAULT_PROJECTS)}"
         ),
     )
     parser.add_argument(
         '--outdir', default=OUT_DIR,
         help=f'output directory (default: {os.path.relpath(OUT_DIR, REPO_ROOT)})',
     )
-    parser.add_argument('--direction', choices=['TB', 'LR'], default='TB', help='layout direction (default: TB)')
+    parser.add_argument('--direction', choices=['TB', 'LR'], default='LR', help='layout direction (default: LR)')
     parser.add_argument('--node-width', type=float, default=118.0)
     parser.add_argument('--node-height', type=float, default=40.0)
     parser.add_argument('--layer-gap', type=float, default=90.0)
     parser.add_argument('--node-gap', type=float, default=22.0)
     parser.add_argument('--dummy-gap', type=float, default=14.0)
     parser.add_argument('--no-title', action='store_true', help='omit the title text above the figure')
+    parser.add_argument(
+        '--title', default=None,
+        help='title text above the figure (default: the project name); applied to every project drawn',
+    )
+    parser.add_argument(
+        '--font', default='Helvetica, Arial, sans-serif',
+        help='SVG font-family for all text (default: "Helvetica, Arial, sans-serif")',
+    )
+    parser.add_argument(
+        '--pdf', action='store_true',
+        help='also write a PDF next to each SVG',
+    )
+    parser.add_argument(
+        '--pdf-converter', choices=('auto',) + PDF_CONVERTERS, default='auto',
+        help=(
+            'converter used by --pdf (default: auto, which prefers the pure-Python '
+            f"cairosvg and falls back to {', '.join(PDF_CONVERTERS[1:])})"
+        ),
+    )
     args = parser.parse_args()
 
-    for project in args.projects:
-        project = project.strip('/')
-        title = None if args.no_title else project.replace('/', ' / ')
+    benchmarks = args.projects
+    if not benchmarks and not args.paths:
+        benchmarks = DEFAULT_PROJECTS
+
+    targets = [resolve_benchmark(name) for name in benchmarks]
+    targets += [resolve_path(p) for p in args.paths]
+
+    for name, label, project_dir in targets:
+        title = None if args.no_title else (args.title or label)
         out_path, n_nodes, n_edges = draw_project(
-            project, args.outdir, args.direction, args.node_width,
-            args.node_height, args.layer_gap, args.node_gap, args.dummy_gap,
-            title,
+            name, label, project_dir, args.outdir, args.direction,
+            args.node_width, args.node_height, args.layer_gap, args.node_gap,
+            args.dummy_gap, title, args.font,
         )
-        print(f"{project}: {n_nodes} nodes, {n_edges} edges -> {out_path}")
+        print(f"{label}: {n_nodes} nodes, {n_edges} edges -> {out_path}")
+        if args.pdf:
+            pdf_path, converter = svg_to_pdf(out_path, args.pdf_converter)
+            print(f"{label}: {converter} -> {pdf_path}")
 
 
 if __name__ == '__main__':

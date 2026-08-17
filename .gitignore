@@ -10,4 +10,5 @@ dbt_packages/
 .DS_Store
 scaling_plot.png
 *.svg
+*.pdf
 *.tar.gz

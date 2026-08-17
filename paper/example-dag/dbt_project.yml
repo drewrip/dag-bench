@@ -1,0 +1,16 @@
+name: 'example_dag'
+version: '1.0.0'
+config-version: 2
+profile: 'example_dag'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  example_dag:
+    layer_1:
+      +materialized: view
+    layer_2:
+      +materialized: view
+    layer_3:
+      +materialized: table
