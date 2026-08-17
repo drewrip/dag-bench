@@ -4,12 +4,18 @@ Generates a LaTeX table summarizing the 10 benchmark dbt projects.
 Reads the compiled manifest.json for each projects/pNN_* project (run
 `dbt parse` inside a project directory first if its target/manifest.json is
 missing or stale) and prints a longtable to stdout.
+
+Usage:
+    python3 paper/table.py                          # to stdout
+    python3 paper/table.py -o paper/figures/table.tex
 """
 import argparse
 import json
 import os
 
-ROOT_DIR = 'projects'
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.join(REPO_ROOT, 'projects')
+OUT_DIR = os.path.join(REPO_ROOT, 'paper', 'figures')
 
 # Project directory (== exact name from SPEC.md) -> short domain description, in table order.
 PROJECTS = [
@@ -130,7 +136,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         '-o', '--output', default=None,
-        help='Write LaTeX to this file instead of stdout (e.g. figures/table.tex)',
+        help='Write LaTeX to this file instead of stdout (e.g. paper/figures/table.tex)',
     )
     args = parser.parse_args()
 
@@ -138,6 +144,7 @@ def main():
     latex = build_latex(rows)
 
     if args.output:
+        os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
         with open(args.output, 'w') as f:
             f.write(latex)
     else:

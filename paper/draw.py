@@ -25,18 +25,22 @@ the algorithm used by d3-dag (https://github.com/erikbrinkman/d3-dag):
                    so the figure is legible in black-and-white print.
 
 Usage:
-    python3 figures/draw.py                    # draws all 10 benchmark pipelines
-    python3 figures/draw.py p01_iot
-    python3 figures/draw.py p01_iot tpch tpcds --outdir figures
-    python3 figures/draw.py synth/multi-sink/p01_ecommerce --direction LR
+    python3 paper/draw.py                    # draws all 10 benchmark pipelines
+    python3 paper/draw.py p01_iot
+    python3 paper/draw.py p01_iot tpch tpcds --outdir paper/figures
+    python3 paper/draw.py synth/multi-sink/p01_ecommerce --direction LR
+
+Output goes to paper/figures/, the "compiled" artifacts dropped straight
+into the paper.
 """
 import argparse
 import json
 import os
 import random
 
-ROOT_DIR = 'projects'
-OUT_DIR = 'figures'
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.join(REPO_ROOT, 'projects')
+OUT_DIR = os.path.join(REPO_ROOT, 'paper', 'figures')
 
 # The 10 benchmark pipelines, drawn by default when no projects are given.
 DEFAULT_PROJECTS = [
@@ -600,11 +604,14 @@ def main():
     parser.add_argument(
         'projects', nargs='*', default=DEFAULT_PROJECTS,
         help=(
-            f"project directory name(s) relative to {ROOT_DIR}/, e.g. p01_iot tpch "
+            f"project directory name(s) relative to {os.path.relpath(ROOT_DIR, REPO_ROOT)}/, e.g. p01_iot tpch "
             f"synth/multi-sink/p01_ecommerce (default: the 10 benchmark pipelines, {', '.join(DEFAULT_PROJECTS)})"
         ),
     )
-    parser.add_argument('--outdir', default=OUT_DIR, help=f'output directory (default: {OUT_DIR})')
+    parser.add_argument(
+        '--outdir', default=OUT_DIR,
+        help=f'output directory (default: {os.path.relpath(OUT_DIR, REPO_ROOT)})',
+    )
     parser.add_argument('--direction', choices=['TB', 'LR'], default='TB', help='layout direction (default: TB)')
     parser.add_argument('--node-width', type=float, default=118.0)
     parser.add_argument('--node-height', type=float, default=40.0)
