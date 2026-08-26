@@ -19,6 +19,6 @@ events_with_lag as (
 select account_id, count(distinct event_id) as total_events,
     count(distinct user_id) as unique_users, count(distinct session_id) as sessions,
     count(distinct event_day) as active_days, max(event_ts) as last_seen,
-    round(cast(avg({{ datediff('prev_event_ts', 'event_ts', 'day') }}) as numeric(38,10)), 2) as avg_days_between_events
+    round(avg({{ datediff('prev_event_ts', 'event_ts', 'day') }}), 2) as avg_days_between_events
 from events_with_lag
 group by account_id

@@ -23,7 +23,7 @@ final as (
         nas.anomaly_count as recent_anomalies,
         count(drr.device_id) filter (where drr.health_band='CRITICAL') as critical_devices,
         count(drr.device_id) filter (where drr.health_band='GOOD') as healthy_devices,
-        round(cast(avg(drr.health_score) as numeric(38,10)), 2)    as avg_device_health
+        round(avg(drr.health_score), 2)    as avg_device_health
     from site_reliability sr
     left join anomalies_by_region nas on nas.region = sr.region
     left join device_risk_ranking drr using (site_id)

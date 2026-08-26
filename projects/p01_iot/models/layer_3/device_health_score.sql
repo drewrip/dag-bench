@@ -19,12 +19,12 @@ final as (
         m.total_actions       as maintenance_actions,
         m.last_maintenance_ts,
         -- health 0-100: higher is better
-        round(cast(least(100, greatest(0,
+        round(least(100, greatest(0,
               100
               - avg(h.error_rate_pct)*5
               - case when avg(h.min_battery)<20 then 20 else 0 end
               + coalesce(m.total_actions,0)*2
-            )) as numeric(38,10)), 2) as health_score
+            )), 2) as health_score
     from hourly_device_stats h
     join stg_devices d using (device_id)
     left join device_maintenance_summary m using (device_id)
