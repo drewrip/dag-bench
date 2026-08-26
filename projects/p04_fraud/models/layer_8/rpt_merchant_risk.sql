@@ -3,5 +3,5 @@ select merchant_id, merchant_name, merchant_category, risk_tier,
     current_timestamp as report_ts
 from {{ ref('merchant_risk_rank') }}
 where risk_quartile=1
-order by flag_rate_pct desc
+order by flag_rate_pct desc nulls last, merchant_id
 limit 25

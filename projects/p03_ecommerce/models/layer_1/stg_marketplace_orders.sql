@@ -14,7 +14,7 @@ select external_order_id as order_id, customer_id, order_date,
     coalesce(gross_amount,0) - coalesce(commission_fee,0) as net_revenue,
     extract('year' from order_date) as order_year,
     extract('month' from order_date) as order_month,
-    date_trunc('month',order_date) as order_month_start,
+    cast(date_trunc('month',order_date) as date) as order_month_start,
     partner_status in ('Shipped','Delivered') as is_fulfilled,
     'partner_feed' as source_system
 from {{ source('raw','marketplace_orders') }}

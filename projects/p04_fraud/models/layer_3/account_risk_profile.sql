@@ -9,7 +9,7 @@ select t.account_id, t.account_country, t.account_type, t.credit_limit, t.accoun
     sum(t.amount) as total_spend,
     count(*) filter (where t.is_flagged) as flagged_txns,
     count(*) filter (where t.is_risky) as risky_merchant_txns,
-    round(v.total_flagged*100.0/nullif(count(distinct t.txn_id),0),2) as flag_rate_pct
+    round(cast(v.total_flagged*100.0/nullif(count(distinct t.txn_id),0) as numeric(38,10)), 2) as flag_rate_pct
 from {{ ref('txn_enriched') }} t
 join vel v using (account_id)
 group by t.account_id,t.account_country,t.account_type,t.credit_limit,

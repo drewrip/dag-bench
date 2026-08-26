@@ -1,6 +1,6 @@
 with ranked as (
     select pp.*,
-        row_number() over (partition by category_id order by net_revenue desc) as rank_in_cat
+        row_number() over (partition by category_id order by net_revenue desc nulls last, product_id) as rank_in_cat
     from {{ ref('product_performance') }} pp
 )
 select r.product_id, r.category_id, r.category_name,

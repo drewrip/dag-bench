@@ -5,8 +5,8 @@ with cat_rev as (
     group by category_id, category_name
 )
 select *,
-    rank() over (order by revenue desc) as revenue_rank,
-    round(gp*100.0/nullif(revenue,0),2) as gp_pct,
-    round(revenue*100.0/nullif(sum(revenue) over(),0),2) as revenue_share_pct
+    rank() over (order by revenue desc nulls last) as revenue_rank,
+    round(cast(gp*100.0/nullif(revenue,0) as numeric(38,10)), 2) as gp_pct,
+    round(cast(revenue*100.0/nullif(sum(revenue) over(),0) as numeric(38,10)), 2) as revenue_share_pct
 from cat_rev cr
 where units > 0

@@ -1,5 +1,5 @@
 select customer_id, country, total_revenue, total_gp, total_orders,
-    round(total_revenue/nullif(total_orders,0),2) as avg_order_value,
+    round(cast(total_revenue/nullif(total_orders,0) as numeric(38,10)), 2) as avg_order_value,
     case when total_revenue>=5000 then 'VIP'
          when total_revenue>=1000 then 'High'
          when total_revenue>=200  then 'Mid'

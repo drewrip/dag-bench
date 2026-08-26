@@ -3,5 +3,5 @@ select claim_id, patient_id, provider_id, service_date, claim_type,
     total_billed-total_allowed as billed_gap, total_allowed-total_paid as allowed_gap,
     total_paid>0 as has_payment, status='denied' as is_denied,
     extract('year' from service_date) as svc_year,
-    date_trunc('month',service_date) as svc_month
+    cast(date_trunc('month',service_date) as date) as svc_month
 from {{ source('hc','claims') }}

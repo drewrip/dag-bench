@@ -19,11 +19,11 @@ anomalies_by_region as (
 final as (
     select sr.region, sr.site_id, sr.site_name,
         sr.days_with_data, sr.overall_avg_temp,
-        sr.error_rate_pct        as site_error_rate,
-        nas.anomaly_count        as recent_anomalies,
+        sr.error_rate_pct as site_error_rate,
+        nas.anomaly_count as recent_anomalies,
         count(drr.device_id) filter (where drr.health_band='CRITICAL') as critical_devices,
-        count(drr.device_id) filter (where drr.health_band='GOOD')     as healthy_devices,
-        round(avg(drr.health_score),2)                                 as avg_device_health
+        count(drr.device_id) filter (where drr.health_band='GOOD') as healthy_devices,
+        round(cast(avg(drr.health_score) as numeric(38,10)), 2)    as avg_device_health
     from site_reliability sr
     left join anomalies_by_region nas on nas.region = sr.region
     left join device_risk_ranking drr using (site_id)

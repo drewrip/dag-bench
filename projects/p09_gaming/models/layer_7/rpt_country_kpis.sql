@@ -1,6 +1,6 @@
 select country, players, total_revenue, arpu, avg_active_days, paying, conversion_pct,
-    rank() over (order by total_revenue desc) as revenue_rank,
+    rank() over (order by total_revenue desc nulls last) as revenue_rank,
     current_timestamp as report_ts
 from {{ ref('country_kpis') }}
-order by total_revenue desc
+order by total_revenue desc nulls last, country
 limit 20

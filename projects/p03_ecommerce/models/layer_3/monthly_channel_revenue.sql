@@ -2,8 +2,8 @@ with internal_channels as (
     select order_year, order_month, channel,
         count(distinct order_id) as orders,
         count(distinct customer_id) as unique_customers,
-        round(sum(disc_revenue),2) as revenue,
-        round(sum(line_gross_profit),2) as gross_profit
+        round(cast(sum(disc_revenue) as numeric(38,10)), 2) as revenue,
+        round(cast(sum(line_gross_profit) as numeric(38,10)), 2) as gross_profit
     from {{ ref('order_line_facts') }}
     where is_fulfilled
     group by order_year, order_month, channel
@@ -18,8 +18,8 @@ marketplace_channel as (
     select order_year, order_month, channel,
         count(distinct order_id) as orders,
         count(distinct customer_id) as unique_customers,
-        round(sum(net_revenue),2) as revenue,
-        round(sum(net_revenue),2) as gross_profit
+        round(cast(sum(net_revenue) as numeric(38,10)), 2) as revenue,
+        round(cast(sum(net_revenue) as numeric(38,10)), 2) as gross_profit
     from {{ ref('stg_marketplace_orders') }}
     where is_fulfilled
     group by order_year, order_month, channel

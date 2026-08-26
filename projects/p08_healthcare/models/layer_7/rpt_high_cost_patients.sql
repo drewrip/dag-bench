@@ -3,4 +3,4 @@ select patient_id, age_group, plan_type, gender, total_paid, total_claims,
     current_timestamp as report_ts
 from {{ ref('high_cost_patients') }}
 where cost_decile<=2
-order by total_paid desc
+order by total_paid desc nulls last
