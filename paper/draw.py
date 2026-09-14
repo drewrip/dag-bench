@@ -36,6 +36,11 @@ Usage:
     python3 paper/draw.py paper/example-dag             # a project by path
     python3 paper/draw.py ~/work/my_dbt_project --pdf   # ...anywhere on disk
     python3 paper/draw.py -p p01_iot --title "IoT pipeline" --font "Times New Roman, serif"
+    python3 paper/draw.py paper/example-dag --peek=C    # show model C's SQL beside the DAG
+
+--peek=NODE highlights one model and adds a callout panel with its SQL
+(the Jinja source, as in the project), connected to the node by a leader
+line routed through the gap between layers so it never crosses a node.
 
 PDF output needs one of: cairosvg (pure Python, `pip install cairosvg`),
 rsvg-convert (librsvg), or inkscape; --pdf-converter picks one explicitly.
@@ -44,12 +49,15 @@ Output goes to paper/figures/, the "compiled" artifacts dropped straight
 into the paper.
 """
 import argparse
+import difflib
 import importlib.util
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
+import textwrap
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROOT_DIR = os.path.join(REPO_ROOT, 'projects')
@@ -415,7 +423,7 @@ PALETTE = {
     'seed':   {'fill': '#f5f0e6', 'stroke': '#8a7654', 'text': '#3a3226'},
     'model':  {'fill': '#eef2f7', 'stroke': '#3a5a78', 'text': '#1c2e40'},
     'snapshot': {'fill': '#eef2f7', 'stroke': '#3a5a78', 'text': '#1c2e40'},
-    'table':  {'fill': '#e7eef0', 'stroke': '#3d6b63', 'text': '#1d332f'},
+    'table':  {'fill': '#b9d6ce', 'stroke': '#24564c', 'text': '#0f231f'},
 }
 
 
@@ -487,23 +495,264 @@ def edge_path(points, direction):
     return d.strip()
 
 
+# ---------------------------------------------------------------------------
+# --peek: a callout panel showing one node's SQL
+# ---------------------------------------------------------------------------
+
+PEEK_ACCENT = '#c0582b'
+PEEK_GAP = 36.0  # between the DAG and the panel
+PEEK_FONT_SIZE = 10.5
+# advance width of the common monospace faces (Menlo, Consolas, DejaVu Sans
+# Mono, Liberation Mono, Courier), used to size the panel to its text
+PEEK_CHAR_W = 0.6 * PEEK_FONT_SIZE
+PEEK_LINE_H = 14.0
+PEEK_PAD = 10.0
+PEEK_HEADER_H = 24.0
+PEEK_GUTTER_GAP = 12.0
+
+SQL_KEYWORDS = {
+    'all', 'and', 'as', 'asc', 'between', 'by', 'case', 'cross', 'current',
+    'desc', 'distinct', 'else', 'end', 'except', 'exists', 'filter',
+    'following', 'from', 'full', 'group', 'having', 'ilike', 'in', 'inner',
+    'intersect', 'interval', 'is', 'join', 'lateral', 'left', 'like', 'limit',
+    'not', 'null', 'offset', 'on', 'or', 'order', 'outer', 'over', 'partition',
+    'preceding', 'qualify', 'range', 'right', 'row', 'rows', 'select', 'then',
+    'unbounded', 'union', 'using', 'when', 'where', 'window', 'with',
+}
+
+SQL_TOKEN_RE = re.compile(
+    r"(?P<jinja>\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\})"
+    r"|(?P<comment>--.*)"
+    r"|(?P<string>'(?:[^']|'')*'?)"
+    r"|(?P<word>[A-Za-z_][A-Za-z0-9_]*)"
+)
+
+# monochrome-first like the node palette: keywords and comments stay
+# distinguishable by weight/style alone in black-and-white print
+CODE_STYLES = {
+    'plain': 'fill="#24292f"',
+    'keyword': 'fill="#1f4a7a" font-weight="700"',
+    'jinja': f'fill="{PEEK_ACCENT}"',
+    'string': 'fill="#4d6b2a"',
+    'comment': 'fill="#7a7f87" font-style="italic"',
+}
+
+
+def sql_of(manifest_node):
+    # dbt >= 1.3 calls it raw_code; older manifests use raw_sql
+    return manifest_node.get('raw_code') or manifest_node.get('raw_sql') or ''
+
+
+def resolve_peek(manifest, nodes, query, label, max_lines, max_cols, font):
+    """Finds the node named by --peek (a model name or unique_id) and
+    prepares its SQL as numbered rows for the panel."""
+    uids = [query] if query in nodes else [
+        uid for uid, n in nodes.items() if n.label == query
+    ]
+    if not uids:
+        close = difflib.get_close_matches(query, sorted({n.label for n in nodes.values()}), n=3)
+        hint = f"; did you mean {', '.join(close)}?" if close else ''
+        raise ValueError(f"{label}: --peek node {query!r} not found{hint}")
+
+    with_sql = [
+        uid for uid in uids
+        if uid in manifest['nodes'] and sql_of(manifest['nodes'][uid]).strip()
+    ]
+    if not with_sql:
+        raise ValueError(
+            f"{label}: --peek node {query!r} is a {nodes[uids[0]].kind} and has no SQL to show"
+        )
+    if len(with_sql) > 1:
+        raise ValueError(
+            f"{label}: --peek {query!r} is ambiguous; pass a unique_id instead: "
+            + ', '.join(with_sql)
+        )
+    uid = with_sql[0]
+    mnode = manifest['nodes'][uid]
+
+    lines = [l.rstrip() for l in sql_of(mnode).expandtabs(4).splitlines()]
+    first = 0
+    while not lines[first]:
+        first += 1
+    lines = lines[first:]
+    while not lines[-1]:
+        lines.pop()
+    lines = textwrap.dedent('\n'.join(lines)).split('\n')
+
+    # numbered by line in the source file, so the figure can be cross-referenced
+    rows = [
+        (first + 1 + i, l if len(l) <= max_cols else l[:max_cols - 1] + '…')
+        for i, l in enumerate(lines)
+    ]
+    if len(rows) > max_lines:
+        omitted = len(rows) - (max_lines - 1)
+        rows = rows[:max_lines - 1] + [(None, f'-- … {omitted} more lines')]
+
+    return {
+        'uid': uid,
+        'label': mnode['name'],
+        'path': mnode.get('original_file_path', ''),
+        'rows': rows,
+        'font': font,
+    }
+
+
+def peek_panel_size(peek):
+    """Returns (width, height, line-number digits) of the panel."""
+    digits = len(str(max(n for n, _ in peek['rows'] if n is not None)))
+    code_w = max(len(text) for _, text in peek['rows']) * PEEK_CHAR_W
+    body_w = 2 * PEEK_PAD + digits * PEEK_CHAR_W + PEEK_GUTTER_GAP + code_w
+    # header: bold 11px name + 10px path, estimated like the legend text
+    header_w = 2 * PEEK_PAD + 6.6 * len(peek['label']) + 8 + 5.6 * len(peek['path'])
+    height = (
+        PEEK_HEADER_H + 2 * PEEK_PAD
+        + len(peek['rows']) * PEEK_LINE_H - (PEEK_LINE_H - PEEK_FONT_SIZE)
+    )
+    return max(body_w, header_w), height, digits
+
+
+def sql_tspans(line, code_x):
+    spans = []  # (kind, start column, text)
+    pos = 0
+    for m in SQL_TOKEN_RE.finditer(line):
+        if m.start() > pos:
+            spans.append(('plain', pos, line[pos:m.start()]))
+        kind = m.lastgroup
+        if kind == 'word':
+            kind = 'keyword' if m.group().lower() in SQL_KEYWORDS else 'plain'
+        spans.append((kind, m.start(), m.group()))
+        pos = m.end()
+    if pos < len(line):
+        spans.append(('plain', pos, line[pos:]))
+    # Renderers disagree on whitespace in SVG text (rsvg drops spaces at
+    # tspan boundaries, even non-breaking ones), which flattens the SQL's
+    # indentation. So no whitespace is emitted at all: every word is placed
+    # at its own column.
+    return ''.join(
+        f'<tspan x="{code_x + (start + w.start()) * PEEK_CHAR_W:.1f}" {CODE_STYLES[kind]}>'
+        f'{escape_xml(w.group())}</tspan>'
+        for kind, start, text in spans
+        for w in re.finditer(r'\S+', text)
+    )
+
+
+def render_peek_panel(parts, peek, x, y, w, h, digits):
+    r = 6
+    hh = PEEK_HEADER_H
+    parts.append('<g>')
+    parts.append(f'<path d="{rounded_rect_path(x, y, w, h, r)}" fill="#fcfcfb"/>')
+    parts.append(
+        f'<path d="M{x:.1f},{y + hh:.1f} V{y + r:.1f} A{r},{r} 0 0 1 {x + r:.1f},{y:.1f} '
+        f'H{x + w - r:.1f} A{r},{r} 0 0 1 {x + w:.1f},{y + r:.1f} V{y + hh:.1f} Z" '
+        f'fill="#f5ede6"/>'
+    )
+    parts.append(
+        f'<line x1="{x:.1f}" y1="{y + hh:.1f}" x2="{x + w:.1f}" y2="{y + hh:.1f}" '
+        f'stroke="#e3d3c6" stroke-width="1"/>'
+    )
+    parts.append(
+        f'<path d="{rounded_rect_path(x, y, w, h, r)}" fill="none" '
+        f'stroke="{PEEK_ACCENT}" stroke-width="1.5"/>'
+    )
+    parts.append(
+        f'<text x="{x + PEEK_PAD:.1f}" y="{y + hh / 2.0 + 4:.1f}" font-size="11" fill="#1c1c1c">'
+        f'<tspan font-weight="700">{escape_xml(peek["label"])}</tspan>'
+        f'<tspan dx="8" font-size="10" fill="#6b7078">{escape_xml(peek["path"])}</tspan>'
+        '</text>'
+    )
+
+    num_x = x + PEEK_PAD + digits * PEEK_CHAR_W
+    code_x = num_x + PEEK_GUTTER_GAP
+    parts.append(f'<g font-family="{escape_xml(peek["font"])}" font-size="{PEEK_FONT_SIZE}">')
+    for i, (lineno, text) in enumerate(peek['rows']):
+        by = y + hh + PEEK_PAD + PEEK_FONT_SIZE * 0.8 + i * PEEK_LINE_H
+        if lineno is not None:
+            parts.append(
+                f'<text x="{num_x:.1f}" y="{by:.1f}" text-anchor="end" '
+                f'fill="#a3a8ae">{lineno}</text>'
+            )
+        if text.strip():
+            parts.append(f'<text y="{by:.1f}">{sql_tspans(text, code_x)}</text>')
+    parts.append('</g>')
+    parts.append('</g>')
+
+
 def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
-                node_gap, canvas_w, canvas_h, title, project_label, font):
+                node_gap, canvas_w, canvas_h, title, project_label, font,
+                peek=None):
     margin = 48
     legend_h = 40
     title_h = 34 if title else 0
 
+    order_size = node_height if direction == 'LR' else node_width
+    depth_size = node_width if direction == 'LR' else node_height
     # n.y is the *center* of a layer measured from the first layer's center,
     # while canvas_h already budgets a full node along the layer axis, so the
     # layer axis needs half a node of lead-in. Without it the first layer's
     # nodes are clipped by the left (LR) / top (TB) edge and all the slack
     # piles up at the opposite end.
-    depth_lead = (node_width if direction == 'LR' else node_height) / 2.0
+    depth_lead = depth_size / 2.0
+
+    # Extent of the content area in layout space: "order" runs within a
+    # layer (n.x) and "depth" between layers (n.y). A peek panel is appended
+    # past one end of the order axis - below/above the DAG for LR, right/left
+    # of it for TB - so it never covers a node.
+    order_total, depth_total = canvas_w, canvas_h
+    order_shift = depth_shift = 0.0
+    if peek:
+        panel_w, panel_h, peek_digits = peek_panel_size(peek)
+        p_order, p_depth = (panel_h, panel_w) if direction == 'LR' else (panel_w, panel_h)
+        pn = nodes[peek['uid']]
+        # whichever side the node is nearer to, to keep the connector short
+        after = pn.x >= canvas_w / 2.0
+        order_total = canvas_w + PEEK_GAP + p_order
+        order_shift = 0.0 if after else PEEK_GAP + p_order
+        depth_total = max(canvas_h, p_depth)
+        depth_shift = (depth_total - canvas_h) / 2.0
+
+    def to_screen(u, v):
+        if direction == 'TB':
+            return u + margin, v + margin + title_h
+        return v + margin, u + margin + title_h
 
     def transform(n):
-        if direction == 'TB':
-            return n.x + margin, n.y + margin + title_h + depth_lead
-        return n.y + margin + depth_lead, n.x + margin + title_h
+        return to_screen(n.x + order_shift, n.y + depth_lead + depth_shift)
+
+    if peek:
+        side = 1.0 if after else -1.0
+        node_u = pn.x + order_shift
+        node_v = pn.y + depth_lead + depth_shift
+        gap_u = canvas_w + PEEK_GAP / 2.0 if after else p_order + PEEK_GAP / 2.0
+        panel_o = canvas_w + PEEK_GAP if after else 0.0
+        edge_u = panel_o if after else p_order
+        blocked = any(
+            not m.is_dummy and m.layer == pn.layer and (m.x - pn.x) * side > 0
+            for m in nodes.values()
+        )
+        if not blocked:
+            # Nothing but edges between the node and the panel in its layer:
+            # leave straight out of the node's side facing the panel.
+            start = (node_u + side * order_size / 2.0, node_v)
+            route_v = node_v
+        else:
+            # Leave the node's downstream face a little off-center toward
+            # the panel (so the connector doesn't sit on the node's own
+            # outgoing edges), then run along the node-free channel between
+            # this layer and the next, so no other node is crossed.
+            node_u += side * order_size * 0.3
+            route_v = min(node_v + depth_size / 2.0 + layer_gap / 2.0, depth_total + margin * 0.75)
+            start = (node_u, node_v + depth_size / 2.0)
+        panel_d = min(max(route_v - p_depth / 2.0, 0.0), depth_total - p_depth)
+        end_v = min(max(route_v, panel_d + 12.0), panel_d + p_depth - 12.0)
+        pts = [start, (node_u, route_v)] if blocked else [start]
+        if end_v != route_v:
+            # the panel was clamped short of the route; jog in the gap
+            pts += [(gap_u, route_v), (gap_u, end_v)]
+        pts.append((edge_u, end_v))
+        connector = [to_screen(u, v) for u, v in pts]
+        sx0, sy0 = to_screen(panel_o, panel_d)
+        sx1, sy1 = to_screen(panel_o + p_order, panel_d + p_depth)
+        panel_x, panel_y = min(sx0, sx1), min(sy0, sy1)
 
     def boundary_point(uid, is_source):
         """Point on the node's edge (not its center) that an edge should
@@ -518,11 +767,11 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
         return (x + node_width / 2.0, y) if is_source else (x - node_width / 2.0, y)
 
     if direction == 'TB':
-        svg_w = canvas_w + 2 * margin
-        svg_h = canvas_h + 2 * margin + title_h + legend_h
+        svg_w = order_total + 2 * margin
+        svg_h = depth_total + 2 * margin + title_h + legend_h
     else:
-        svg_w = canvas_h + 2 * margin
-        svg_h = canvas_w + 2 * margin + title_h + legend_h
+        svg_w = depth_total + 2 * margin
+        svg_h = order_total + 2 * margin + title_h + legend_h
 
     parts = []
     parts.append(
@@ -558,6 +807,18 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
         parts.append(f'<path d="{d}" marker-end="url(#arrow)"/>')
     parts.append('</g>')
 
+    # peek connector, under the nodes so its halo doesn't eat the node border
+    if peek:
+        d = 'M' + ' L'.join(f'{x:.1f},{y:.1f}' for x, y in connector)
+        parts.append(
+            f'<path d="{d}" fill="none" stroke="white" stroke-width="5" '
+            'stroke-linejoin="round"/>'
+        )
+        parts.append(
+            f'<path d="{d}" fill="none" stroke="{PEEK_ACCENT}" stroke-width="1.6" '
+            'stroke-dasharray="5 3" stroke-linejoin="round"/>'
+        )
+
     # nodes
     parts.append('<g>')
     max_chars = 14
@@ -568,9 +829,11 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
         style = style_for(n)
         w, h = node_width, node_height
         rx, ry = x - w / 2.0, y - h / 2.0
+        peeked = peek is not None and n.uid == peek['uid']
         parts.append(
-            f'<path d="{rounded_rect_path(rx, ry, w, h, 6)}" '
-            f'fill="{style["fill"]}" stroke="{style["stroke"]}" stroke-width="1.5"/>'
+            f'<path d="{rounded_rect_path(rx, ry, w, h, 6)}" fill="{style["fill"]}" '
+            f'stroke="{PEEK_ACCENT if peeked else style["stroke"]}" '
+            f'stroke-width="{2.5 if peeked else 1.5}"/>'
         )
         lines = wrap_label(n.label, max_chars)
         font_size = 11 if len(lines) == 1 else 10
@@ -583,6 +846,11 @@ def render_svg(nodes, chains, direction, node_width, node_height, layer_gap,
                 f'fill="{style["text"]}">{escape_xml(line)}</text>'
             )
     parts.append('</g>')
+
+    if peek:
+        cx, cy = connector[0]
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" fill="{PEEK_ACCENT}"/>')
+        render_peek_panel(parts, peek, panel_x, panel_y, panel_w, panel_h, peek_digits)
 
     # legend
     legend_items = [
@@ -679,11 +947,21 @@ def svg_to_pdf(svg_path, converter='auto'):
 
 
 def draw_project(name, label, project_dir, outdir, direction, node_width,
-                  node_height, layer_gap, node_gap, dummy_gap, title, font):
+                  node_height, layer_gap, node_gap, dummy_gap, title, font,
+                  peek=None, peek_max_lines=40, peek_max_cols=100,
+                  peek_font='monospace'):
     manifest = load_manifest(project_dir)
     nodes, edges = build_graph(manifest)
     if not nodes:
         raise ValueError(f"{label}: no model/seed/snapshot/source nodes found")
+
+    peek_info = None
+    if peek:
+        peek_info = resolve_peek(
+            manifest, nodes, peek, label, peek_max_lines, peek_max_cols, peek_font,
+        )
+        # keep the plain figure; the peek variant gets its own file
+        name = f"{name}__peek_{peek_info['label']}"
 
     assign_layers(nodes, edges)
     layered_edges, chains = insert_dummy_nodes(nodes, edges)
@@ -695,12 +973,12 @@ def draw_project(name, label, project_dir, outdir, direction, node_width,
 
     svg = render_svg(
         nodes, chains, direction, node_width, node_height, layer_gap,
-        node_gap, canvas_w, canvas_h, title, label, font,
+        node_gap, canvas_w, canvas_h, title, label, font, peek_info,
     )
 
     os.makedirs(outdir, exist_ok=True)
     out_path = os.path.join(outdir, name + '.svg')
-    with open(out_path, 'w') as f:
+    with open(out_path, 'w', encoding='utf-8') as f:
         f.write(svg)
     return out_path, len([n for n in nodes.values() if not n.is_dummy]), len(edges)
 
@@ -744,6 +1022,25 @@ def main():
         help='SVG font-family for all text (default: "Helvetica, Arial, sans-serif")',
     )
     parser.add_argument(
+        '--peek', metavar='NODE', default=None,
+        help=(
+            'highlight NODE (a model name or unique_id) and show its SQL in a '
+            'callout panel beside the DAG; written to <project>__peek_<NODE>.svg'
+        ),
+    )
+    parser.add_argument(
+        '--peek-max-lines', type=int, default=40,
+        help='longest SQL shown by --peek before it is truncated (default: 40)',
+    )
+    parser.add_argument(
+        '--peek-max-cols', type=int, default=100,
+        help='longest SQL line shown by --peek before it is cut off (default: 100)',
+    )
+    parser.add_argument(
+        '--peek-font', default='Menlo, Consolas, DejaVu Sans Mono, Liberation Mono, monospace',
+        help='SVG font-family for the --peek SQL; should be monospace',
+    )
+    parser.add_argument(
         '--pdf', action='store_true',
         help='also write a PDF next to each SVG',
     )
@@ -755,6 +1052,10 @@ def main():
         ),
     )
     args = parser.parse_args()
+    if args.peek_max_lines < 2:
+        parser.error('--peek-max-lines must be at least 2')
+    if args.peek_max_cols < 10:
+        parser.error('--peek-max-cols must be at least 10')
 
     benchmarks = args.projects
     if not benchmarks and not args.paths:
@@ -768,7 +1069,8 @@ def main():
         out_path, n_nodes, n_edges = draw_project(
             name, label, project_dir, args.outdir, args.direction,
             args.node_width, args.node_height, args.layer_gap, args.node_gap,
-            args.dummy_gap, title, args.font,
+            args.dummy_gap, title, args.font, args.peek, args.peek_max_lines,
+            args.peek_max_cols, args.peek_font,
         )
         print(f"{label}: {n_nodes} nodes, {n_edges} edges -> {out_path}")
         if args.pdf:
