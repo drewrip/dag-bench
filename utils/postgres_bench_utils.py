@@ -85,10 +85,45 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(handle)
 
 
+_UNSET = object()
+
+
+def _env_var(name: str, default=_UNSET):
+    if name in os.environ:
+        return os.environ[name]
+    if default is _UNSET:
+        raise RuntimeError(f"Env var required but not provided: '{name}'")
+    return default
+
+
+def _as_number(value):
+    if isinstance(value, (int, float)):
+        return value
+    return float(value) if "." in str(value) else int(value)
+
+
+def render_profile(value):
+    """`value` with every templated string rendered the way dbt renders
+    profiles.yml, so `env_var()` overrides (e.g. DAGBENCH_PG_PORT) reach the
+    loader exactly as they reach dbt."""
+    if isinstance(value, dict):
+        return {key: render_profile(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [render_profile(item) for item in value]
+    if isinstance(value, str) and ("{{" in value or "{%" in value):
+        from jinja2.nativetypes import NativeEnvironment
+
+        env = NativeEnvironment()
+        env.globals["env_var"] = _env_var
+        env.filters.update(as_number=_as_number, as_text=str, as_native=lambda v: v)
+        return env.from_string(value).render()
+    return value
+
+
 def read_postgres_output(profile_path: Path) -> dict:
     profile = load_yaml(profile_path)
     profile_name = next(iter(profile))
-    return profile[profile_name]["outputs"]["postgres"]
+    return render_profile(profile[profile_name]["outputs"]["postgres"])
 
 
 def read_source_tables(sources_path: Path) -> list[str]:
@@ -499,6 +534,15 @@ def load_project_sources_to_postgres(
             load_tables_via_csv(pg_config, con, schema, loaded_tables, csv_dir, unlogged)
     finally:
         con.close()
+
+    # Fresh tables have no planner statistics until autovacuum gets to them,
+    # so without this the first benchmark runs plan blind and later ones don't.
+    run_psql(
+        pg_config,
+        "analyze "
+        + ", ".join(f"{quote_ident(schema)}.{quote_ident(t)}" for t in loaded_tables)
+        + ";",
+    )
 
     method = "duckdb postgres extension" if use_extension else "csv"
     persistence = "unlogged" if unlogged else "logged"

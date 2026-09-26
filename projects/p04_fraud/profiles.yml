@@ -7,10 +7,10 @@ p04_fraud:
       threads: 16
     postgres:
       type: postgres
-      host: 0.0.0.0
+      host: "{{ env_var('DAGBENCH_PG_HOST', '0.0.0.0') }}"
       user: runner
       password: password
-      port: 5432
+      port: "{{ env_var('DAGBENCH_PG_PORT', '5432') | as_number }}"
       dbname: benchmark
       schema: synth_multi_p04_fraud
       threads: 16

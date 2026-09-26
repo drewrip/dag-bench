@@ -22,6 +22,6 @@ select p.player_id, p.country, p.platform, p.age_group, p.is_paid_user, p.accoun
     coalesce(pr.revenue,0) as revenue, coalesce(pr.purchases,0) as purchases,
     pr.revenue>0 as is_monetized
 from players p
-left join session_stats ss using (player_id)
-left join event_stats es using (player_id)
-left join revenue pr using (player_id)
+left join session_stats ss on ss.player_id = p.player_id
+left join event_stats es on es.player_id = p.player_id
+left join revenue pr on pr.player_id = p.player_id

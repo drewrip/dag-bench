@@ -44,9 +44,9 @@ final as (
         round(sum(di.spend)/nullif(count(distinct cw.conv_id),0), 2) as cpa,
         round(sum(cw.revenue)/nullif(sum(di.spend),0), 4) as roas
     from campaigns c
-    left join daily_impressions di using (campaign_id)
-    left join clicks ca using (campaign_id)
-    left join conversions cw using (campaign_id)
+    left join daily_impressions di on di.campaign_id = c.campaign_id
+    left join clicks ca on ca.campaign_id = c.campaign_id
+    left join conversions cw on cw.campaign_id = c.campaign_id
     group by c.campaign_id, c.campaign_name, c.channel, c.advertiser, c.objective, c.budget
 
 )
