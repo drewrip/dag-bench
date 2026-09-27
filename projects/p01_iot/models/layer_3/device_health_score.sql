@@ -12,19 +12,19 @@ device_maintenance_summary as (
 
 final as (
     select h.device_id, d.site_id, d.region, d.device_type,
-        avg(h.min_battery)    as avg_min_battery,
-        avg(h.error_rate_pct) as avg_error_rate,
-        sum(h.valid_readings) as total_valid,
-        sum(h.reading_count)  as total_readings,
+        cast(avg(h.min_battery) as numeric(38,6))    as avg_min_battery,
+        cast(avg(h.error_rate_pct) as numeric(38,6)) as avg_error_rate,
+        cast(sum(h.valid_readings) as bigint) as total_valid,
+        cast(sum(h.reading_count) as bigint)  as total_readings,
         m.total_actions       as maintenance_actions,
         m.last_maintenance_ts,
         -- health 0-100: higher is better
-        round(least(100, greatest(0,
+        cast(round(least(100, greatest(0,
               100
               - avg(h.error_rate_pct)*5
               - case when avg(h.min_battery)<20 then 20 else 0 end
               + coalesce(m.total_actions,0)*2
-            )), 2) as health_score
+            )), 2) as numeric(10,2)) as health_score
     from hourly_device_stats h
     join stg_devices d using (device_id)
     left join device_maintenance_summary m using (device_id)

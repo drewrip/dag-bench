@@ -23,9 +23,9 @@ select a.account_id, a.name, a.industry, a.country, a.arr, a.age_days,
     ae.total_events, ae.active_days, fb.features_used,
     coalesce(fb.features_used,0) as feature_count,
     coalesce(sh.urgent_tickets,0) as urgent_tickets,
-    coalesce(sh.avg_csat,3) as avg_csat,
-    least(100,round(a.health_score*0.3+least(ae.active_days,30)*0.4*(10.0/3)
-        +coalesce(fb.features_used,0)*2-coalesce(sh.urgent_tickets,0)*3, 2)) as composite_health
+    cast(coalesce(sh.avg_csat,3) as numeric(10,2)) as avg_csat,
+    cast(least(100,round(a.health_score*0.3+least(ae.active_days,30)*0.4*(10.0/3)
+        +coalesce(fb.features_used,0)*2-coalesce(sh.urgent_tickets,0)*3, 2)) as numeric(10,2)) as composite_health
 from accounts a
 left join engagement ae on a.account_id = ae.account_id
 left join features fb on a.account_id = fb.account_id

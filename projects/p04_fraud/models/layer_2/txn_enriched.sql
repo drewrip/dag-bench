@@ -22,7 +22,7 @@ final as (
         a.account_age_days, a.is_frozen,
         m.merchant_name, m.category as merchant_category, m.merchant_country,
         m.risk_tier, m.is_risky, m.avg_txn_amount,
-        t.amount/nullif(m.avg_txn_amount,0) as amount_vs_avg
+        cast(t.amount/nullif(m.avg_txn_amount,0) as numeric(38,6)) as amount_vs_avg
     from transactions t
     join accounts a using (account_id)
     join merchants m using (merchant_id)

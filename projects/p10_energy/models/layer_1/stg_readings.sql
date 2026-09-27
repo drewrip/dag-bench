@@ -1,6 +1,6 @@
 select reading_id, meter_id, read_ts, kwh, voltage_v, power_factor, is_estimated,
     date_trunc('hour',read_ts) as read_hour, cast(date_trunc('day',read_ts) as date) as read_day,
-    extract('hour' from read_ts) as hour_of_day,
+    cast(extract('hour' from read_ts) as bigint) as hour_of_day,
     kwh>0 and not is_estimated as is_valid
 from {{ source('grid','consumption_readings') }}
 where kwh >= 0

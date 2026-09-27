@@ -5,7 +5,7 @@ select sc.category, cs.avg_score, cs.suppliers,
 from {{ ref('category_scores') }} cs
 join {{ ref('supplier_scorecard') }} sc using (category)
 cross join (
-    select sum(inventory) as inventory, sum(reorder_alerts) as reorder_alerts
+    select cast(sum(inventory) as bigint) as inventory, cast(sum(reorder_alerts) as bigint) as reorder_alerts
     from {{ ref('region_health') }}
 ) rh
 group by sc.category, cs.avg_score, cs.suppliers, rh.inventory, rh.reorder_alerts

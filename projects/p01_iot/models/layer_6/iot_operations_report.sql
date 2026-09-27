@@ -11,7 +11,7 @@ network_anomaly_summary as (
 ),
 
 anomalies_by_region as (
-    select region, sum(anomaly_count) as anomaly_count
+    select region, cast(sum(anomaly_count) as bigint) as anomaly_count
     from network_anomaly_summary
     group by region
 ),
@@ -23,7 +23,7 @@ final as (
         nas.anomaly_count as recent_anomalies,
         count(drr.device_id) filter (where drr.health_band='CRITICAL') as critical_devices,
         count(drr.device_id) filter (where drr.health_band='GOOD') as healthy_devices,
-        round(avg(drr.health_score), 2)    as avg_device_health
+        cast(round(avg(drr.health_score), 2) as numeric(10,2))    as avg_device_health
     from site_reliability sr
     left join anomalies_by_region nas on nas.region = sr.region
     left join device_risk_ranking drr using (site_id)

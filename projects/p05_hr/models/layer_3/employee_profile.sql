@@ -21,7 +21,7 @@ final as (
     select cs.emp_id, cs.full_name, cs.dept_name, cs.division, cs.location,
         cs.gender, cs.employment_type, cs.tenure_years, cs.is_active,
         cs.base_salary, cs.total_comp,
-        coalesce(ra.avg_score,0) as avg_perf_score,
+        cast(coalesce(ra.avg_score,0) as numeric(10,3)) as avg_perf_score,
         coalesce(ra.review_count,0) as review_count,
         coalesce(la.total_leave_days,0) as total_leave_days,
         coalesce(la.sick_days,0) as sick_days,
