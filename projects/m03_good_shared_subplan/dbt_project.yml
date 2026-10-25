@@ -1,0 +1,11 @@
+name: 'm03_good_shared_subplan'
+version: '1.0.0'
+config-version: 2
+profile: 'm03_good_shared_subplan'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  m03_good_shared_subplan:
+    +materialized: table

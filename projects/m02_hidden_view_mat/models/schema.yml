@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: a_device_profile
+    description: >
+      VIEW. Expensive (window over every reading plus a distinct aggregate) but tiny (one row
+      per device), so materializing it is a good choice. Each consumer filters on a different
+      partition/group key that is pushed below the window and aggregate, so no consumer plan
+      exposes this view's subplan, its cost or its cardinality.
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+
+  - name: b_active_profile
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+
+  - name: c_sampled_profile
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+      - name: error_rate_pct
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+
+  - name: d_recent_profile
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique

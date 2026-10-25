@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: a_readings_enriched
+    description: >
+      VIEW. Wide, non-reducing join of every reading with its device. Each consumer reads a
+      tiny slice that is pushed down into the readings scan, so materializing this view
+      (writing ~1 wide row per reading) is a bad choice.
+    tests:
+      - not_empty
+
+  - name: b_gateway_error_days
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_day
+    columns:
+      - name: error_count
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: c_low_battery_hours
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_hour
+    columns:
+      - name: min_battery
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 14
+
+  - name: d_device_window
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+          - dbt_utils.accepted_range:
+              min_value: 100
+              max_value: 199
