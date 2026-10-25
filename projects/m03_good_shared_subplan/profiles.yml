@@ -1,0 +1,16 @@
+m03_good_shared_subplan:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: duckdb
+      path: "data/warehouse.duckdb"
+      threads: 16
+    postgres:
+      type: postgres
+      host: "{{ env_var('DAGBENCH_PG_HOST', '0.0.0.0') }}"
+      user: runner
+      password: password
+      port: "{{ env_var('DAGBENCH_PG_PORT', '5432') | as_number }}"
+      dbname: benchmark
+      schema: micro_m03_good_shared_subplan
+      threads: 16

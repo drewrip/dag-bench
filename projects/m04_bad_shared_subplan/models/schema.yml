@@ -1,0 +1,22 @@
+version: 2
+
+# a_ and b_ share readings ⋈ devices grouped by (device_id, device_type, hour). That
+# aggregate barely reduces its input (~0.5 rows out per reading), and each model's filter
+# is on group keys and is pushed into the scans, so sharing it (materializing the unfiltered
+# aggregate, or the one under fA OR fB) costs far more than two cheap slices.
+models:
+  - name: a_device_hourly_slice
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_hour
+
+  - name: b_fleet_hourly_week
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_hour

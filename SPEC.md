@@ -459,3 +459,15 @@ consumption readings; substations occasionally experience outages.
 | outage_events | cause | VARCHAR | same | Weighted categorical: weather 35%, equipment_failure 25%, vegetation 15%, vehicle_accident 10%, animal_contact 8%, planned_maintenance 6%, cyberattack 1% |
 | outage_events | affected_meters | INTEGER | same | `round(substation.meter_count · Uniform(0.02, 0.9))`, floor 1 |
 | outage_events | severity | VARCHAR | same | Weighted categorical, tier chosen by the `affected_meters` fraction — high fractions skew toward major/critical, low fractions toward minor/moderate |
+
+---
+
+## m01–m04 — Microbenchmarks
+
+The microbenchmark projects (`projects/m01_bad_view_mat` … `projects/m04_bad_shared_subplan`)
+have no generator of their own. Their `generate_data.py` runs the p01_iot generator (sharing
+its dbgen cache), and their `sources.yml` exposes only two of its tables: `readings` (S_1)
+and `devices` (S_2), as specified in the p01_iot section above. Two properties of that data
+matter to the microbenchmarks: `readings.device_id` is Pareto-skewed, so a fraction of
+devices does not map to the same fraction of readings, and each `devices.model` belongs to
+exactly one `device_type`.

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.postgres_bench_utils import psql_env, read_postgres_output  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
-PROJECTS = sorted(p for p in (ROOT / "projects").glob("p[0-9][0-9]_*") if p.is_dir())
+PROJECTS = sorted(p for p in (ROOT / "projects").glob("[pm][0-9][0-9]_*") if p.is_dir())
 
 UNSIZED = re.compile(r"\b(numeric|decimal)\b(?!\s*\(\s*\d+\s*,\s*\d+\s*\))", re.IGNORECASE)
 LINE_COMMENT = re.compile(r"--.*$")

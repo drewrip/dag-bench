@@ -1,0 +1,23 @@
+version: 2
+
+# a_ and b_ are written in different SQL styles, but after normalization both are
+# scan(readings) + scan(devices) + the same two filters + the same equi-join. In the source
+# data every model belongs to exactly one device_type, so a (model, day) pre-aggregate
+# keeping sums and counts can answer both: a_ re-aggregates it to (device_type, week) and
+# b_ uses it directly. That pre-aggregate is tiny and is nearly all of each query's cost.
+models:
+  - name: a_type_weekly_temperature
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_type
+            - week_start
+
+  - name: b_model_daily_anomalies
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - model
+            - reading_date
