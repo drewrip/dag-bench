@@ -1,0 +1,11 @@
+name: 'm06_bad_small_view_mat'
+version: '1.0.0'
+config-version: 2
+profile: 'm06_bad_small_view_mat'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  m06_bad_small_view_mat:
+    +materialized: table

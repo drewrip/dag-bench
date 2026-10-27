@@ -462,9 +462,9 @@ consumption readings; substations occasionally experience outages.
 
 ---
 
-## m01–m04 — Microbenchmarks
+## m01–m06 — Microbenchmarks
 
-The microbenchmark projects (`projects/m01_bad_view_mat` … `projects/m04_bad_shared_subplan`)
+The microbenchmark projects (`projects/m01_bad_view_mat` … `projects/m06_bad_small_view_mat`)
 have no generator of their own. Their `generate_data.py` runs the p01_iot generator (sharing
 its dbgen cache), and their `sources.yml` exposes only two of its tables: `readings` (S_1)
 and `devices` (S_2), as specified in the p01_iot section above. Two properties of that data

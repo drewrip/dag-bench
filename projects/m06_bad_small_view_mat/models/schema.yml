@@ -1,0 +1,52 @@
+version: 2
+
+models:
+  - name: a_legacy_gateway_readings
+    description: >
+      VIEW. Very selective join (v1-firmware gateways, ~1/160 of readings) with a tiny device side.
+      Each consumer's own filter on a readings column is pushed into the readings scan, and the
+      surviving rows are streamed through the hash join, so materializing this view (an extra pass
+      writing every column any consumer needs, which B, C and D must wait on) is a bad choice.
+      readings is not clustered, so each inlined consumer still scans it. This holds on columnar
+      engines (DuckDB); on Postgres, three full row-store scans cost more than materializing once.
+    tests:
+      - not_empty
+
+  - name: b_gateway_error_days
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_day
+    columns:
+      - name: error_count
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 1
+
+  - name: c_gateway_low_battery_hours
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - device_id
+            - ts_hour
+    columns:
+      - name: min_battery
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 14
+
+  - name: d_gateway_strong_signal
+    tests:
+      - not_empty
+    columns:
+      - name: device_id
+        tests:
+          - unique
+      - name: max_rssi_dbm
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -35
