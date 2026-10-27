@@ -1,0 +1,11 @@
+name: 'm05_good_small_view_mat'
+version: '1.0.0'
+config-version: 2
+profile: 'm05_good_small_view_mat'
+model-paths: ["models"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  m05_good_small_view_mat:
+    +materialized: table

@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: a_site_weekly_profile
+    description: >
+      VIEW. Expensive (distinct aggregates and percentiles over every reading) but small (one row
+      per site-week, ~300x fewer rows than readings), so materializing it is a good choice. Each
+      consumer filters only on aggregate outputs, which cannot be pushed below the group by, so an
+      inlined consumer repeats the full aggregate.
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - site_id
+            - ts_week
+
+  - name: b_high_error_site_weeks
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - site_id
+            - ts_week
+    columns:
+      - name: error_rate_pct
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 5
+              max_value: 100
+
+  - name: c_hot_site_weeks
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - site_id
+            - ts_week
+    columns:
+      - name: p95_temp
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 36
+
+  - name: d_unstable_site_weeks
+    tests:
+      - not_empty
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - site_id
+            - ts_week
+    columns:
+      - name: active_devices
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 3
