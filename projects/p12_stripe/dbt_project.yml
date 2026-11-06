@@ -1,0 +1,53 @@
+# fivetran/dbt_stripe vendored by utils/stripe_vendor.py; see VENDORED.md.
+name: 'p12_stripe'
+version: '1.0.0'
+config-version: 2
+require-dbt-version: [">=1.10.5", "<3.0.0"]
+profile: 'p12_stripe'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Fixed window of the generated data (utils/stripe_data.py); replaces
+  # upstream's current_date / run-time spine bounds so compiled SQL is stable.
+  dagbench_start_date: '2023-01-01'
+  dagbench_as_of_date: '2025-12-31'
+  # Feature flags. Upstream defaults except credit notes (default off), which
+  # we generate. price / subscription are pinned instead of probing which
+  # source tables exist.
+  stripe__using_invoices: true
+  stripe__using_subscriptions: true
+  stripe__using_payment_method: true
+  stripe__using_payouts: true
+  stripe__using_transfers: true
+  stripe__using_coupons: true
+  stripe__using_subscription_discounts: true
+  stripe__using_credit_notes: true
+  stripe__using_price: true
+  stripe__using_subscription_history: false
+  stripe__standardized_billing_model_enabled: true
+  stripe__convert_values: false
+  stripe__using_livemode: true
+  # Upstream package-level defaults.
+  card_pass_through_columns: []
+  stripe_sources: []
+
+# Upstream materializations kept as-is: staging tables over `tmp` views,
+# intermediate tables (two ephemeral), mart tables.
+models:
+  p12_stripe:
+    +materialized: table
+    intermediate:
+      +materialized: table
+      int_stripe__deduped_subscription_item:
+        +materialized: ephemeral
+      int_stripe__subscription_discount:
+        +materialized: ephemeral
+    staging:
+      +materialized: table
+      tmp:
+        +materialized: view
