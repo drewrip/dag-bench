@@ -1,0 +1,76 @@
+{{ config(
+     enabled = (p11_tuva.tuva_boolean_var('claims_enabled', false))
+            or (p11_tuva.tuva_boolean_var('clinical_enabled', false))
+   )
+}}
+
+{%- set tuva_core_columns -%}
+      practitioner_id
+    , npi
+    , first_name
+    , last_name
+    , practice_affiliation
+    , specialty
+    , sub_specialty
+{%- endset -%}
+
+{%- set tuva_metadata_columns -%}
+    , ingest_datetime
+    , tuva_last_run
+    , data_source
+{%- endset -%}
+
+{% if p11_tuva.tuva_boolean_var('clinical_enabled', false) == true and p11_tuva.tuva_boolean_var('claims_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+    {{ select_extension_columns(ref('normalized__practitioner')) }}
+{%- endset -%}
+
+with prac as (
+    {{ smart_union([ref('core__stg_claims_practitioner'), ref('normalized__practitioner')], source_index='_record_source') }}
+),
+
+prioritized_practitioners as (
+    select
+          prac.*
+        , max(case when prac._record_source = 2 then 1 else 0 end) over (
+              partition by prac.practitioner_id, prac.data_source
+          ) as _has_clinical_record
+    from prac
+)
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from prioritized_practitioners
+where _record_source = 2
+   or practitioner_id is null
+   or data_source is null
+   or _has_clinical_record = 0
+
+{% elif p11_tuva.tuva_boolean_var('clinical_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+    {{ select_extension_columns(ref('normalized__practitioner')) }}
+{%- endset -%}
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from {{ ref('normalized__practitioner') }}
+
+{% elif p11_tuva.tuva_boolean_var('claims_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+{# No extension columns — input_layer__practitioner is clinical-only #}
+{%- endset -%}
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from {{ ref('core__stg_claims_practitioner') }}
+
+{%- endif %}

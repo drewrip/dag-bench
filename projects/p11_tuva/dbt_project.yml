@@ -1,0 +1,37 @@
+# tuva-core vendored by utils/tuva_vendor.py; see VENDORED.md.
+name: 'p11_tuva'
+version: '1.0.0'
+config-version: 2
+require-dbt-version: [">=1.10.5", "<3.0.0"]
+profile: 'p11_tuva'
+
+flags:
+  require_generic_test_arguments_property: true
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Domain enablement (upstream defaults are false; integration_tests sets these).
+  claims_enabled: true
+  clinical_enabled: true
+  provider_attribution_enabled: true
+  # Optional model families, not vendored.
+  data_quality_enabled: false
+  enable_data_quality_failure_keys: false
+  parity_enabled: false
+  use_coderx_enterprise: false
+  # Fixed so DuckDB and Postgres outputs are identical across runs.
+  tuva_last_run: '2026-01-01 00:00:00'
+
+dispatch:
+  - macro_namespace: 'dbt_utils'
+    search_order: ['p11_tuva', 'dbt_utils']
+
+models:
+  p11_tuva:
+    input_layer_mapping:
+      +materialized: view

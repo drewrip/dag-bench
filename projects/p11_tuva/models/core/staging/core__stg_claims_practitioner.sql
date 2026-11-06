@@ -1,0 +1,73 @@
+
+{{ config(
+     enabled = p11_tuva.tuva_boolean_var('claims_enabled', false)
+   )
+}}
+
+-- *************************************************
+-- This dbt model creates the provider table 
+-- in core. It includes data about all providers
+-- present in the raw claims dataset.
+-- *************************************************
+
+
+with all_providers_in_claims_dataset as (
+select distinct
+    facility_npi as npi
+    , data_source
+from {{ ref('core__medical_claim') }}
+
+{{ p11_tuva.union_distinct() }}
+
+select distinct
+    rendering_npi as npi
+    , data_source
+from {{ ref('core__medical_claim') }}
+
+{{ p11_tuva.union_distinct() }}
+
+select distinct
+    billing_npi as npi
+    , data_source
+from {{ ref('core__medical_claim') }}
+
+{{ p11_tuva.union_distinct() }}
+
+select distinct
+    prescribing_provider_id as npi
+    , data_source
+from {{ ref('core__pharmacy_claim') }}
+
+{{ p11_tuva.union_distinct() }}
+
+select distinct
+    dispensing_provider_id as npi
+    , data_source
+from {{ ref('core__pharmacy_claim') }}
+)
+
+
+, provider as (
+select
+    aa.*
+    , bb.data_source
+from {{ source('tuva_seeds', 'provider_data__provider') }} as aa
+inner join all_providers_in_claims_dataset as bb
+    on aa.npi = bb.npi
+where lower(aa.entity_type_description) = 'individual'
+)
+
+
+
+select
+    cast(npi as {{ dbt.type_string() }}) as practitioner_id
+    , cast(npi as {{ dbt.type_string() }}) as npi
+    , cast(provider_first_name as {{ dbt.type_string() }}) as first_name
+    , cast(provider_last_name as {{ dbt.type_string() }}) as last_name
+    , cast(parent_organization_name as {{ dbt.type_string() }}) as practice_affiliation
+    , cast(primary_specialty_description as {{ dbt.type_string() }}) as specialty
+    , cast(null as {{ dbt.type_string() }}) as sub_specialty
+    , cast(null as {{ dbt.type_timestamp() }}) as ingest_datetime
+    , cast('{{ var('tuva_last_run') }}' as {{ dbt.type_timestamp() }}) as tuva_last_run
+    , cast(data_source as {{ dbt.type_string() }}) as data_source
+from provider

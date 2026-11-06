@@ -1,0 +1,28 @@
+{{ config(
+     enabled = p11_tuva.tuva_boolean_var('claims_enabled', false)
+   )
+}}
+
+{# Since HCPCS is a string, we need to exclude values that would fall in our comparison range for alphanumeric values #}
+with numeric_hcpcs as (
+    select *
+    from {{ ref('service_category__stg_medical_claim') }} as med
+    where {{ p11_tuva.try_to_cast_int('med.hcpcs_code') }} is not null
+)
+select distinct
+    med.claim_id
+  , med.claim_line_number
+  , med.data_source
+  , med.claim_line_id
+  , 'office-based' as service_category_1
+  , 'office-based surgery' as service_category_2
+  , 'office-based surgery' as service_category_3
+  , '{{ this.name }}' as source_model_name
+  , cast('{{ var('tuva_last_run') }}' as {{ dbt.type_timestamp() }}) as tuva_last_run
+from numeric_hcpcs as med
+inner join {{ ref('service_category__stg_office_based') }} as prof
+  on med.claim_id = prof.claim_id
+  and med.claim_line_number = prof.claim_line_number
+  and med.data_source = prof.data_source
+where
+  (hcpcs_code between '10021' and '69999')

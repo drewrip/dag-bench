@@ -1,0 +1,57 @@
+{{ config(
+     enabled = p11_tuva.tuva_boolean_var('claims_enabled', false)
+   )
+}}
+
+{%- set tuva_core_columns -%}
+      eligibility_id
+    , person_id
+    , member_id
+    , subscriber_id
+    , subscriber_relation
+    , enrollment_start_date
+    , enrollment_end_date
+    , payer
+    , payer_type
+    , {{ quote_column('plan') }}
+    , birth_date
+    , death_date
+    , original_reason_entitlement_code
+    , dual_status_code
+    , medicare_status_code
+    , enrollment_status
+    , hospice_flag
+    , institutional_snp_flag
+    , medicaid_indicator
+    , long_term_institutional_flag
+    , part_d_raf_type
+    , low_income_subsidy_indicator
+    , metal_level
+    , csr_indicator
+    , enrollment_duration_months
+    , esrd_status
+    , transplant_duration_months
+    , group_id
+    , group_name
+    , normalized_state_name as fips_state_name
+    , fips_state_code
+    , fips_state_abbreviation
+{%- endset -%}
+
+{%- set tuva_extension_columns -%}
+    {{ select_extension_columns(ref('normalized__eligibility')) }}
+{%- endset -%}
+
+{%- set tuva_metadata_columns -%}
+    , file_date
+    , ingest_datetime
+    , file_name
+    , tuva_last_run
+    , data_source
+{%- endset %}
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from {{ ref('normalized__eligibility') }}

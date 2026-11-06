@@ -1,0 +1,22 @@
+{{ config(
+     enabled = p11_tuva.tuva_boolean_var('claims_enabled', false)
+   )
+}}
+
+
+select
+    patient_data_source_id
+  , claim_id
+  , start_date
+  , end_date
+  , discharge_disposition_code
+  , facility_npi
+  , row_number() over (partition by patient_data_source_id, encounter_id
+order by start_date, end_date, claim_id) as encounter_claim_number
+  , row_number() over (partition by patient_data_source_id, encounter_id
+order by start_date desc, end_date desc, claim_id desc) as encounter_claim_number_desc
+  , close_flag
+  , min_closing_row
+  , {{ p11_tuva.encounter_id_hash(["'emergency department'", 'patient_data_source_id', 'encounter_id']) }} as encounter_id
+  , encounter_id as original_anchor_claim
+from {{ ref('emergency_department__generate_encounter_id_pre_sort') }}

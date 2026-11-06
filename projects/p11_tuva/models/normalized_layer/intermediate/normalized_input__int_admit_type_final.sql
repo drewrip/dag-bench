@@ -1,0 +1,19 @@
+{{ config(
+     enabled = p11_tuva.tuva_boolean_var('claims_enabled', false)
+   )
+}}
+
+
+select
+    claim_id
+    , data_source
+    , column_name
+    , normalized_code
+    , normalized_description
+    , occurrence_count
+    , next_occurrence_count
+    , occurrence_row_count
+    , cast('{{ var('tuva_last_run') }}' as {{ dbt.type_timestamp() }}) as tuva_last_run
+from {{ ref('normalized_input__int_admit_type_voting') }}
+where (occurrence_row_count = 1
+        and occurrence_count > next_occurrence_count)

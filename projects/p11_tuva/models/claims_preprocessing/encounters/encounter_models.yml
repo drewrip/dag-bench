@@ -1,0 +1,3821 @@
+version: 2
+
+models:
+#### Encounters
+
+## Final
+  - name: acute_inpatient__encounter_grain
+    description: This table pulls together all the data needed to perform acute inpatient analytics into a single table.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: acute_inpatient__encounter_grain
+      tags:
+        - acute_inpatient
+        - claims_preprocessing
+        - encounters
+      materialized: table
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: delivery_flag
+        description: 'Indicates whether the encounter involved a delivery (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: delivery_type
+        description: 'Type of delivery that occurred during the encounter, if applicable.'
+      - name: newborn_flag
+        description: 'Indicates whether the encounter was for a newborn (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: nicu_flag
+        description: 'Indicates whether the newborn was admitted to the Neonatal Intensive Care Unit (NICU) during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: emergency_department__encounter_grain
+    description: One row per emergency department encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: emergency_department__encounter_grain
+      tags:
+        - emergency_department
+        - claims_preprocessing
+        - encounters
+      materialized: table
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_psych__encounter_grain
+    description: "Encounters for inpatient psych. One row per encounter."
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_rehab__encounter_grain
+    description: "Encounters for inpatient rehab. One row per encounter."
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_long_term__encounter_grain
+    description: "Encounters for inpatient long term acute care. One row per encounter."
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_snf__encounter_grain
+    description: One row per skilled nursing facility encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: snf_part_b_flag
+        description: 'Indicates whether the skilled nursing facility service was covered under Medicare Part B (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_substance_use__encounter_grain
+    description: One row per inpatient substance use encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: inpatient_hospice__encounter_grain
+    description: One row per inpatient hospice encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix', None) != None -%}
+          {{ var('tuva_schema_prefix') }}_claims_preprocessing
+        {%- else -%}
+          claims_preprocessing
+        {%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ed_flag
+        description: 'Indicates whether the encounter involved an emergency department visit (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: 'The description for the DRG code used on the claim.'
+      - name: medical_surgical
+        description: 'A flag or code indicating if the service was medical or surgical.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/ms-drg
+      - name: admit_source_code
+        description: 'Indicates where the patient was before the healthcare encounter (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: 'Description of the admit_source_code for the encounter.'
+      - name: admit_type_code
+        description: 'Indicates the type of admission (inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: 'Description of the admit_type_code for the encounter.'
+      - name: discharge_disposition_code
+        description: 'Indicates the type of setting the patient was discharged to (institutional inpatient claims only).'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: 'Description of the discharge_disposition_code for the encounter.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: mortality_flag
+        description: 'A flag indicating if the patient died during the encounter.'
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: encounters__int_institutional_claim_lines
+    description: all institutional claim lines that belong to an encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: claim_id
+        description: 'Unique identifier for a claim. Each claim represents a distinct healthcare service or set of services provided to a patient.'
+      - name: claim_line_number
+        description: 'Indicates the line number for the particular line of the claim.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: priority_number
+        description: 'A number indicating the priority or sequence of the service or claim.'
+      - name: anchor_claim_id
+        description: 'Unique identifier for a claim. Each claim represents a distinct healthcare service or set of services provided to a patient.'
+
+  - name: encounters__combined_claim_line_crosswalk
+    description: |-
+      Claim lines assigned to a classified encounter algorithm. Contract-valid
+      undetermined claims remain outside this crosswalk and flow through
+      encounters__orphaned_claims instead, even if a broad same-day anchor
+      matcher produced a candidate assignment.
+
+      Primary key: claim_id, claim_line_number, data_source, encounter_type.
+      claim_id is only unique within a data_source, so consumers must include
+      data_source when joining this model back to claim-level tables.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: claim_id
+        description: 'Unique identifier for a claim. Each claim represents a distinct healthcare service or set of services provided to a patient.'
+      - name: claim_line_number
+        description: 'Indicates the line number for the particular line of the claim.'
+      - name: data_source
+        description: 'Indicates the name of the source dataset the claim line came from. Part of the claim-line key: claim_id is only unique within a data_source.'
+      - name: old_encounter_id
+        description: 'Identifier for the encounter within its own encounter type, before the encounter type is folded in to make it unique across types.'
+      - name: encounter_id
+        description: |-
+          Unique identifier for each encounter in the dataset. Derived by hashing
+          the encounter type together with the natural key of the encounter, so
+          the same encounter keeps the same id across runs, incremental loads and
+          partial runs, and ids stay comparable with tables built from an earlier
+          run.
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: priority_number
+        description: 'A number indicating the priority or sequence of the service or claim.'
+      - name: anchor_claim_id
+        description: 'Unique identifier for a claim. Each claim represents a distinct healthcare service or set of services provided to a patient.'
+      - name: claim_line_attribution_number
+        description: Rank of the candidate encounter for the claim line within claim_id,
+          claim_line_number, and data_source, ordered by priority_number and
+          anchor-claim preference. 1 identifies the attributed encounter.
+
+  - name: urgent_care__encounter_grain
+    description: one row per urgent care encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_psych__encounter_grain
+    description: one row per outpatient psych encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_rehab__encounter_grain
+    description: one row per outpatient rehab encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_hospital_or_clinic__encounter_grain
+    description: One row per outpatient hospital or clinic encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_surgery__encounter_grain
+    description: One row per outpatient surgery encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: asc__encounter_grain
+    description: one row per asc encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: hcpcs_code
+        description: CPT or HCPCS code for the procedure, service, or supply on the
+          claim line.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: length_of_stay
+        description: 'Length of the encounter calculated as encounter_end_date - encounter_start_date.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: dialysis__encounter_grain
+    description: one row per dialysis encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_hospice__encounter_grain
+    description: one row per outpatient hospice encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: home_health__encounter_grain
+    description: One row per home health encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_injections__encounter_grain
+    description: One row per outpatient injection encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: hcpcs_code
+        description: CPT or HCPCS code for the procedure, service, or supply on the
+          claim line.
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_substance_use__encounter_grain
+    description: One row per outpatient substance use encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_ptotst__encounter_grain
+    description: One row per outpatient PT, OT, or ST encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: outpatient_radiology__encounter_grain
+    description: one row per outpatient radiology encounter id summarizing encounter level metrics
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: observation_flag
+        description: 'Indicates whether the encounter was marked as an observation stay (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: hcpcs_code
+        description: CPT or HCPCS code for the procedure, service, or supply on the
+          claim line.
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: office_visit__encounter_grain
+    description: One row per office visit encounter, summarizing encounter-level metrics.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: hcpcs_code
+        description: CPT or HCPCS code for the procedure, service, or supply on the
+          claim line.
+      - name: ccs_category
+        description: Clinical Classifications Software category associated with the
+          service provided.
+      - name: ccs_category_description
+        description: Description of the Clinical Classifications Software category.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: billing_npi
+        description: NPI for the billing provider or organization responsible for
+          submitting the claim. This is generally header-level and should be
+          consistent across lines for the same claim_id.
+      - name: provider_name
+        description: Name of the billing provider, derived from Tuva provider terminology
+          when available.
+      - name: provider_specialty
+        description: Primary specialty description of the billing provider, derived from
+          Tuva provider terminology when available.
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: lab__encounter_grain
+    description: one row per lab encounter id summarizing encounter level metrics. labs will roll up to other encounters unless they appear on their own day with no other claims.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: place_of_service_code
+        description: Line-level code indicating where a professional service was
+          provided. Professional claim lines should generally have a
+          place_of_service_code; institutional claims should generally not.
+      - name: place_of_service_description
+        description: Description of place_of_service_code, derived from Tuva place of
+          service terminology.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: dme__encounter_grain
+    description: one row per dme encounter id summarizing encounter level metrics. dmes will roll up to other encounters unless they appear on their own day with no other claims.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: place_of_service_code
+        description: Line-level code indicating where a professional service was
+          provided. Professional claim lines should generally have a
+          place_of_service_code; institutional claims should generally not.
+      - name: place_of_service_description
+        description: Description of place_of_service_code, derived from Tuva place of
+          service terminology.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: ambulance__encounter_grain
+    description: one row per ambulance encounter id summarizing encounter level metrics. ambulances will roll up to other encounters unless they appear on their own day with no other claims.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: place_of_service_code
+        description: Line-level code indicating where a professional service was
+          provided. Professional claim lines should generally have a
+          place_of_service_code; institutional claims should generally not.
+      - name: place_of_service_description
+        description: Description of place_of_service_code, derived from Tuva place of
+          service terminology.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+  - name: orphaned_claim__encounter_grain
+    description: orphaned claims (usually professional claims) that don't roll up to an anchor event, get assigned their own encounter id for completeness.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: encounter_id
+        description: 'Unique identifier for each encounter in the dataset.'
+      - name: encounter_start_date
+        description: 'Date when the encounter started.'
+      - name: encounter_end_date
+        description: 'Date when the encounter ended.'
+      - name: patient_data_source_id
+        description: 'Identifier for the source system from which patient data originated.'
+      - name: encounter_type
+        description: 'Indicates the type of encounter e.g. acute inpatient, emergency department, etc.'
+      - name: encounter_group
+        description: 'Categorization of the encounter into groups based on predefined criteria.'
+      - name: admit_age
+        description: 'The age of the patient at the time of admission.'
+      - name: sex
+        description: 'The sex of the patient.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: 'The patient''s race.'
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: primary_diagnosis_code_type
+        description: 'The type of condition code reported in the source system e.g. ICD-10-CM.'
+      - name: primary_diagnosis_code
+        description: 'Primary diagnosis code for the encounter. If from claims the primary diagnosis code comes from the institutional claim.'
+      - name: primary_diagnosis_description
+        description: 'Description of the primary diagnosis code.'
+      - name: facility_npi
+        description: 'Facility NPI for the claim (the organizational NPI of the facility where services were performed).'
+      - name: lab_flag
+        description: 'Indicates whether lab services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: dme_flag
+        description: 'Indicates whether durable medical equipment (DME) was used during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: ambulance_flag
+        description: 'Indicates whether ambulance services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: pharmacy_flag
+        description: 'Indicates whether pharmacy services were utilized during the encounter (1 for yes, 0 for no).'
+        config:
+          meta:
+            data_type: integer
+      - name: place_of_service_code
+        description: Line-level code indicating where a professional service was
+          provided. Professional claim lines should generally have a
+          place_of_service_code; institutional claims should generally not.
+      - name: place_of_service_description
+        description: Description of place_of_service_code, derived from Tuva place of
+          service terminology.
+      - name: facility_name
+        description: 'Facility name.'
+      - name: facility_type
+        description: 'The type of facility e.g. acute care hospital.'
+      - name: total_paid_amount
+        description: 'The total amount paid for all services in the claim.'
+      - name: total_allowed_amount
+        description: 'The total amount allowed by the insurance company for all services in the claim.'
+      - name: total_charge_amount
+        description: 'The total amount charged for all services in the claim.'
+      - name: claim_count
+        description: 'The number of claims associated with the encounter or record.'
+      - name: inst_claim_count
+        description: 'Number of institutional claims generated from the encounter.'
+      - name: prof_claim_count
+        description: 'Number of professional claims generated from the encounter.'
+      - name: data_source
+        description: 'User-configured field that indicates the data source.'
+      - name: tuva_last_run
+        description: 'Timestamp when this dbt run started. Defaults to `run_started_at` in UTC and can be overridden with the `tuva_last_run` variable.'
+
+
+
+
+## Intermediate
+## acute inpatient
+  - name: acute_inpatient__generate_encounter_id
+    description: generate encounter id and stitch inpatient psych claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: acute_inpatient__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: acute_inpatient__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+## ed
+  - name: emergency_department__generate_encounter_id
+    description: generate encounter id and stitch inpatient psych claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: emergency_department__generate_encounter_id_pre_sort
+    description: generate encounter id and stitch inpatient psych claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: emergency_department__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: emergency_department__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+
+  - name: inpatient_psych__generate_encounter_id
+    description: generate encounter id and stitch inpatient psych claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_psych__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_psych__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+
+##inpatient rehab
+  - name: inpatient_rehab__generate_encounter_id
+    description: generate encounter id and stitch inpatient rehab claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_rehab__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_rehab__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+##inpatient long term actue care
+  - name: inpatient_long_term__generate_encounter_id
+    description: generate encounter id and stitch inpatient ltac claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_long_term__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_long_term__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+
+
+##inpatient snf
+  - name: inpatient_snf__generate_encounter_id
+    description: generate encounter id and stitch inpatient snf claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_snf__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_snf__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+##inpatient substance use
+  - name: inpatient_substance_use__generate_encounter_id
+    description: generate encounter id and stitch inpatient substance_use claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_substance_use__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_substance_use__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+##inpatient hospice
+  - name: inpatient_hospice__generate_encounter_id
+    description: generate encounter id and stitch inpatient hospice claims together
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_hospice__start_end_dates
+    description: calculate start and end date of encounter
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: inpatient_hospice__prof_claims
+    description: match corresponding prof claims to institutional claims
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+
+
+##office visits
+  - name: office_visits__int_office_visits_injections
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_ptotst
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_radiology
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_surgery
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_em
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_telehealth
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_detail_values
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_encounter_ranking
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_claim_line
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: office_visits__int_office_visits_union
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: urgent_care__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - urgent_care
+
+  - name: urgent_care__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - urgent_care
+
+  - name: urgent_care__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: outpatient_psych__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_psych
+
+  - name: outpatient_psych__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_psych
+
+  - name: outpatient_psych__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_psych
+
+  - name: outpatient_rehab__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_rehab
+
+  - name: outpatient_rehab__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_rehab
+
+  - name: outpatient_rehab__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_rehab
+
+  - name: outpatient_hospital_or_clinic__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospital_or_clinic
+
+  - name: outpatient_hospital_or_clinic__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospital_or_clinic
+
+  - name: outpatient_hospital_or_clinic__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospital_or_clinic
+
+
+  - name: asc__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - asc
+
+  - name: asc__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - asc
+
+  - name: asc__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - asc
+
+  - name: asc__start_end_dates
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - asc
+
+  - name: dialysis__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dialysis
+
+  - name: dialysis__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dialysis
+
+  - name: dialysis__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dialysis
+
+  - name: outpatient_hospice__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospice
+
+  - name: outpatient_hospice__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospice
+
+  - name: outpatient_hospice__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_hospice
+
+  - name: home_health__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - home_health
+
+  - name: home_health__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - home_health
+
+  - name: home_health__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - home_health
+
+  - name: outpatient_injections__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_injections
+
+  - name: outpatient_injections__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_injections
+
+  - name: outpatient_injections__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_injections
+
+##
+  - name: outpatient_ptotst__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_ptotst
+
+  - name: outpatient_ptotst__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_ptotst
+
+  - name: outpatient_ptotst__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_ptotst
+
+##
+  - name: outpatient_substance_use__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_substance_use
+
+  - name: outpatient_substance_use__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_substance_use
+
+  - name: outpatient_substance_use__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_substance_use
+##
+  - name: outpatient_radiology__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_radiology
+
+  - name: outpatient_radiology__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_radiology
+
+  - name: outpatient_radiology__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_radiology
+##
+  - name: lab__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - lab
+
+  - name: lab__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - lab
+
+  - name: lab__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - lab
+##
+  - name: dme__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dme
+
+  - name: dme__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dme
+
+  - name: dme__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - dme
+
+##
+  - name: ambulance__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - ambulance
+
+  - name: ambulance__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - ambulance
+
+  - name: ambulance__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - ambulance
+
+  - name: encounters__orphaned_claims
+    description: |-
+      Assigns a source-scoped orphaned claim encounter to each medical claim
+      line that was not mapped by an encounter algorithm. This includes
+      contract-valid undetermined claims, whose billing form cannot be routed
+      through the professional or institutional algorithms.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+
+##
+  - name: outpatient_surgery__anchor_events
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_surgery
+
+  - name: outpatient_surgery__generate_encounter_id
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_surgery
+
+  - name: outpatient_surgery__match_claims_to_anchor
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: view
+      tags:
+        - claims_preprocessing
+        - encounters
+        - outpatient_surgery
+
+## Staging
+  - name: encounters__stg_medical_claim
+    description: Staging med claims for encounter grouper
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: encounters__prof_and_lower_priority
+    description: adding in lower priority institutional claims in one location with professional for grouping to higher level encounters
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: encounters__stg_outpatient_institutional
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: encounters__stg_professional
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: encounters__stg_eligibility
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+
+  - name: encounters__patient_data_source_id
+    description: |-
+      One row per person per data source. patient_data_source_id is a
+      deterministic 32-character lowercase hash of an unambiguous encoding of
+      the patient-data-source domain marker, person_id, and data_source. It
+      distinguishes null, empty strings, literal sentinel values, escaped
+      characters, and component boundaries and does not change when unrelated
+      people are added to the data.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      materialized: table
+      tags:
+        - claims_preprocessing
+        - encounters
+    columns:
+      - name: patient_data_source_id
+        description: >-
+          Deterministic patient-and-source identifier created with Tuva's
+          collision-safe stable-ID encoding.
+        tests:
+          - not_null
+          - unique
+        config:
+          meta:
+            data_type: varchar
+            is_primary_key: true
+      - name: person_id
+        description: Person identifier from the normalized claims inputs.
+        config:
+          meta:
+            data_type: varchar
+      - name: data_source
+        description: Source system in which the person record appears.
+        config:
+          meta:
+            data_type: varchar

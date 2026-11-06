@@ -1,0 +1,1907 @@
+version: 2
+
+models:
+  - name: normalized__appointment
+    description: Casts clinical appointment records from input_layer__appointment before core.appointment consumes them. Source-EHR appointment type, status, reason, and cancellation reason descriptions are preserved without terminology normalization.
+    config: &normalized_output_config
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_normalized_layer
+        {% else %}normalized_layer{%- endif -%}
+      alias: normalized__appointment
+      meta:
+        dag:
+          node_type: output
+      tags:
+        - normalized_layer
+      materialized: table
+  - name: normalized__condition
+    description: >-
+      Casts clinical condition records from input_layer__condition, preserves
+      source_condition_id, creates the collision-safe deterministic
+      condition_id, and applies clinical condition terminology enrichment
+      before core.condition consumes the rows. ICD-10-CM and ICD-9-CM matches
+      use the terminology long description for normalized_description.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__condition
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - condition_id
+    columns:
+      - name: condition_id
+        description: >-
+          Deterministic Tuva identifier created by hashing an unambiguous
+          encoding of the clinical-condition domain marker, data_source, and
+          source_condition_id.
+        tests:
+          - not_null
+        config:
+          meta:
+            data_type: varchar
+            is_primary_key: true
+      - name: source_condition_id
+        description: >-
+          Condition-record identifier from the source clinical system,
+          preserved without transformation from input_layer__condition.
+        tests:
+          - not_null
+        config:
+          meta:
+            data_type: varchar
+      - name: normalized_description
+        description: >-
+          Terminology description for normalized_code. ICD-10-CM and ICD-9-CM
+          matches use the terminology long description; SNOMED-CT matches use
+          the terminology description.
+        config:
+          meta:
+            data_type: varchar
+      - name: condition_rank
+        description: >-
+          Integer diagnosis order from input_layer__condition. A value of 1
+          generally represents the primary diagnosis and values greater than 1
+          represent secondary diagnoses; null means the source did not rank the
+          condition.
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: Source system that supplied the clinical condition.
+        tests:
+          - not_null
+        config:
+          meta:
+            data_type: varchar
+  - name: normalized__encounter
+    description: >-
+      Casts clinical encounter records from input_layer__encounter, derives
+      encounter_group from the canonical encounter_type terminology, and
+      applies clinical encounter terminology enrichment before core.encounter
+      consumes them. Clinical encounter groups use the same inpatient,
+      outpatient, office based, and other contract as claims-derived
+      encounters.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__encounter
+    columns:
+      - name: observation_flag
+        description: Nullable integer indicator; 1 means the encounter was an observation stay, 0 means it was not, and null means unknown or not applicable.
+        config: &normalized_integer_flag_config
+          meta:
+            data_type: integer
+      - name: lab_flag
+        description: Nullable integer indicator; 1 means lab services were used, 0 means they were not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: dme_flag
+        description: Nullable integer indicator; 1 means durable medical equipment was used, 0 means it was not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: ambulance_flag
+        description: Nullable integer indicator; 1 means ambulance services were used, 0 means they were not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: pharmacy_flag
+        description: Nullable integer indicator; 1 means pharmacy services were used, 0 means they were not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: ed_flag
+        description: Nullable integer indicator; 1 means the encounter involved an emergency department visit, 0 means it did not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: delivery_flag
+        description: Nullable integer indicator; 1 means the encounter involved a delivery, 0 means it did not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: newborn_flag
+        description: Nullable integer indicator; 1 means the encounter involved a newborn, 0 means it did not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: nicu_flag
+        description: Nullable integer indicator; 1 means the newborn was admitted to a neonatal intensive care unit, 0 means they were not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+      - name: snf_part_b_flag
+        description: Nullable integer indicator; 1 means the skilled nursing facility service was covered under Medicare Part B, 0 means it was not, and null means unknown or not applicable.
+        config: *normalized_integer_flag_config
+  - name: normalized__immunization
+    description: Casts clinical immunization records from input_layer__immunization and applies CVX, immunization status, immunization status reason, ACT site, and immunization route terminology enrichment before core.immunization consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__immunization
+  - name: normalized__lab_result
+    description: Casts clinical lab result records from input_layer__lab_result and applies LOINC and SNOMED-CT terminology enrichment before core.lab_result consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__lab_result
+    columns:
+      - name: source_abnormal_code
+        description: Abnormal or interpretation code from the source system.
+        config:
+          meta:
+            data_type: varchar
+      - name: normalized_abnormal_code
+        description: Standardized abnormal or interpretation code, when available.
+        config:
+          meta:
+            data_type: varchar
+  - name: normalized__location
+    description: Casts clinical location records from input_layer__location before core.location consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__location
+  - name: normalized__medical_claim_diagnoses
+    description: |
+      Creates line-level normalized diagnosis rows from normalized medical claim diagnosis fields. The model unpivots every populated diagnosis_code_1 through diagnosis_code_25 value regardless of claim_type, preserves the source claim line and diagnosis rank, and joins diagnosis and present-on-admission terminology. Claim classification findings remain visible through Logical Data Quality without deleting otherwise usable diagnosis facts. This model does not attach encounter_id or create the core condition_id; those core-specific steps happen in int_condition_from_claims.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__medical_claim_diagnoses
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - medical_claim_id
+              - condition_rank
+    columns:
+      - name: medical_claim_id
+        description: Synthetic identifier for the normalized medical claim line.
+        tests:
+          - not_null
+      - name: claim_id
+        description: Source claim identifier from normalized__medical_claim.
+        tests:
+          - not_null
+      - name: claim_line_number
+        description: Claim line number from normalized__medical_claim.
+      - name: condition_rank
+        description: Diagnosis position from the source medical claim diagnosis fields.
+        tests:
+          - not_null
+      - name: code_system
+        description: Diagnosis code system for source_code and normalized_code.
+      - name: source_code
+        description: Diagnosis code from the source claim after removing decimal
+          points and surrounding whitespace and converting to upper case.
+      - name: normalized_code
+        description: Diagnosis code after matching to Tuva terminology.
+      - name: data_source
+        description: Data source associated with the claim line.
+        tests:
+          - not_null
+  - name: normalized__medical_claim_procedures
+    description: |-
+      Creates normalized claims-derived procedure rows from normalized medical claim procedure fields. The model emits one row for each non-null HCPCS claim-line procedure and each populated claim-header procedure code, preserves the source claim line and procedure sequence, and joins procedure terminology.
+
+      This model does not attach encounter_id or create the core procedure_id. Those core-specific steps happen in int_procedure_from_claims.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__medical_claim_procedures
+    columns:
+      - name: person_id
+        description: Globally unique person identifier from normalized__medical_claim.
+        tests:
+          - not_null
+      - name: member_id
+        description: Member identifier from normalized__medical_claim.
+      - name: claim_id
+        description: Source claim identifier from normalized__medical_claim.
+        tests:
+          - not_null
+      - name: claim_line_number
+        description: Claim line number from normalized__medical_claim. This is populated for HCPCS claim-line procedures and null for claim-header procedure_code_1 through procedure_code_25 rows.
+      - name: procedure_sequence_id
+        description: Procedure sequence from the source medical claim fields. HCPCS rows use claim_line_number; claim-header procedure rows use the populated procedure_code position.
+        tests:
+          - not_null
+      - name: procedure_date
+        description: Procedure date derived from the source claim line or corresponding claim-header procedure date field.
+      - name: practitioner_id
+        description: Rendering NPI from normalized__medical_claim.
+      - name: code_system
+        description: Procedure code system for source_code and normalized_code.
+      - name: source_code
+        description: Procedure code from the source claim. Header ICD procedure codes
+          have decimal points and surrounding whitespace removed and are converted
+          to upper case; HCPCS codes are passed through as supplied.
+      - name: normalized_code
+        description: Procedure code after matching to Tuva terminology.
+      - name: ingest_datetime
+        description: Date and time the originating medical claim line was loaded into the data warehouse for line-level HCPCS rows. This is null for claim-header procedures that cannot be tied reliably to one source claim line.
+      - name: data_source
+        description: Data source associated with the claim.
+        tests:
+          - not_null
+  - name: normalized__medication
+    description: Casts clinical medication records from input_layer__medication before core.medication consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__medication
+  - name: normalized__observation
+    description: Casts clinical observation records from input_layer__observation and applies observation type, ICD, HCPCS, SNOMED-CT, and LOINC terminology enrichment before core.observation consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__observation
+  - name: normalized__patient
+    description: Casts clinical patient records from input_layer__patient, preserves extension columns, and adds Tuva run metadata before downstream patient models consume them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__patient
+    columns:
+      - name: death_flag
+        description: Nullable integer indicator; 1 means deceased, 0 means not known deceased, and null means unknown.
+        config: *normalized_integer_flag_config
+  - name: normalized__practitioner
+    description: Casts clinical practitioner records from input_layer__practitioner before core.practitioner consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__practitioner
+  - name: normalized__procedure
+    description: >-
+      Casts clinical procedure records from input_layer__procedure and creates
+      the collision-safe, domain-separated 32-character procedure_id before
+      core.procedure consumes them.
+    config:
+      <<: *normalized_output_config
+      alias: normalized__procedure
+    columns:
+      - name: procedure_id
+        description: >-
+          Deterministic Tuva identifier created by hashing an unambiguous
+          encoding of the clinical-procedure domain marker, data_source, and
+          source_procedure_id.
+        tests:
+          - not_null
+          - unique
+        config:
+          meta:
+            data_type: varchar
+            is_primary_key: true
+      - name: data_source
+        description: Source system that supplied the clinical procedure.
+        tests:
+          - not_null
+        config:
+          meta:
+            data_type: varchar
+
+### Normalized Claim Input Layer
+##    Final
+  - name: normalized__eligibility
+    description: |-
+      This model assembles normalized eligibility records from the eligibility preprocessing models. It starts from int_eligibility_casting, selects the eligibility, demographic, source, metadata, and extension columns needed downstream, and left joins to int_eligibility_dates_normalized on person_id_key. Already-typed birth, death, and enrollment dates are preserved without a terminology-calendar membership join; Logical Data Quality reports dates outside Tuva's supported range instead of normalization erasing them. It also left joins to int_eligibility_state_normalized on person_id_key to add normalized_state_name, fips_state_code, and fips_state_abbreviation.
+
+      This model creates eligibility_id as a stable synthetic eligibility-span key by concatenating person_id, member_id, enrollment_start_date, payer, plan, and data_source with hyphen delimiters. enrollment_end_date is intentionally excluded because an open span can later receive a closing date without becoming a different span. The model does not deduplicate eligibility records.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_normalized_layer
+        {%- else -%}normalized_layer{%- endif -%}
+      alias: normalized__eligibility
+      meta:
+        dag:
+          node_type: intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: eligibility_id
+        description: Stable synthetic eligibility-span key created by concatenating person_id, member_id, enrollment_start_date, payer, plan, and data_source with hyphen delimiters. enrollment_end_date is excluded so the key does not change when an open span closes.
+        config:
+          meta:
+            is_primary_key: true
+      - name: person_id
+        description: Unique identifier for each person in the dataset.
+      - name: member_id
+        description: Identifier assigned by the payer or health plan for the covered member.
+      - name: subscriber_id
+        description: Identifier assigned by the payer or health plan for the subscriber or policyholder.
+      - name: subscriber_relation
+        description: Member relationship to the subscriber or policyholder.
+      - name: enrollment_start_date
+        description: First date of the enrollment span, preserved as a native DATE from int_eligibility_dates_normalized.
+      - name: enrollment_end_date
+        description: Last date of the enrollment span, preserved as a native DATE from int_eligibility_dates_normalized. Null means the span is still open; the legacy input alias 9999-12-31 is normalized to null upstream.
+      - name: payer
+        description: Name of the payer or health insurer providing coverage during the enrollment span.
+      - name: payer_type
+        description: Type of payer providing coverage during the enrollment span.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/payer-type
+      - name: plan
+        description: Name of the health plan providing coverage during the enrollment span.
+      - name: first_name
+        description: Member first name from the eligibility input record.
+      - name: middle_name
+        description: Member middle name from the eligibility input record.
+      - name: last_name
+        description: Member last name from the eligibility input record.
+      - name: name_suffix
+        description: Member name suffix from the eligibility input record.
+      - name: social_security_number
+        description: Member Social Security number from the eligibility input record.
+      - name: address
+        description: Member street address from the eligibility input record.
+      - name: city
+        description: Member city from the eligibility input record.
+      - name: state
+        description: Source state value from the eligibility input record. This value is used by int_eligibility_state_normalized to derive ANSI/FIPS state fields.
+      - name: zip_code
+        description: Member ZIP code from the eligibility input record.
+      - name: phone
+        description: Member phone number from the eligibility input record.
+      - name: email
+        description: Member email address from the eligibility input record.
+      - name: ethnicity
+        description: Member ethnicity from the eligibility input record.
+      - name: sex
+        description: Biological sex of the member from the eligibility input record.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: Race of the member from the eligibility input record.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: birth_date
+        description: Native birth date preserved from int_eligibility_dates_normalized without a terminology-calendar membership requirement.
+      - name: death_date
+        description: Native death date preserved from int_eligibility_dates_normalized without a terminology-calendar membership requirement.
+      - name: death_flag
+        description: Integer flag from the eligibility input record indicating whether the member is deceased.
+        config:
+          meta:
+            data_type: integer
+      - name: original_reason_entitlement_code
+        description: Original reason for Medicare entitlement code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/medicare-orec
+      - name: dual_status_code
+        description: >
+          Indicates whether the patient is dually eligible for Medicare and  Medicaid.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/medicare-dual-eligibility
+      - name: medicare_status_code
+        description: Indicates how the patient became eligible for Medicare.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/medicare-status
+      - name: enrollment_status
+        description: Enrollment status value from the eligibility input record.
+      - name: hospice_flag
+        description: Integer flag indicating whether the member is in hospice during the enrollment span.
+        config:
+          meta:
+            data_type: integer
+      - name: institutional_snp_flag
+        description: Integer flag indicating whether the enrollment span is associated with an institutional special needs plan.
+        config:
+          meta:
+            data_type: integer
+      - name: medicaid_indicator
+        description: Integer indicator for Medicaid coverage during the enrollment span. Generally 1 means yes and 0 means no.
+        config:
+          meta:
+            data_type: integer
+      - name: long_term_institutional_flag
+        description: Integer flag indicating whether the member is in a long-term institutional setting during the enrollment span.
+        config:
+          meta:
+            data_type: integer
+      - name: part_d_raf_type
+        description: Part D risk adjustment factor type for the enrollment span. Null when the record is not related to Part D coverage.
+        config:
+          meta:
+            data_type: varchar
+      - name: low_income_subsidy_indicator
+        description: Integer indicator for Low Income Subsidy, also known as Extra Help, during the enrollment span. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: metal_level
+        description: ACA exchange metal tier for the health plan. Null when the record is not related to ACA exchange coverage.
+        config:
+          meta:
+            data_type: varchar
+      - name: csr_indicator
+        description: Integer cost sharing reduction variant indicator for ACA exchange coverage. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: enrollment_duration_months
+        description: Number of months covered during the benefit year for ACA exchange enrollment. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: esrd_status
+        description: Integer indicator for end-stage renal disease status from the eligibility input record. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: transplant_duration_months
+        description: Number of months since kidney transplant from the eligibility input record. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: group_id
+        description: Identifier for the employer, purchasing group, or other group under which the member is enrolled.
+      - name: group_name
+        description: Name of the employer, purchasing group, or other group under which the member is enrolled.
+      - name: fips_state_code
+        description: ANSI/FIPS state code matched from the source state value in int_eligibility_state_normalized.
+      - name: normalized_state_name
+        description: ANSI/FIPS state name matched from the source state value in int_eligibility_state_normalized.
+      - name: fips_state_abbreviation
+        description: ANSI/FIPS state abbreviation matched from the source state value in int_eligibility_state_normalized.
+      - name: file_date
+        description: Date associated with the source eligibility file, typically reflecting the reporting period for the file.
+      - name: file_name
+        description: Name of the source file from which the eligibility record was loaded.
+      - name: ingest_datetime
+        description: Timestamp when the source eligibility file was ingested into the data warehouse or landed in cloud storage.
+      - name: tuva_last_run
+        description: Timestamp value from the tuva_last_run dbt variable for the current dbt invocation.
+
+      - name: data_source
+        description: User-configured field that identifies the source system, payer feed, or other origin of the eligibility record.
+  - name: normalized__eligibility_remove_duplicates
+    description: |-
+      This model creates eligibility-derived patient records and removes duplicate records for each person_id and data_source. When multiple eligibility records exist, it prioritizes an open span, then the latest enrollment_end_date, enrollment_start_date, and eligibility_id for deterministic selection.
+
+      Primary key: person_id, data_source.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: normalized__eligibility_remove_duplicates
+      meta:
+        dag:
+          node_type: intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: person_id
+        description: Unique identifier for each person in the dataset.
+        config:
+          meta:
+            is_primary_key: true
+      - name: name_suffix
+        description: Patient's name suffix (e.g. Jr., Sr., III, etc).
+      - name: first_name
+        description: Patient's first name.
+      - name: middle_name
+        description: Patient's middle name.
+      - name: last_name
+        description: Patient's last name.
+      - name: sex
+        description: Biological sex of the patient.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/sex
+      - name: race
+        description: Race of the patient.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/race
+      - name: birth_date
+        description: Date the patient was born.
+      - name: death_date
+        description: Date the patient died.
+      - name: death_flag
+        description: Flag indicating if the patient is deceased
+      - name: social_security_number
+        description: Patient's social security number.
+      - name: address
+        description: Patient's street address.
+      - name: city
+        description: Patient's city of address.
+      - name: state
+        description: State the patient lives in (most recent known address).
+      - name: zip_code
+        description: Zip code the patient lives in (most recent known address).
+      - name: county
+        description: County where the patient lives.
+      - name: latitude
+        description: Latitude of the patient's address.
+      - name: longitude
+        description: Longitude of the patient's address.
+      - name: phone
+        description: Patient's phone number.
+      - name: email
+        description: Patient's email address.
+      - name: ethnicity
+        description: Patient's ethnicity
+      - name: data_source
+        description: >
+          User-configured field that indicates the data source (e.g. typically  named after the payer and state "BCBS Tennessee").
+        config:
+          meta:
+            is_primary_key: true
+      - name: file_name
+        description: 'The file name of the source file.'
+      - name: ingest_datetime
+        description: 'The date and time the source file was ingested into the data warehouse or landed in cloud storage.'
+      - name: tuva_last_run
+        description: Timestamp when this dbt run started. Defaults to `run_started_at`
+          in UTC and can be overridden with the `tuva_last_run` variable.
+
+  - name: normalized__medical_claim
+    description: |
+      The normalized medical claim table casts and normalizes input layer medical claim lines. It preserves one row per input claim line and keeps diagnosis code fields at the claim-line grain; downstream algorithms that require one diagnosis array per claim use int_claim_level_diagnosis.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: normalized__medical_claim
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - claim_id
+              - claim_line_number
+              - data_source
+    columns:
+      - name: medical_claim_id
+        description: Synthetic identifier for each medical claim line, created from claim_id, claim_line_number, and data_source.
+      - name: claim_id
+        description: Unique identifier for each claim.
+      - name: claim_line_number
+        description: >
+          Indicates the line number for the particular line of the claim.
+        data_type: integer
+      - name: claim_type
+        description: >
+          Indicates whether the claim is professional (CMS-1500), institutional  (UB-04), dental, or vision.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/claim-type
+      - name: person_id
+        description: Unique identifier for each patient in the dataset.
+      - name: member_id
+        description: >
+          Identifier that links a patient to a particular insurance product or  health plan. A patient can have more than one member_id because they  can have more than one insurance product/plan.
+      - name: payer
+        description: Name of the payer
+      - name: plan
+        description: Name of the plan
+      - name: claim_start_date
+        description: Start date for the claim.
+      - name: claim_end_date
+        description: End date for the claim.
+      - name: claim_line_start_date
+        description: Start date for the claim line.
+      - name: claim_line_end_date
+        description: End date for the claim line.
+      - name: admission_date
+        description: Admission date for the claim (inpatient claims only).
+      - name: discharge_date
+        description: Discharge date for the claim (inpatient claims only).
+      - name: admit_source_code
+        description: >
+          Indicates where the patient was before the healthcare encounter  (inpatient claims only).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-source
+      - name: admit_source_description
+        description: Description of admit_source_code, derived from Tuva admit source
+          terminology.
+      - name: admit_type_code
+        description: Indicates the type of admission (inpatient claims only).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/admit-type
+      - name: admit_type_description
+        description: Description of admit_type_code, derived from Tuva admit type
+          terminology.
+      - name: discharge_disposition_code
+        description: >
+          Indicates the type of setting the patient was discharged to  (institutional inpatient claims only).
+          Returned as the two-digit Tuva terminology code; codes sent without a
+          leading zero are zero-padded before matching.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/discharge-disposition
+      - name: discharge_disposition_description
+        description: Description of discharge_disposition_code, derived from Tuva
+          discharge disposition terminology.
+      - name: place_of_service_code
+        description: Place of service for the claim (professional claims only).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/place-of-service
+      - name: place_of_service_description
+        description: Description of place_of_service_code, derived from Tuva place of
+          service terminology.
+      - name: bill_type_code
+        description: Bill type code for the claim (institutional claims only).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/bill-type
+      - name: bill_type_description
+        description: Description of bill_type_code, derived from Tuva bill type terminology.
+      - name: drg_code_type
+        description: 'The DRG system used for the claim.'
+      - name: drg_code
+        description: 'The DRG code on the claim.'
+      - name: drg_description
+        description: Description of the DRG code, derived from Tuva MS-DRG or APR-DRG
+          terminology.
+        description: >
+          The DRG code on the claim, as the three-digit Tuva terminology code. Codes
+          sent without leading zeros are zero-padded before matching.
+      - name: revenue_center_code
+        description: >
+          Revenue center code for the claim line (institutional only and  typically multiple codes per claim).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/revenue-center
+      - name: revenue_center_description
+        description: Description of revenue_center_code, derived from Tuva revenue
+          center terminology.
+      - name: service_unit_quantity
+        description: The number of units for the particular revenue center code.
+        data_type: float
+      - name: hcpcs_code
+        description: HCPCS level 1 or level 2 code for the claim line.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: hcpcs_modifier_1
+        description: 1st modifier for HCPCS code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: hcpcs_modifier_2
+        description: 2nd modifier for HCPCS code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: hcpcs_modifier_3
+        description: 3rd modifier for HCPCS code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: hcpcs_modifier_4
+        description: 4th modifier for HCPCS code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: hcpcs_modifier_5
+        description: 5th modifier for HCPCS code.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/hcpcs-level-2
+      - name: rendering_npi
+        description: >
+          Rendering NPI for the claim (typically represents the physician or  entity providing services).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/provider
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: rendering_tin
+        description: Rendering provider tax identification number (TIN).
+      - name: rendering_name
+        description: Rendering provider name.
+      - name: billing_npi
+        description: >
+          Billing NPI for the claim (typically represents organization billing  the claim).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/provider
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: billing_tin
+        description: Billing provider tax identification number (TIN).
+      - name: billing_name
+        description: Billing provider name.
+      - name: facility_npi
+        description: >
+          Facility NPI for the claim (typically represents the facility where  services were performed).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/provider
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: facility_name
+        description: Name of the facility where services were delivered, when available.
+      - name: paid_date
+        description: The date the claim was paid.
+      - name: paid_amount
+        description: The total amount paid on the claim by the insurer.
+      - name: allowed_amount
+        description: >
+          The total amount allowed (includes amount paid by the insurer and  patient) on the claim.
+      - name: charge_amount
+        description: The total amount charged on the claim by the provider.
+      - name: coinsurance_amount
+        description: The total coinsurance charged on the claim by the provider.
+      - name: copayment_amount
+        description: The total copayment charged on the claim by the provider.
+      - name: deductible_amount
+        description: The total amount charged on the claim by the provider.
+      - name: total_cost_amount
+        description: The total amount paid on the claim by different parties.
+      - name: diagnosis_code_type
+        description: Indicates the type of diagnosis code (e.g. ICD-10-CM).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/code-type
+      - name: diagnosis_code_1
+        description: 1st ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_2
+        description: 2nd ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_3
+        description: 3rd ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_4
+        description: 4th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_5
+        description: 5th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_6
+        description: 6th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_7
+        description: 7th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_8
+        description: 8th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_9
+        description: 9th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_10
+        description: 10th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_11
+        description: 11th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_12
+        description: 12th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_13
+        description: 13th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_14
+        description: 14th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_15
+        description: 15th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_16
+        description: 16th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_17
+        description: 17th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_18
+        description: 18th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_19
+        description: 19th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_20
+        description: 20th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_21
+        description: 21st ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_22
+        description: 22nd ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_23
+        description: 23rd ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_24
+        description: 24th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_code_25
+        description: 25th ICD (9 or 10) CM diagnosis code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-cm
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: diagnosis_poa_1
+        description: >
+          Present on admission code for the 1st diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_2
+        description: >
+          Present on admission code for the 2nd diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_3
+        description: >
+          Present on admission code for the 3rd diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_4
+        description: >
+          Present on admission code for the 4th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_5
+        description: >
+          Present on admission code for the 5th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_6
+        description: >
+          Present on admission code for the 6th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_7
+        description: >
+          Present on admission code for the 7th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_8
+        description: >
+          Present on admission code for the 8th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_9
+        description: >
+          Present on admission code for the 9th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_10
+        description: >
+          Present on admission code for the 10th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_11
+        description: >
+          Present on admission code for the 11th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_12
+        description: >
+          Present on admission code for the 12th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_13
+        description: >
+          Present on admission code for the 13th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_14
+        description: >
+          Present on admission code for the 14th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_15
+        description: >
+          Present on admission code for the 15th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_16
+        description: >
+          Present on admission code for the 16th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_17
+        description: >
+          Present on admission code for the 17th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_18
+        description: >
+          Present on admission code for the 18th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_19
+        description: >
+          Present on admission code for the 19th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_20
+        description: >
+          Present on admission code for the 20th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_21
+        description: >
+          Present on admission code for the 21st diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_22
+        description: >
+          Present on admission code for the 22nd diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_23
+        description: >
+          Present on admission code for the 23rd diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_24
+        description: >
+          Present on admission code for the 24th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: diagnosis_poa_25
+        description: >
+          Present on admission code for the 25th diagnosis on the claim.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/present-on-admission
+      - name: procedure_code_type
+        description: Indicates the type of procedure code (e.g. ICD-10-PCS).
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/code-type
+      - name: procedure_code_1
+        description: 1st ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_2
+        description: 2nd ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_3
+        description: 3rd ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_4
+        description: 4th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_5
+        description: 5th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_6
+        description: 6th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_7
+        description: 7th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_8
+        description: 8th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_9
+        description: 9th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_10
+        description: 10th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_11
+        description: 11th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_12
+        description: 12th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_13
+        description: 13th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_14
+        description: 14th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_15
+        description: 15th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_16
+        description: 16th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_17
+        description: 17th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_18
+        description: 18th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_19
+        description: 19th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_20
+        description: 20th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_21
+        description: 21st ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_22
+        description: 22nd ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_23
+        description: 23rd ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_24
+        description: 24th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_code_25
+        description: 25th ICD (9 or 10) procedure code on the claim, with decimal points and surrounding whitespace removed and converted to upper case.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/icd-10-pcs
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: procedure_date_1
+        description: Date of the 1st procedure on the claim.
+      - name: procedure_date_2
+        description: Date of the 2nd procedure on the claim.
+      - name: procedure_date_3
+        description: Date of the 3rd procedure on the claim.
+      - name: procedure_date_4
+        description: Date of the 4th procedure on the claim.
+      - name: procedure_date_5
+        description: Date of the 5th procedure on the claim.
+      - name: procedure_date_6
+        description: Date of the 6th procedure on the claim.
+      - name: procedure_date_7
+        description: Date of the 7th procedure on the claim.
+      - name: procedure_date_8
+        description: Date of the 8th procedure on the claim.
+      - name: procedure_date_9
+        description: Date of the 9th procedure on the claim.
+      - name: procedure_date_10
+        description: Date of the 10th procedure on the claim.
+      - name: procedure_date_11
+        description: Date of the 11th procedure on the claim.
+      - name: procedure_date_12
+        description: Date of the 12th procedure on the claim.
+      - name: procedure_date_13
+        description: Date of the 13th procedure on the claim.
+      - name: procedure_date_14
+        description: Date of the 14th procedure on the claim.
+      - name: procedure_date_15
+        description: Date of the 15th procedure on the claim.
+      - name: procedure_date_16
+        description: Date of the 16th procedure on the claim.
+      - name: procedure_date_17
+        description: Date of the 17th procedure on the claim.
+      - name: procedure_date_18
+        description: Date of the 18th procedure on the claim.
+      - name: procedure_date_19
+        description: Date of the 19th procedure on the claim.
+      - name: procedure_date_20
+        description: Date of the 20th procedure on the claim.
+      - name: procedure_date_21
+        description: Date of the 21st procedure on the claim.
+      - name: procedure_date_22
+        description: Date of the 22nd procedure on the claim.
+      - name: procedure_date_23
+        description: Date of the 23rd procedure on the claim.
+      - name: procedure_date_24
+        description: Date of the 24th procedure on the claim.
+      - name: procedure_date_25
+        description: Date of the 25th procedure on the claim.
+#      - name: encounter_type
+#        description: The type of encounter this claim belongs to.
+#      - name: encounter_id
+#        description: >
+#          The encounter_id for the encounter that this claims belongs to.
+#      - name: service_category_1
+#        description: The broader service category this claim belongs to.
+#        meta:
+#          terminology: https://thetuvaproject.com/value-sets/service-categories
+#      - name: service_category_2
+#        meta:
+#          terminology: https://thetuvaproject.com/value-sets/service-categories
+#        description: The more specific service category this claim belongs to.
+      - name: in_network_flag
+        description: Nullable integer indicator; 1 means the claim was in network, 0 means it was out of network, and null means unknown.
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: >
+          User-configured field that indicates the data source (e.g. typically  named after the payer and state "BCBS Tennessee")
+      - name: tuva_last_run
+        description: Timestamp when this dbt run started. Defaults to `run_started_at`
+          in UTC and can be overridden with the `tuva_last_run` variable.
+      - name: file_name
+        description: 'The file name of the source file.'
+      - name: file_date
+        description: 'The date associated with the claims file, typically reflecting the reporting period of the claims data.'
+      - name: ingest_datetime
+        description: 'The date and time the source file was ingested into the data warehouse or landed in cloud storage.'
+
+
+  - name: normalized__pharmacy_claim
+    description: |
+      The pharmacy claim table contains information on prescription drugs that
+      were filled and billed to the insurer.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: normalized__pharmacy_claim
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: claim_id
+        description: Unique identifier for each claim.
+      - name: claim_line_number
+        description: Indicates the line number for the particular line of the claim.
+        data_type: integer
+      - name: person_id
+        description: Unique identifier for each patient in the dataset.
+      - name: member_id
+        description: >
+          Identifier that links a patient to a particular insurance product or  health plan. A patient can have more than one member_id because they  can have more than one insurance product/plan.
+      - name: payer
+        description: Name of the payer
+      - name: plan
+        description: Name of the plan
+      - name: prescribing_provider_id
+        description: Identifier for the provider who prescribed the medication. For
+          claims-derived pharmacy records, this is generally the prescribing
+          provider NPI.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/provider
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: prescribing_provider_name
+        description: Name of the provider who prescribed the medication, derived from
+          provider terminology when available.
+      - name: dispensing_provider_id
+        description: Identifier for the provider or pharmacy that dispensed the
+          medication. This often identifies the dispensing pharmacy organization
+          rather than an individual pharmacist.
+        config:
+          meta:
+            terminology: https://thetuvaproject.com/terminology/provider
+            terminology_note: "**Note: this terminology set is too large to be loaded as a seed and is instead loaded from public cloud storage for supported adapters."
+      - name: dispensing_provider_name
+        description: Name of the provider or pharmacy that dispensed the medication,
+          derived from provider terminology when available.
+      - name: dispensing_date
+        description: Date the prescription was filled.
+      - name: ndc_code
+        description: National drug code on the claim.
+        config:
+          meta:
+            terminology: https://www.fda.gov/drugs/drug-approvals-and-databases/national-drug-code-directory
+      - name: ndc_description
+        description: Description of ndc_code, derived from the selected CodeRx
+          packages terminology when available.
+      - name: quantity
+        description: Number of doses.
+        data_type: integer
+      - name: days_supply
+        description: Number of days supply.
+        data_type: integer
+      - name: refills
+        description: Number of refills for the prescription.
+        data_type: integer
+      - name: paid_date
+        description: Date the claim was paid.
+      - name: paid_amount
+        description: Amount paid by the health insurer for the claim.
+      - name: allowed_amount
+        description: >
+          Contractual amount allowed to be paid by the payer + patient.
+      - name: charge_amount
+        description: Amount charged or billed by the pharmacy for the medication before
+          payer adjudication, discounts, or payment adjustments.
+      - name: coinsurance_amount
+        description: The total coinsurance charged on the claim by the provider.
+      - name: copayment_amount
+        description: The total copayment charged on the claim by the provider.
+      - name: deductible_amount
+        description: The total amount charged on the claim by the provider.
+      - name: in_network_flag
+        description: Nullable integer indicator; 1 means the pharmacy claim was in network, 0 means it was out of network, and null means unknown.
+        config:
+          meta:
+            data_type: integer
+      - name: data_source
+        description: >
+          User-configured field that indicates the data source (e.g. typically  named after the payer and state "BCBS Tennessee").
+      - name: tuva_last_run
+        description: Timestamp when this dbt run started. Defaults to `run_started_at`
+          in UTC and can be overridden with the `tuva_last_run` variable.
+      - name: file_name
+        description: 'The file name of the source file.'
+      - name: file_date
+        description: 'The date associated with the claims file, typically reflecting the reporting period of the claims data.'
+      - name: ingest_datetime
+        description: 'The date and time the source file was ingested into the data warehouse or landed in cloud storage.'
+
+  - name: normalized__provider_attribution
+    description: |-
+      This model creates the normalized provider attribution input used by Claims Preprocessing Attribution. It casts externally supplied payer-attributed and custom-attributed member-month fields from input_layer__provider_attribution to package data types when provider attribution is enabled. When provider attribution is disabled, it returns an empty relation with the same columns so downstream attribution outputs can still build with null attribution fields.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: normalized__provider_attribution
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - person_id
+              - member_id
+              - year_month
+              - payer
+              - "{{ quote_column('plan') }}"
+              - data_source
+    columns:
+      - name: person_id
+        description: Globally unique identifier for the attributed person, cast to string from input_layer__provider_attribution.
+      - name: member_id
+        description: Member identifier for the attribution assignment, cast to string from input_layer__provider_attribution.
+      - name: year_month
+        description: Calendar month of the attribution assignment, cast to string from input_layer__provider_attribution.
+      - name: payer
+        description: Payer associated with the attribution assignment, cast to string from input_layer__provider_attribution.
+      - name: plan
+        description: Plan associated with the attribution assignment, cast to string from input_layer__provider_attribution.
+      - name: payer_attributed_provider
+        description: Externally supplied provider identifier assigned by the payer or health plan.
+      - name: payer_attributed_provider_practice
+        description: Externally supplied practice assigned by the payer or health plan.
+      - name: payer_attributed_provider_organization
+        description: Externally supplied organization assigned by the payer or health plan.
+      - name: payer_attributed_provider_lob
+        description: Externally supplied line of business assigned by the payer or health plan.
+      - name: custom_attributed_provider
+        description: User-defined provider identifier assigned by a custom attribution methodology.
+      - name: custom_attributed_provider_practice
+        description: User-defined practice assigned by a custom attribution methodology.
+      - name: custom_attributed_provider_organization
+        description: User-defined organization assigned by a custom attribution methodology.
+      - name: custom_attributed_provider_lob
+        description: User-defined line of business assigned by a custom attribution methodology.
+      - name: file_name
+        description: Source file name cast to string from input_layer__provider_attribution.
+      - name: ingest_datetime
+        description: Source file ingest timestamp cast to timestamp from input_layer__provider_attribution.
+      - name: tuva_last_run
+        description: Timestamp value from the tuva_last_run dbt variable for the current dbt invocation.
+      - name: data_source
+        description: User-configured source identifier cast to string from input_layer__provider_attribution.
+
+##    Intermediate
+
+  - name: normalized_input__int_admit_source_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_admit_source_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_admit_source_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_admit_source_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_admit_type_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_admit_type_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_admit_type_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_admit_type_normalize_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_bill_type_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_bill_type_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+
+  - name: normalized_input__int_bill_type_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_bill_type_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_discharge_disposition_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_discharge_disposition_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_discharge_disposition_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_discharge_disposition_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: int_eligibility_dates_normalized
+    description: |-
+      This model projects already-typed eligibility date fields from int_eligibility_casting. Birth, death, and enrollment dates pass through directly without using terminology-calendar membership as validation. Logical Data Quality reports values outside Tuva's supported 1900-through-2100 range while preserving the source value for investigation.
+
+      The model keeps one distinct row per person_id and person_id_key.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: int_eligibility_dates_normalized
+      meta:
+        dag:
+          node_type: intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: person_id
+        description: Unique identifier for each person in the dataset from int_eligibility_casting.
+      - name: person_id_key
+        description: Synthetic join key from int_eligibility_casting. It is built from person_id, member_id, data_source, payer, plan, enrollment_start_date, and the canonical enrollment_end_date and is used to join normalized date values back to the eligibility record.
+      - name: normalized_birth_date
+        description: Birth date passed through as a native DATE without a calendar-membership requirement.
+      - name: normalized_death_date
+        description: Death date passed through as a native DATE without a calendar-membership requirement.
+      - name: normalized_enrollment_start_date
+        description: Enrollment start date passed through from int_eligibility_casting as a native DATE without a calendar-membership requirement.
+      - name: normalized_enrollment_end_date
+        description: Canonical enrollment end date passed through from int_eligibility_casting as a native DATE without a calendar-membership requirement. Null means the enrollment span remains open.
+
+  - name: normalized_input__int_medical_claim_date_normalize
+    description: Preserves already-typed medical-claim start, end, line, admission, and discharge dates without using terminology-calendar membership as validation. Logical Data Quality reports values outside Tuva's supported date range.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_medical_claim_date_normalize
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_medical_date_aggregation
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_medical_date_aggregation
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+
+  - name: normalized_input__int_medical_npi_normalize
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_medical_npi_normalize
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+
+
+  - name: normalized_input__int_drg_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_drg_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_drg_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_drg_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_place_of_service_normalize
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_place_of_service_normalize
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_procedure_code_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_procedure_code_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_procedure_code_intermediate
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_procedure_code_intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_procedure_date_final
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_procedure_date_final
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+
+  - name: normalized_input__int_procedure_date_normalize
+    description: Preserves already-typed institutional procedure dates and counts their occurrences by claim, source, and procedure-date field without using terminology-calendar membership as validation.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_procedure_date_normalize
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_procedure_date_voting
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_procedure_date_voting
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_revenue_center_normalize
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_revenue_center_normalize
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__int_undetermined_claim_type
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_claims_preprocessing
+        {%- else -%}claims_preprocessing{%- endif -%}
+      alias: _int_normalized_input_undetermined_claim_type
+      materialized: table
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+##    Staging
+  - name: int_eligibility_casting
+    description: |-
+      This model performs the following data transformations:
+      1. Casts fields to the appropriate data types expected by the input_layer__eligibility table. This is meant to account for data types if they are not cast by the user in the input layer.
+      2. Passes through column extensions whose names begin with the configured extension prefix.
+      3. Creates a synthetic join key called person_id_key. The person_id_key is created by concatenating person_id, member_id, data_source, payer, plan, enrollment_start_date, and enrollment_end_date. All key components except person_id are coalesced to an empty string before concatenation.
+      4. Canonicalizes the backward-compatible open-span alias 9999-12-31 to a null enrollment_end_date.
+
+      Primary key: person_id_key.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: int_eligibility_casting
+      meta:
+        dag:
+          node_type: intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: person_id
+        description: Unique identifier for each person in the dataset, cast to string from input_layer__eligibility.
+      - name: person_id_key
+        description: Synthetic join key created by concatenating person_id, member_id, data_source, payer, plan, enrollment_start_date, and the canonical enrollment_end_date. All key components except person_id are coalesced to an empty string before concatenation.
+      - name: member_id
+        description: Identifier assigned by the payer or health plan for the covered member, cast to string from input_layer__eligibility.
+      - name: subscriber_id
+        description: Identifier assigned by the payer or health plan for the subscriber or policyholder, cast to string from input_layer__eligibility.
+      - name: subscriber_relation
+        description: Member relationship to the subscriber or policyholder, cast to string from input_layer__eligibility.
+      - name: enrollment_start_date
+        description: Source enrollment start date cast to a native DATE from input_layer__eligibility.
+      - name: enrollment_end_date
+        description: Source enrollment end date cast to a native DATE from input_layer__eligibility. Null means the span remains open; 9999-12-31 is accepted as a backward-compatible input alias and canonicalized to null.
+      - name: payer
+        description: Name of the payer or health insurer, cast to string from input_layer__eligibility.
+      - name: payer_type
+        description: Type of payer, cast to string from input_layer__eligibility.
+      - name: plan
+        description: Name of the health plan, cast to string from input_layer__eligibility.
+      - name: first_name
+        description: Member first name cast to string from input_layer__eligibility.
+      - name: middle_name
+        description: Member middle name cast to string from input_layer__eligibility.
+      - name: last_name
+        description: Member last name cast to string from input_layer__eligibility.
+      - name: name_suffix
+        description: Member name suffix cast to string from input_layer__eligibility.
+      - name: social_security_number
+        description: Member Social Security number cast to string from input_layer__eligibility.
+      - name: address
+        description: Member street address cast to string from input_layer__eligibility.
+      - name: city
+        description: Member city cast to string from input_layer__eligibility.
+      - name: state
+        description: Source state value cast to string from input_layer__eligibility before ANSI/FIPS state normalization.
+      - name: zip_code
+        description: Member ZIP code cast to string from input_layer__eligibility.
+      - name: phone
+        description: Member phone number cast to string from input_layer__eligibility.
+      - name: email
+        description: Member email address cast to string from input_layer__eligibility.
+      - name: ethnicity
+        description: Member ethnicity cast to string from input_layer__eligibility.
+      - name: sex
+        description: Biological sex of the member, cast to string from input_layer__eligibility.
+      - name: race
+        description: Race of the member, cast to string from input_layer__eligibility.
+      - name: birth_date
+        description: Source birth date cast to date from input_layer__eligibility before direct date passthrough.
+      - name: death_date
+        description: Source death date cast to date from input_layer__eligibility before direct date passthrough.
+      - name: death_flag
+        description: Source death flag cast to integer from input_layer__eligibility.
+      - name: original_reason_entitlement_code
+        description: Original reason for Medicare entitlement code, cast to string from input_layer__eligibility.
+      - name: dual_status_code
+        description: Medicare-Medicaid dual eligibility status code, cast to string from input_layer__eligibility.
+      - name: medicare_status_code
+        description: Medicare status code, cast to string from input_layer__eligibility.
+      - name: enrollment_status
+        description: Enrollment status value, cast to string from input_layer__eligibility.
+      - name: hospice_flag
+        description: Hospice flag cast to integer from input_layer__eligibility.
+      - name: institutional_snp_flag
+        description: Institutional special needs plan flag cast to integer from input_layer__eligibility.
+      - name: medicaid_indicator
+        description: Integer indicator for Medicaid coverage during the enrollment span. Generally 1 means yes and 0 means no.
+        config:
+          meta:
+            data_type: integer
+      - name: long_term_institutional_flag
+        description: Long-term institutional flag cast to integer from input_layer__eligibility.
+      - name: part_d_raf_type
+        description: Part D risk adjustment factor type for the enrollment span. Null when the record is not related to Part D coverage.
+        config:
+          meta:
+            data_type: varchar
+      - name: low_income_subsidy_indicator
+        description: Integer indicator for Low Income Subsidy, also known as Extra Help, during the enrollment span. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: metal_level
+        description: ACA exchange metal tier for the health plan. Null when the record is not related to ACA exchange coverage.
+        config:
+          meta:
+            data_type: varchar
+      - name: csr_indicator
+        description: Integer cost sharing reduction variant indicator for ACA exchange coverage. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: enrollment_duration_months
+        description: Number of months covered during the benefit year for ACA exchange enrollment. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: esrd_status
+        description: Integer indicator for end-stage renal disease status from the eligibility input record. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: transplant_duration_months
+        description: Number of months since kidney transplant from the eligibility input record. Null when not applicable.
+        config:
+          meta:
+            data_type: integer
+      - name: group_id
+        description: Group identifier cast to string from input_layer__eligibility.
+      - name: group_name
+        description: Group name cast to string from input_layer__eligibility.
+      - name: file_name
+        description: Source file name cast to string from input_layer__eligibility.
+      - name: file_date
+        description: Source file date preserved as a native DATE from input_layer__eligibility.
+      - name: ingest_datetime
+        description: Source file ingest timestamp cast to timestamp from input_layer__eligibility.
+      - name: tuva_last_run
+        description: Timestamp value from the tuva_last_run dbt variable for the current dbt invocation.
+
+      - name: data_source
+        description: User-configured source identifier cast to string from input_layer__eligibility.
+  - name: normalized_input__stg_medical_claim
+    config:
+      materialized: ephemeral
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+  - name: normalized_input__stg_pharmacy_claim
+    config:
+      materialized: ephemeral
+      tags:
+        - normalized_input
+        - claims_preprocessing
+
+
+  - name: int_eligibility_state_normalized
+    description: |-
+      This model normalizes the source state value from int_eligibility_casting by left joining to terminology__ansi_fips_state. The join matches when trim(lower(state)) equals trim(lower(ansi_fips_state_abbreviation)), trim(lower(ansi_fips_state_code)), or trim(lower(ansi_fips_state_name)).
+
+      The model returns the matched ANSI/FIPS state name, state code, and state abbreviation. If the source state value does not match the reference table, normalized_state_name, fips_state_code, and fips_state_abbreviation are null.
+    config:
+      schema: |
+        {%- if var('tuva_schema_prefix',None) != None -%}{{var('tuva_schema_prefix')}}_intermediate
+        {%- else -%}intermediate{%- endif -%}
+      alias: int_eligibility_state_normalized
+      meta:
+        dag:
+          node_type: intermediate
+      materialized: table
+      tags:
+        - normalized_input
+        - normalized_layer
+    columns:
+      - name: person_id
+        description: Unique identifier for each person in the dataset from int_eligibility_casting.
+      - name: person_id_key
+        description: Synthetic join key from int_eligibility_casting. It is built from person_id, member_id, data_source, payer, plan, enrollment_start_date, and the canonical enrollment_end_date and is used to join normalized state values back to the eligibility record.
+      - name: normalized_state_name
+        description: ANSI/FIPS state name from terminology__ansi_fips_state. Null when the source state value does not match state abbreviation, state code, or state name in the reference table.
+      - name: fips_state_code
+        description: ANSI/FIPS state code from terminology__ansi_fips_state. Null when the source state value does not match state abbreviation, state code, or state name in the reference table.
+      - name: fips_state_abbreviation
+        description: ANSI/FIPS state abbreviation from terminology__ansi_fips_state. Null when the source state value does not match state abbreviation, state code, or state name in the reference table.

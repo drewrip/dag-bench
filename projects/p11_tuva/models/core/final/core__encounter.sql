@@ -1,0 +1,99 @@
+{{ config(
+     enabled = (p11_tuva.tuva_boolean_var('claims_enabled', false))
+            or (p11_tuva.tuva_boolean_var('clinical_enabled', false))
+   )
+}}
+
+{%- set tuva_core_columns -%}
+      encounter_id
+    , person_id
+    , encounter_type
+    , encounter_group
+    , encounter_start_date
+    , encounter_end_date
+    , length_of_stay
+    , admit_source_code
+    , admit_source_description
+    , admit_type_code
+    , admit_type_description
+    , discharge_disposition_code
+    , discharge_disposition_description
+    , attending_provider_id
+    , attending_provider_name
+    , facility_npi
+    , facility_name
+    , facility_type
+    , observation_flag
+    , lab_flag
+    , dme_flag
+    , ambulance_flag
+    , pharmacy_flag
+    , ed_flag
+    , delivery_flag
+    , delivery_type
+    , newborn_flag
+    , nicu_flag
+    , snf_part_b_flag
+    , primary_diagnosis_code_type
+    , primary_diagnosis_code
+    , primary_diagnosis_description
+    , drg_code_type
+    , drg_code
+    , drg_description
+    , paid_amount
+    , allowed_amount
+    , charge_amount
+    , claim_count
+    , inst_claim_count
+    , prof_claim_count
+    , source_model
+    , encounter_source_type
+{%- endset -%}
+
+{%- set tuva_metadata_columns -%}
+    , ingest_datetime
+    , tuva_last_run
+    , data_source
+{%- endset -%}
+
+{% if p11_tuva.tuva_boolean_var('clinical_enabled', false) == true and p11_tuva.tuva_boolean_var('claims_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+    {{ select_extension_columns(ref('normalized__encounter')) }}
+{%- endset -%}
+
+with enc as (
+    {{ smart_union([ref('core__stg_claims_encounter'), ref('normalized__encounter')], source_index=none) }}
+)
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from enc
+
+{% elif p11_tuva.tuva_boolean_var('clinical_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+    {{ select_extension_columns(ref('normalized__encounter')) }}
+{%- endset -%}
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from {{ ref('normalized__encounter') }}
+
+{% elif p11_tuva.tuva_boolean_var('claims_enabled', false) == true -%}
+
+{%- set tuva_extension_columns -%}
+{# No extension columns — input_layer__encounter is clinical-only #}
+{%- endset -%}
+
+select
+    {{ tuva_core_columns }}
+    {{ tuva_extension_columns }}
+    {{ tuva_metadata_columns }}
+from {{ ref('core__stg_claims_encounter') }}
+
+{%- endif %}
