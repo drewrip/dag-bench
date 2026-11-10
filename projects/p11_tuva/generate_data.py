@@ -9,7 +9,7 @@ def main() -> None:
 
     from utils.tuva_data import run_tuva
 
-    # Tuva's synthetic payload replicated x sf instead of a dbgen generator.
+    # Tuva's published dataset as-is (sf only picks small/large); see utils/tuva_data.py.
     run_tuva(Path(__file__).resolve().parent)
 
 
