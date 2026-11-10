@@ -127,12 +127,14 @@ def read_postgres_output(profile_path: Path) -> dict:
 
 
 def read_source_tables(sources_path: Path) -> list[str]:
+    """Physical table names (`identifier`, else `name`), each once: several
+    source entries may read the same table."""
     data = load_yaml(sources_path)
-    tables: list[str] = []
+    tables: dict[str, None] = {}
     for source in data.get("sources", []):
         for table in source.get("tables", []):
-            tables.append(table["name"])
-    return tables
+            tables.setdefault(table.get("identifier", table["name"]), None)
+    return list(tables)
 
 
 def psql_env(pg_config: dict) -> dict:
@@ -154,10 +156,11 @@ def run_psql(pg_config: dict, sql: str) -> None:
         str(pg_config["user"]),
         "-d",
         str(pg_config["dbname"]),
-        "-c",
-        sql,
+        "-1",
     ]
-    subprocess.run(cmd, check=True, env=psql_env(pg_config))
+    # On stdin, not `-c`: DDL for ~1000 tables (p13_snowflake) overflows argv.
+    # `-1` keeps `-c`'s all-or-nothing transaction.
+    subprocess.run(cmd, input=sql, text=True, check=True, env=psql_env(pg_config))
 
 
 def run_psql_file(pg_config: dict, sql_path: Path) -> None:
@@ -223,6 +226,8 @@ def ensure_database(pg_config: dict) -> None:
 
 def map_type(duckdb_type: str) -> str:
     normalized = duckdb_type.strip().upper()
+    if normalized.endswith("[]"):
+        return map_type(normalized[:-2]) + "[]"
     if normalized.startswith("DECIMAL") or normalized.startswith("NUMERIC"):
         return normalized
     if normalized.startswith("VARCHAR"):
@@ -260,9 +265,16 @@ def create_table_sql(
     table_name: str,
     columns: list[tuple[str, str]],
     unlogged: bool = False,
+    text_collation: str | None = None,
 ) -> str:
+    def column_type_sql(column_type: str) -> str:
+        pg_type = map_type(column_type)
+        if text_collation and pg_type == "TEXT":
+            return f"TEXT COLLATE {quote_ident(text_collation)}"
+        return pg_type
+
     column_sql = ", ".join(
-        f"{quote_ident(column_name)} {map_type(column_type)}"
+        f"{quote_ident(column_name)} {column_type_sql(column_type)}"
         for column_name, column_type in columns
     )
     qualified_table = f"{quote_ident(schema)}.{quote_ident(table_name)}"
@@ -279,8 +291,9 @@ def create_table(
     table_name: str,
     columns: list[tuple[str, str]],
     unlogged: bool = False,
+    text_collation: str | None = None,
 ) -> None:
-    run_psql(pg_config, create_table_sql(schema, table_name, columns, unlogged))
+    run_psql(pg_config, create_table_sql(schema, table_name, columns, unlogged, text_collation))
 
 
 def load_csv_into_postgres(pg_config: dict, schema: str, table_name: str, csv_path: Path) -> None:
@@ -406,6 +419,7 @@ def load_tables_via_extension(
     unlogged: bool,
     workers: int,
     min_chunk_rows: int,
+    text_collation: str | None = None,
 ) -> None:
     """Stream every table into Postgres over binary COPY, in parallel."""
     row_counts = {
@@ -416,7 +430,7 @@ def load_tables_via_extension(
     }
 
     ddl = " ".join(
-        create_table_sql(schema, table_name, duckdb_columns(con, table_name), unlogged)
+        create_table_sql(schema, table_name, duckdb_columns(con, table_name), unlogged, text_collation)
         for table_name in tables
     )
     run_psql(pg_config, ddl)
@@ -459,10 +473,11 @@ def load_tables_via_csv(
     tables: list[str],
     csv_dir: Path,
     unlogged: bool,
+    text_collation: str | None = None,
 ) -> None:
     """Fallback for hosts where the DuckDB postgres extension cannot load."""
     for table_name in tables:
-        create_table(pg_config, schema, table_name, duckdb_columns(con, table_name), unlogged)
+        create_table(pg_config, schema, table_name, duckdb_columns(con, table_name), unlogged, text_collation)
         csv_path = csv_dir / f"{table_name}.csv"
         export_csv(con, table_name, csv_path)
         load_csv_into_postgres(pg_config, schema, table_name, csv_path)
@@ -474,7 +489,10 @@ def load_project_sources_to_postgres(
     workers: int | None = None,
     unlogged: bool | None = None,
     use_extension: bool | None = None,
+    text_collation: str | None = None,
 ) -> None:
+    """text_collation: collation for every text column (e.g. "C", so string
+    comparisons and sorts are bytewise like DuckDB's); default: the database's."""
     project_dir = project_dir.resolve()
     repo_root = find_repo_root(project_dir)
     profile_path = project_dir / "profiles.yml"
@@ -529,9 +547,10 @@ def load_project_sources_to_postgres(
                 unlogged,
                 workers,
                 min_chunk_rows,
+                text_collation,
             )
         else:
-            load_tables_via_csv(pg_config, con, schema, loaded_tables, csv_dir, unlogged)
+            load_tables_via_csv(pg_config, con, schema, loaded_tables, csv_dir, unlogged, text_collation)
     finally:
         con.close()
 

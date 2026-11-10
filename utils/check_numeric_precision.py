@@ -28,14 +28,22 @@ PROJECTS = sorted(p for p in (ROOT / "projects").glob("[pm][0-9][0-9]_*") if p.i
 
 UNSIZED = re.compile(r"\b(numeric|decimal)\b(?!\s*\(\s*\d+\s*,\s*\d+\s*\))", re.IGNORECASE)
 LINE_COMMENT = re.compile(r"--.*$")
+BLOCK_COMMENT = re.compile(r"/\*.*?\*/|\{#.*?#\}", re.S)
+
+
+def strip_block_comments(text: str) -> str:
+    """`text` with /* */ and {# #} comments blanked, keeping line numbers."""
+    return BLOCK_COMMENT.sub(lambda m: re.sub(r"[^\n]", " ", m.group()), text)
 
 
 def lint_models() -> list[str]:
     findings = []
     for project in PROJECTS:
         for path in sorted((project / "models").rglob("*.sql")):
-            for lineno, line in enumerate(path.read_text().splitlines(), 1):
-                if UNSIZED.search(LINE_COMMENT.sub("", line)):
+            text = path.read_text()
+            code_lines = strip_block_comments(text).splitlines()
+            for lineno, (line, code) in enumerate(zip(text.splitlines(), code_lines), 1):
+                if UNSIZED.search(LINE_COMMENT.sub("", code)):
                     findings.append(f"{path.relative_to(ROOT)}:{lineno}: {line.strip()}")
     return findings
 

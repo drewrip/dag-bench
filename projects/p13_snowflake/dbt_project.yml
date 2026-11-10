@@ -1,0 +1,53 @@
+# data-eng-bench base retail project vendored by utils/retail_vendor.py; see VENDORED.md.
+name: 'p13_snowflake'
+version: '1.0.0'
+config-version: 2
+require-dbt-version: [">=1.10.0", "<3.0.0"]
+profile: 'p13_snowflake'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# Upstream's intended defaults. Upstream keys them under `retail_warehouse`,
+# which isn't the project name, so they never applied there (everything
+# without an inline config was a view). Upstream's `+schema` per layer is
+# dropped: every relation lives in the target schema.
+models:
+  p13_snowflake:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+vars:
+  # dag-bench: "now" for upstream's current_date / current_timestamp (see
+  # macros/dagbench/portability.sql): the day after the data's last order.
+  dagbench_as_of_date: '2026-01-08'
+
+  # Upstream vars, unchanged.
+  # Date range for historical data
+  start_date: '2020-01-01'
+  end_date: '2024-12-31'
+
+  # Customer segmentation thresholds
+  # Value segments (based on lifetime_value)
+  customer_value_vip_threshold: 10000
+  customer_value_high_threshold: 5000
+  customer_value_medium_threshold: 1000
+
+  # Order count segments
+  customer_orders_loyal_threshold: 10
+  customer_orders_regular_threshold: 5
+  customer_orders_occasional_threshold: 1
+
+  # LTV calculation parameters
+  # WARNING: predicted_ltv multiplier is a placeholder - see int_customers__lifetime_metrics.sql
+  ltv_prediction_multiplier: 2.0
+
+  # Data quality thresholds
+  dq_max_duplicate_rate: 0.01  # 1% max duplicates
+  dq_max_null_rate: 0.05       # 5% max nulls in key fields
