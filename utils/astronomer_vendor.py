@@ -1,0 +1,446 @@
+#!/usr/bin/env python3
+"""Vendor astronomer/de-bench's copperline warehouse into projects/p14_astronomer.
+
+Usage: utils/astronomer_vendor.py <path to de-bench checkout>
+
+Re-running regenerates every vendored file from the checkout:
+
+- projects/p14_astronomer: models/, macros/ (except macros/dagbench/), tests/,
+  models/sources.yml and UPSTREAM, from
+  worlds/copperline/workspace/dbt/copperline_analytics;
+- utils/astronomer_gen: the world generator (tools/gen_copperline) and its
+  config (worlds/copperline/timeline.yaml, planted.yaml), patched to take a
+  scale factor (see GENERATOR_PATCHES).
+
+Files we own (dbt_project.yml, profiles.yml, packages.yml, generate_data.py,
+load_postgres.py, macros/dagbench/, VENDORED.md) are left alone. Every rewrite
+asserts that it matched, so upstream changes fail loudly. See
+projects/p14_astronomer/VENDORED.md for the list of transformations.
+"""
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DST = REPO_ROOT / "projects" / "p14_astronomer"
+GEN_DST = REPO_ROOT / "utils" / "astronomer_gen"
+UPSTREAM_PROJECT = Path("worlds") / "copperline" / "workspace" / "dbt" / "copperline_analytics"
+UPSTREAM_COMMIT = "5dcfc2b81b13dcf58cff49e192e97f1ae05f8dbc"
+SOURCE_SCHEMA = "{{ 'main' if target.type == 'duckdb' else target.schema }}"
+
+
+def physical_name(schema: str, table: str) -> str:
+    """Name in our warehouse of the generator's `<schema>.<table>` (see
+    utils/astronomer_data.py). Prefixed so no source can collide with a model."""
+    return f"src_{schema}__{table}"
+
+
+# --- the generator -----------------------------------------------------------
+# Upstream has two profiles: `full` (fact volumes as written) and `small`
+# (divided by 20). We replace the profile with a continuous factor; entity
+# tables never scale, as upstream intends. utils/astronomer_data.py maps sf to
+# the factor.
+GENERATOR_PATCHES = [
+    ("config.py",
+     '''    def scale(self, n: int | float) -> int:
+        """A fact volume at this profile. Entities do not go through this."""
+        if self.profile == "full":
+            return int(n)
+        return max(1, round(n / SMALL_DIVISOR))''',
+     '''    def scale(self, n: int | float) -> int:
+        """A fact volume at this profile. Entities do not go through this.
+        dag-bench: `profile` is "full", "small" or a float factor."""
+        if self.profile == "full":
+            return int(n)
+        if self.profile == "small":
+            return max(1, round(n / SMALL_DIVISOR))
+        return max(1, round(n * float(self.profile)))'''),
+    ("__main__.py",
+     '''    p.add_argument("--profile", choices=("full", "small"), default="full",''',
+     '''    p.add_argument("--profile", default="full",  # dag-bench: or a float factor'''),
+]
+
+
+def vendor_generator(src: Path) -> None:
+    shutil.rmtree(GEN_DST, ignore_errors=True)
+    shutil.copytree(src / "tools" / "gen_copperline", GEN_DST / "gen_copperline",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    for name in ("timeline.yaml", "planted.yaml"):
+        shutil.copy2(src / "worlds" / "copperline" / name, GEN_DST / name)
+    for rel, old, new in GENERATOR_PATCHES:
+        path = GEN_DST / "gen_copperline" / rel
+        text = path.read_text()
+        assert text.count(old) == 1, (rel, old)
+        path.write_text(text.replace(old, new))
+
+
+# --- the dbt project ---------------------------------------------------------
+
+def copy_tree(src: Path, dst: Path) -> None:
+    for path in sorted(src.rglob("*")):
+        if path.is_dir():
+            continue
+        out = dst / path.relative_to(src)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, out)
+
+
+# The run-audit hooks write ops_run.dbt_run_events and ops_audit_log reads it:
+# bookkeeping about the run itself (wall-clock times), not a transformation.
+DROPPED_FILES = ["macros/audit.sql", "models/shared/ops/ops_audit_log.sql"]
+DROPPED_SOURCES = {"ops_run"}
+
+SCHEMA_NAME_MACRO = re.compile(r"\{#\s*Custom schema names are used verbatim\..*?\{%- endmacro %\}\n*", re.S)
+
+
+def write_sources() -> None:
+    path = DST / "models" / "shared" / "staging" / "_sources.yml"
+    data = yaml.safe_load(path.read_text())
+    sources = []
+    for source in data["sources"]:
+        if source["name"] in DROPPED_SOURCES:
+            continue
+        schema = source.pop("schema")
+        source["schema"] = SOURCE_SCHEMA
+        for table in source["tables"]:
+            assert "identifier" not in table, table
+            table["identifier"] = physical_name(schema, table["name"])
+            table.pop("freshness", None)
+            table.pop("loaded_at_field", None)
+        sources.append(source)
+    data["sources"] = sources
+    text = yaml.safe_dump(data, sort_keys=False, width=200, allow_unicode=True)
+    (DST / "models" / "sources.yml").write_text(
+        "# Generated by utils/astronomer_vendor.py from models/shared/staging/_sources.yml.\n"
+        "# Raw tables written by generate_data.py (utils/astronomer_data.py).\n" + text
+    )
+    path.unlink()
+
+
+def drop_audit() -> None:
+    for rel in DROPPED_FILES:
+        (DST / rel).unlink()
+    path = DST / "models" / "shared" / "ops" / "_ops_models.yml"
+    data = yaml.safe_load(path.read_text())
+    n = len(data["models"])
+    data["models"] = [m for m in data["models"] if m["name"] != "ops_audit_log"]
+    assert len(data["models"]) == n - 1
+    path.write_text("# Generated by utils/astronomer_vendor.py (ops_audit_log dropped).\n"
+                    + yaml.safe_dump(data, sort_keys=False, width=200))
+    path = DST / "macros" / "schemas.sql"
+    text, n = SCHEMA_NAME_MACRO.subn("", path.read_text())
+    assert n == 1, "generate_schema_name block"
+    path.write_text(text)
+
+
+# Snapshots become table models that build what a first `dbt snapshot` writes
+# (every row current), so `dbt run` from cold builds the whole DAG.
+SNAPSHOT_OPEN = re.compile(r"\{% snapshot (\w+) %\}\s*\{\{\s*config\((.*?)\)\s*\}\}", re.S)
+SNAPSHOT_CLOSE = "{% endsnapshot %}"
+
+
+def convert_snapshots(src: Path) -> None:
+    out_dir = DST / "models" / "shared" / "snapshots"  # owned by platform, like shared/
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for path in sorted((src / "snapshots").glob("*.sql")):
+        text = path.read_text()
+        m = SNAPSHOT_OPEN.search(text)
+        assert m and text.count(SNAPSHOT_CLOSE) == 1, path
+        name, config = m[1], m[2]
+        key = re.search(r"unique_key='(\w+)'", config)[1]
+        strategy = re.search(r"strategy='(\w+)'", config)[1]
+        body = text[m.end():text.index(SNAPSHOT_CLOSE)].strip("\n")
+        if strategy == "timestamp":
+            updated = re.search(r"updated_at='(\w+)'", config)[1]
+            valid_from = f"cast({updated} as timestamp)"
+        else:
+            assert strategy == "check", path
+            valid_from = "cast({{ ds() }} as timestamp)"  # the snapshot's run time
+        new = (
+            "{{ config(materialized='table') }}\n\n"
+            f"{{#- dag-bench: was snapshots/{path.name} ({strategy} strategy, unique_key {key}).\n"
+            "    This model is what a first `dbt snapshot` builds: every row current. -#}\n\n"
+            f"with snapshot_query as (\n{body}\n)\n\n"
+            "select\n"
+            "    s.*,\n"
+            f"    md5(cast(s.{key} as varchar) || '|' || cast({valid_from} as varchar)) as dbt_scd_id,\n"
+            f"    {valid_from} as dbt_updated_at,\n"
+            f"    {valid_from} as dbt_valid_from,\n"
+            "    cast(null as timestamp) as dbt_valid_to\n"
+            "from snapshot_query s\n"
+        )
+        (out_dir / f"{name}.sql").write_text(new)
+
+
+# --- dbt_utils 0.8.6 -> 1.x ---------------------------------------------------
+# surrogate_key was renamed generate_surrogate_key; with
+# surrogate_key_treat_nulls_as_empty_strings (set in dbt_project.yml) it hashes
+# the same string, so every key keeps its value.
+SURROGATE_KEY = re.compile(r"\bdbt_utils\.surrogate_key\(")
+
+
+# --- Postgres portability -----------------------------------------------------
+# DuckDB-only constructs become calls to macros/dagbench/portability.sql,
+# which renders upstream's SQL on DuckDB.
+
+def _scan_call(text: str, open_paren: int) -> tuple[int, list[str]]:
+    """End (index after ')') and top-level comma-split args of the call whose
+    '(' is at `open_paren`."""
+    depth, quote, start, args = 0, None, open_paren + 1, []
+    for i in range(open_paren, len(text)):
+        c = text[i]
+        if quote:
+            if c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                args.append(text[start:i])
+                return i + 1, [a.strip() for a in args]
+        elif c == "," and depth == 1:
+            args.append(text[start:i])
+            start = i + 1
+    raise ValueError(f"unbalanced call at {text[open_paren - 20:open_paren + 40]!r}")
+
+
+def jinja_string(sql: str) -> str:
+    """`sql` (which may contain `{{ expr }}`) as a Jinja string expression."""
+    assert "{%" not in sql, sql
+    parts = []
+    for i, piece in enumerate(re.split(r"\{\{(.*?)\}\}", sql)):
+        if i % 2:
+            parts.append(f"({piece.strip()})")
+        elif piece:
+            q = '"' if '"' not in piece else "'"
+            assert q not in piece, piece
+            parts.append(q + piece.replace("\\", "\\\\") + q)
+    return " ~ ".join(parts) or '""'
+
+
+def strip_comments(text: str) -> list[tuple[int, int]]:
+    """Spans of SQL `--` comments and Jinja `{# #}` comments."""
+    spans = [(m.start(), m.end()) for m in re.finditer(r"\{#.*?#\}", text, re.S)]
+    for m in re.finditer(r"--[^\n]*", text):
+        if not any(a <= m.start() < b for a, b in spans):
+            spans.append((m.start(), m.end()))
+    return spans
+
+
+def rewrite_calls(text: str, name_re: str, build) -> tuple[str, int]:
+    """Replace every call `name(...)` (outside Jinja tags and comments) with build(args)."""
+    pattern = re.compile(r"(?<![\w.])(?:" + name_re + r")\s*\(", re.I)
+    comments = strip_comments(text)
+    out, pos, n = [], 0, 0
+    while m := pattern.search(text, pos):
+        inside_jinja = text.rfind("{{", 0, m.start()) > text.rfind("}}", 0, m.start())
+        if inside_jinja or any(a <= m.start() < b for a, b in comments):
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        end, args = _scan_call(text, m.end() - 1)
+        out.append(text[pos:m.start()])
+        out.append(build(args))
+        pos, n = end, n + 1
+    out.append(text[pos:])
+    return "".join(out), n
+
+
+def _macro(name: str, nargs: int):
+    def build(args: list[str]) -> str:
+        assert len(args) == nargs, (name, args)
+        return f"{{{{ {name}({', '.join(jinja_string(a) for a in args)}) }}}}"
+    return build
+
+
+def _datediff(args: list[str]) -> str:
+    part, first, second = args
+    assert re.fullmatch(r"'\w+'", part), args
+    return f"{{{{ dagbench_datediff({part}, {jinja_string(first)}, {jinja_string(second)}) }}}}"
+
+
+CALL_REWRITES = [
+    ("date_diff", _datediff),
+    ("strftime", _macro("dagbench_strftime", 2)),
+    ("json_extract_string", _macro("dagbench_json_extract_string", 2)),
+    ("string_split", _macro("dagbench_string_split", 2)),
+    ("list_contains", _macro("dagbench_list_contains", 2)),
+    ("isodow", _macro("dagbench_isodow", 1)),
+    ("dayname", _macro("dagbench_dayname", 1)),
+]
+# DESC sorts NULLs last in DuckDB, first in Postgres (which changes
+# ROW_NUMBER / first_value picks). Made explicit.
+DESC_NULLS = re.compile(r"\bdesc\b(?!\s+nulls)", re.I)
+# `DOUBLE` is DuckDB's name; both accept `DOUBLE PRECISION`.
+DOUBLE_TYPE = re.compile(r"\b(as\s+|::\s*)double\b(?!\s+precision)", re.I)
+
+# int_inventory_position_daily replays the movement log with two ASOF joins
+# (Postgres has none): the running movement total at the row's day, less the
+# one at its snapshot's day. On Postgres, the same number as a running sum over
+# the rows carried from one snapshot. Equivalent because the carried rows are
+# every calendar day of the window, from the snapshot's day (or the window's
+# first day, before which there are no movements), and m joins movements_daily
+# on the row's own day.
+ASOF_REPLAY = """        c.on_hand_units
+            + coalesce(asof_now.cumulative_units, 0)
+            - coalesce(asof_snap.cumulative_units, 0) as replay_units
+    from carried c
+    left join movements_daily m
+           on m.ds = c.ds and m.sku = c.sku and m.location_id = c.location_id
+    asof left join movements_cumulative asof_now
+           on asof_now.sku = c.sku
+          and asof_now.location_id = c.location_id
+          and asof_now.ds <= c.ds
+    asof left join movements_cumulative asof_snap
+           on asof_snap.sku = c.sku
+          and asof_snap.location_id = c.location_id
+          and asof_snap.ds <= c.position_as_of
+"""
+ASOF_REPLAY_PORTABLE = """    {% if target.type == 'duckdb' -%}
+        c.on_hand_units
+            + coalesce(asof_now.cumulative_units, 0)
+            - coalesce(asof_snap.cumulative_units, 0) as replay_units
+    from carried c
+    left join movements_daily m
+           on m.ds = c.ds and m.sku = c.sku and m.location_id = c.location_id
+    asof left join movements_cumulative asof_now
+           on asof_now.sku = c.sku
+          and asof_now.location_id = c.location_id
+          and asof_now.ds <= c.ds
+    asof left join movements_cumulative asof_snap
+           on asof_snap.sku = c.sku
+          and asof_snap.location_id = c.location_id
+          and asof_snap.ds <= c.position_as_of
+    {% else -%}
+        -- dag-bench: no ASOF join on Postgres; see utils/astronomer_vendor.py
+        c.on_hand_units
+            + coalesce(sum(case when c.ds > c.position_as_of then m.movement_units end) over (
+                partition by c.sku, c.location_id, c.position_as_of
+                order by c.ds
+                rows between unbounded preceding and current row
+              ), 0) as replay_units
+    from carried c
+    left join movements_daily m
+           on m.ds = c.ds and m.sku = c.sku and m.location_id = c.location_id
+    {% endif %}
+"""
+
+# Exact-text fixes: (file, old, new[, count]). Each must match `count` times (default 1).
+TEXT_REPLACEMENTS: list[tuple] = [
+    ("models/shared/intermediate/int_inventory_position_daily.sql", ASOF_REPLAY, ASOF_REPLAY_PORTABLE),
+    # DuckDB divides decimals in double precision, then casts to bigint
+    # rounding half to even. Postgres divides in numeric and rounds half away
+    # from zero, so every negative half-cent tie (all USD credits: the rate is
+    # 1,000,000) came out a cent apart. The explicit double is DuckDB's own
+    # type, so DuckDB's SQL is unchanged in meaning.
+    ("macros/money.sql",
+     "         + 500000) / 1000000\n        as bigint",
+     "         + 500000) / 1000000 as double precision)\n        as bigint"),
+    # Ties: upstream picks rows over orderings with duplicates, so the result
+    # differs between engines and between two DuckDB runs. A unique last key
+    # makes the pick deterministic; any pick was a valid answer upstream.
+    # (An intent's order_ref is recycled, so two orders can draw candidates
+    # with the same day_gap, outcome and attempt_no.)
+    ("models/shared/intermediate/int_orders_enriched.sql",
+     "order by day_gap, case outcome when 'succeeded' then 0 else 1 end, attempt_no\n",
+     "order by day_gap, case outcome when 'succeeded' then 0 else 1 end, attempt_no, intent_id\n"),
+    # Quintiles over columns with many ties (orders_12m): ntile splits a tied
+    # run across buckets in whatever order the engine reads it.
+    ("models/customer/agg_customer_rfm.sql", "over (order by days_since_last_order)",
+     "over (order by days_since_last_order, customer_id)"),
+    ("models/customer/agg_customer_rfm.sql", "over (order by orders_12m)",
+     "over (order by orders_12m, customer_id)"),
+    ("models/customer/agg_customer_rfm.sql", "over (order by net_sales_cents_12m)",
+     "over (order by net_sales_cents_12m, customer_id)"),
+    ("macros/money.sql",
+     "    cast(\n        (cast({{ amount_cents }} as decimal(38, 0)) * cast(coalesce(",
+     "    cast(cast(\n        (cast({{ amount_cents }} as decimal(38, 0)) * cast(coalesce("),
+    ("macros/money.sql",
+     "        (cast({{ amount_cents }} as decimal(38, 0)) * cast({{ bps }} as decimal(38, 0)) + 5000) / 10000\n        as bigint",
+     "        cast((cast({{ amount_cents }} as decimal(38, 0)) * cast({{ bps }} as decimal(38, 0)) + 5000) / 10000 as double precision)\n        as bigint"),
+]
+
+
+def code_subn(pattern: re.Pattern, repl: str, text: str) -> tuple[str, int]:
+    """pattern.subn outside comments."""
+    comments = strip_comments(text)
+    n = 0
+
+    def sub(m: re.Match) -> str:
+        nonlocal n
+        if any(a <= m.start() < b for a, b in comments):
+            return m[0]
+        n += 1
+        return m.expand(repl)
+    return pattern.sub(sub, text), n
+
+
+def rewrite_sql(counts: dict) -> None:
+    for path in sorted([*(DST / "models").rglob("*.sql"), *(DST / "tests").rglob("*.sql"),
+                        *(DST / "macros").rglob("*.sql")]):
+        if "dagbench" in path.parts:
+            continue
+        text = path.read_text()
+        new, n = SURROGATE_KEY.subn("dbt_utils.generate_surrogate_key(", text)
+        counts["surrogate_key"] += n
+        for name, build in CALL_REWRITES:
+            new, n = rewrite_calls(new, name, build)
+            counts[name] = counts.get(name, 0) + n
+        new, n = code_subn(DOUBLE_TYPE, r"\1double precision", new)
+        counts["double"] += n
+        new, n = code_subn(DESC_NULLS, "desc nulls last", new)
+        counts["desc_nulls_last"] += n
+        if new != text:
+            path.write_text(new)
+    for rel, old, new, *count in TEXT_REPLACEMENTS:
+        path = DST / rel
+        text = path.read_text()
+        assert text.count(old) == (count[0] if count else 1), (rel, old)
+        path.write_text(text.replace(old, new))
+        counts["text"] += 1
+    for path in (DST / "models").rglob("*.sql"):
+        text = path.read_text()
+        code = "".join(c for i, c in enumerate(text)
+                       if not any(a <= i < b for a, b in strip_comments(text)))
+        for bad in (r"\bdbt_utils\.surrogate_key\b", r"\bcurrent_date\b", r"\bnow\(\)", r"\bcurrent_timestamp\b"):
+            assert not re.search(bad, code, re.I), (path, bad)
+
+
+def main() -> None:
+    src = Path(sys.argv[1]).resolve()
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=src, check=True,
+                         capture_output=True, text=True).stdout.strip()
+    assert sha == UPSTREAM_COMMIT, f"checkout is at {sha}; update UPSTREAM_COMMIT"
+    project = src / UPSTREAM_PROJECT
+
+    for sub in ("models", "macros", "tests"):
+        for child in (DST / sub).glob("*") if (DST / sub).exists() else []:
+            if child.name == "dagbench":
+                continue
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+    for sub in ("models", "macros", "tests"):
+        copy_tree(project / sub, DST / sub)
+
+    write_sources()
+    drop_audit()
+    convert_snapshots(project)
+    counts = {"surrogate_key": 0, "double": 0, "desc_nulls_last": 0, "text": 0}
+    rewrite_sql(counts)
+    print(f"rewrites: {counts}")
+    vendor_generator(src)
+    (DST / "UPSTREAM").write_text(f"https://github.com/astronomer/de-bench {sha} {UPSTREAM_PROJECT}\n")
+    n = len(list((DST / "models").rglob("*.sql")))
+    print(f"Vendored de-bench copperline_analytics ({sha[:7]}, {n} models) into {DST.relative_to(REPO_ROOT)}")
+
+
+if __name__ == "__main__":
+    main()

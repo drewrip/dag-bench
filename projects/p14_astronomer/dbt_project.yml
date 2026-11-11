@@ -1,0 +1,79 @@
+# de-bench copperline_analytics vendored by utils/astronomer_vendor.py; see VENDORED.md.
+name: 'p14_astronomer'
+version: '1.0.0'
+config-version: 2
+require-dbt-version: [">=1.10.5", "<3.0.0"]
+profile: 'p14_astronomer'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Upstream reads "today" from WORLD_TODAY (default 2026-06-15, the generator's
+  # `today`, the day after the data's last day). Pinned, so compiled SQL is
+  # stable.
+  ds: '2026-06-15'
+  # Upstream: dbt-utils hashes NULL as the empty string with this on; it keeps
+  # generate_surrogate_key equal to 0.8.6's surrogate_key.
+  surrogate_key_treat_nulls_as_empty_strings: true
+  rfm_window_days: 365
+  cohort_window_days: 730
+
+# Upstream's materializations and tags. Its per-layer `+schema` is dropped
+# (macros/dagbench/generate_schema_name.sql): everything is in the target schema.
+models:
+  p14_astronomer:
+    shared:
+      staging:
+        +materialized: view
+        +tags: ["stg", "platform"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "platform"]
+      dims:
+        +materialized: table
+        +tags: ["dim", "platform", "conformed"]
+      ops:
+        +materialized: table
+        +tags: ["ops", "platform"]
+      # dag-bench: upstream's two snapshots, as table models.
+      snapshots:
+        +materialized: table
+        +tags: ["snapshot", "platform"]
+    commerce:
+      +materialized: table
+      +tags: ["commerce"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "commerce"]
+    growth:
+      +materialized: table
+      +tags: ["growth"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "growth"]
+    supply:
+      +materialized: table
+      +tags: ["supply"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "supply"]
+    finance:
+      +materialized: table
+      +tags: ["finance"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "finance"]
+    customer:
+      +materialized: table
+      +tags: ["customer"]
+      intermediate:
+        +materialized: view
+        +tags: ["int", "customer"]
+
+data_tests:
+  +store_failures: false
+  +severity: error
