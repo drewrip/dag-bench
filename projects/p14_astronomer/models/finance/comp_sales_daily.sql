@@ -56,11 +56,11 @@ by_region_day as (
     select
         ds,
         region,
-        sum(net_sales_cents) filter (where is_comparable)       as comp_sales_cents,
-        count(distinct store_id) filter (where is_comparable)   as comp_store_count,
+        {{ dagbench_agg_filter('sum', 'net_sales_cents', 'is_comparable') }}       as comp_sales_cents,
+        {{ dagbench_agg_filter('count', 'distinct store_id', 'is_comparable') }}   as comp_store_count,
         sum(net_sales_cents)                                    as total_sales_cents,
         count(distinct store_id)                                as store_count,
-        count(distinct store_id) filter (where is_acquired and is_comparable)
+        {{ dagbench_agg_filter('count', 'distinct store_id', 'is_acquired and is_comparable') }}
                                                                 as acquired_comp_store_count
     from comparable
     group by 1, 2

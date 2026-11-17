@@ -54,15 +54,15 @@ select
     supplier_id                                     as supplier_key,
     supplier_id,
     count(*)                                        as sku_count,
-    count(*) filter (where status = 'active')       as active_sku_count,
-    count(*) filter (where status = 'discontinued') as discontinued_sku_count,
+    {{ dagbench_agg_filter('count', '*', "status = 'active'") }}       as active_sku_count,
+    {{ dagbench_agg_filter('count', '*', "status = 'discontinued'") }} as discontinued_sku_count,
     count(distinct dept_code)                       as department_count,
-    string_agg(distinct dept_code, ',' order by dept_code) as departments,
+    {{ dagbench_string_agg('distinct dept_code', "','", 'dept_code') }} as departments,
     min(list_price_cents)                           as min_list_price_cents,
     max(list_price_cents)                           as max_list_price_cents,
     cast(round(avg(list_price_cents), 0) as bigint) as average_list_price_cents,
     max(updated_at)                                 as last_change_at,
-    count(*) filter (where status = 'active') > 0   as is_active
+    {{ dagbench_agg_filter('count', '*', "status = 'active'") }} > 0   as is_active
 
 from current_skus
 group by 1

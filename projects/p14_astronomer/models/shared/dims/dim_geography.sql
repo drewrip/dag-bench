@@ -22,8 +22,8 @@ with markets as (
 
     select
         market_code,
-        count(*) filter (where is_trading_day)  as trading_days,
-        count(*) filter (where is_holiday)      as holidays,
+        {{ dagbench_agg_filter('count', '*', 'is_trading_day') }}  as trading_days,
+        {{ dagbench_agg_filter('count', '*', 'is_holiday') }}      as holidays,
         min(calendar_date)                      as calendar_from,
         max(calendar_date)                      as calendar_to
     from {{ ref('stg_reference__market_calendar') }}
@@ -37,7 +37,7 @@ store_regions as (
         market_code,
         count(distinct region_code)                             as region_count,
         count(*)                                                as store_count,
-        string_agg(distinct region_code, ',' order by region_code) as regions,
+        {{ dagbench_string_agg('distinct region_code', "','", 'region_code') }} as regions,
         count(distinct tz_name)                                 as timezone_count
     from {{ ref('stg_store__stores') }}
     where is_current

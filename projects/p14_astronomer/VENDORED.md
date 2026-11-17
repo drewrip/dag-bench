@@ -74,10 +74,19 @@ platform). The longest chain is 9 models. The hubs are `int_orders_enriched` and
     cent apart. The quotient is cast to `double precision`, DuckDB's own type.
   - `DESC` -> `DESC NULLS LAST` (DuckDB's default; Postgres sorts NULLs first).
 
+- **Snowflake portability**: `FILTER`, least/greatest and `bool_or`
+  through `utils/snowflake_rewrite_models.py`; a Snowflake branch in `int_closed_month`
+  (no subquery correlated inside an aggregate), half-to-even cents in `macros/money.sql`,
+  `string_agg ... order by`, the `regexp_replace` `'g'` flag, `similar to`, and the
+  quoted `"partition"` / `"offset"` columns, each as a macro from `../../macros/dagbench/`
+  that renders upstream's text on DuckDB and Postgres.
+
 ## Hand-written
 
 - `dbt_project.yml`: upstream's materializations and tags (without `+schema`), `ds`
-  and upstream's vars.
+  and upstream's vars; for the Snowflake checks, `../../macros` in `macro-paths`, the
+  `dagbench_sf_session()` hooks (empty off Snowflake) and compare-only `dagbench_*` vars.
+- `macros/dagbench/portability.sql`: Snowflake branches too.
 - `macros/dagbench/`: the macros above.
 - `load_postgres.py`: loads text columns with `COLLATE "C"`, so string sorts and
   comparisons (`string_agg(... order by ...)`, SKU ranges) are bytewise as in DuckDB.

@@ -3,10 +3,17 @@ version: '1.0.0'
 config-version: 2
 profile: 'p01_iot'
 model-paths: ["models"]
+# ../../macros: shared Snowflake portability macros
+macro-paths: ["macros", "../../macros"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+# Renders only on the snowflake target (statement timeouts); empty elsewhere.
+on-run-start:
+  - "{{ dagbench_sf_session() }}"
+
 models:
+  +pre-hook: "{{ dagbench_sf_session() }}"
   p01_iot:
     layer_1:
       +materialized: view

@@ -6,7 +6,7 @@ require-dbt-version: [">=1.10.5", "<3.0.0"]
 profile: 'p12_stripe'
 
 model-paths: ["models"]
-macro-paths: ["macros"]
+macro-paths: ["macros", "../../macros"]  # ../../macros: shared Snowflake portability macros
 test-paths: ["tests"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
@@ -35,10 +35,21 @@ vars:
   # Upstream package-level defaults.
   card_pass_through_columns: []
   stripe_sources: []
+  # Snowflake leaf diff only (utils/compare_snowflake.py; not referenced by any
+  # model). source_relation is '<database>.stripe', i.e. 'warehouse.stripe' on
+  # DuckDB vs 'CMU.stripe' on Snowflake, and account_daily_id hashes it.
+  # dispute_reasons is string_agg(distinct ...) without ORDER BY upstream.
+  dagbench_volatile_columns: [source_relation, account_daily_id]
+  dagbench_unordered_list_columns: {dispute_reasons: ","}
 
 # Upstream materializations kept as-is: staging tables over `tmp` views,
 # intermediate tables (two ephemeral), mart tables.
+# Renders only on the snowflake target (statement timeouts, UTC); empty elsewhere.
+on-run-start:
+  - "{{ dagbench_sf_session() }}"
+
 models:
+  +pre-hook: "{{ dagbench_sf_session() }}"
   p12_stripe:
     +materialized: table
     intermediate:

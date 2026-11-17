@@ -1,6 +1,8 @@
 {#
     dag-bench: DuckDB-only constructs in upstream's models, rewritten into these
-    calls by utils/astronomer_vendor.py. On DuckDB each renders upstream's SQL.
+    calls by utils/astronomer_vendor.py. On DuckDB each renders upstream's SQL;
+    the `else` branches are Postgres (and Snowflake, where it has no branch of
+    its own: dagbench_datediff, dagbench_strftime).
 #}
 
 {# upstream: date_diff('<part>', a, b), the number of part boundaries crossed,
@@ -31,6 +33,12 @@
 {% macro dagbench_json_extract_string(expr, path) -%}
     {%- if target.type == 'duckdb' -%}
         json_extract_string({{ expr }}, {{ path }})
+    {%- elif target.type == 'snowflake' -%}
+        {%- set p = path.strip() -%}
+        {%- if not (p.startswith("'$.") and p.endswith("'")) -%}
+            {{ exceptions.raise_compiler_error("dagbench_json_extract_string: path must be a '$.key' literal, got " ~ path) }}
+        {%- endif -%}
+        json_extract_path_text({{ expr }}, '{{ p[3:-1] }}')
     {%- else -%}
         {%- set p = path.strip() -%}
         {%- if not (p.startswith("'$.") and p.endswith("'")) -%}
@@ -44,6 +52,8 @@
 {% macro dagbench_string_split(expr, sep) -%}
     {%- if target.type == 'duckdb' -%}
         string_split({{ expr }}, {{ sep }})
+    {%- elif target.type == 'snowflake' -%}
+        split({{ expr }}, {{ sep }})
     {%- else -%}
         string_to_array({{ expr }}, {{ sep }})
     {%- endif -%}
@@ -53,6 +63,8 @@
 {% macro dagbench_list_contains(list, x) -%}
     {%- if target.type == 'duckdb' -%}
         list_contains({{ list }}, {{ x }})
+    {%- elif target.type == 'snowflake' -%}
+        array_contains(cast({{ x }} as variant), {{ list }})
     {%- else -%}
         ({{ x }} = any({{ list }}))
     {%- endif -%}
@@ -62,6 +74,8 @@
 {% macro dagbench_isodow(expr) -%}
     {%- if target.type == 'duckdb' -%}
         isodow({{ expr }})
+    {%- elif target.type == 'snowflake' -%}
+        dayofweekiso({{ expr }})
     {%- else -%}
         cast(extract(isodow from {{ expr }}) as integer)
     {%- endif -%}
@@ -71,6 +85,10 @@
 {% macro dagbench_dayname(expr) -%}
     {%- if target.type == 'duckdb' -%}
         dayname({{ expr }})
+    {%- elif target.type == 'snowflake' -%}
+        {#- Snowflake's dayname() is 'Mon'; independent of WEEK_START. -#}
+        decode(dayofweekiso({{ expr }}), 1, 'Monday', 2, 'Tuesday', 3, 'Wednesday', 4, 'Thursday',
+               5, 'Friday', 6, 'Saturday', 7, 'Sunday')
     {%- else -%}
         to_char({{ expr }}, 'FMDay')
     {%- endif -%}

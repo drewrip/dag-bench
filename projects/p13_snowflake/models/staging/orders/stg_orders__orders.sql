@@ -110,7 +110,7 @@
                             Owner: none assigned
 
   DATA-4521  (Closed)       fraud_score was returning negative values for
-                            some edge cases. Fixed in v4.7.1 with GREATEST(0, x)
+                            some edge cases. Fixed in v4.7.1 with {{ dagbench_fn('GREATEST') }}(0, x)
                             Owner: marcus.johnson, Fixed: 2024-10-22
 
   DATA-5102  (Open, P2)     utm_campaign truncated at 255 chars, some
@@ -320,7 +320,7 @@ renamed AS (
         -- ====================================================================
         -- TODO: 2024-01-15 marcus.johnson - Consider adding device_fingerprint
         -- once Sift integration is complete
-        greatest(0, coalesce(fraud_score, 0)) as fraud_score,  -- ML score 0.0-1.0 (fixed in v4.7.1)
+        {{ dagbench_fn('greatest') }}(0, coalesce(fraud_score, 0)) as fraud_score,  -- ML score 0.0-1.0 (fixed in v4.7.1)
         TRIM(fraud_check_status) AS fraud_check_status,  -- PENDING, PASSED, REVIEW, BLOCKED
         fraud_review_date,  -- When manual review completed
         trim(fraud_reviewer_id) as fraud_reviewer_id,  -- Who reviewed (if manual)

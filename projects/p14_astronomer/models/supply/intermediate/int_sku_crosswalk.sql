@@ -57,7 +57,7 @@ candidates as (
         d.merch_sku,
         d.dept_code,
         case
-            when right(d.merch_sku, 5) similar to '[0-9]{5}'
+            when {{ dagbench_similar_to('right(d.merch_sku, 5)', "'[0-9]{5}'") }}
             then 'SKU-' || right(d.merch_sku, 5)
         end                                     as candidate_catalog_sku
     from deduped d

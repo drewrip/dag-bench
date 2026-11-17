@@ -37,8 +37,8 @@ line_rollup as (
         sum(extended_cost_cents)                    as cost_cents,
         sum(merch_margin_cents)                     as merch_margin_cents,
         count(*)                                    as line_count,
-        count(*) filter (where not cost_is_stated)  as lines_without_cost,
-        count(*) filter (where is_catalogued)       as catalogued_lines,
+        {{ dagbench_agg_filter('count', '*', 'not cost_is_stated') }}  as lines_without_cost,
+        {{ dagbench_agg_filter('count', '*', 'is_catalogued') }}       as catalogued_lines,
         count(distinct cost_center_key)             as department_count
     from {{ ref('fct_order_line') }}
     group by 1

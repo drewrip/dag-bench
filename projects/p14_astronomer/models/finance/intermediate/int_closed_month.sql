@@ -37,7 +37,27 @@ trading_days as (
 
 ),
 
-close_dates as (
+close_dates as ({% if target.type == 'snowflake' %}
+    -- dag-bench: see utils/astronomer_vendor.py (CLOSE_DATES)
+    select
+        m.fiscal_month,
+        m.fiscal_year,
+        m.fiscal_period,
+        m.month_start,
+        m.month_end,
+        min(case when t.trading_day_seq = f.close_seq then t.calendar_date end) as close_date
+    from months m
+    cross join trading_days t
+    join (
+        select m2.fiscal_month, m2.fiscal_year, min(t2.trading_day_seq) + 4 as close_seq
+        from months m2
+        join trading_days t2 on t2.calendar_date > m2.month_end
+        group by 1, 2
+    ) f on f.fiscal_month = m.fiscal_month and f.fiscal_year = m.fiscal_year
+    where t.calendar_date > m.month_end
+      and t.calendar_date <= m.month_end + 20
+    group by 1, 2, 3, 4, 5
+{% else %}
 
     select
         m.fiscal_month,
@@ -58,7 +78,7 @@ close_dates as (
       and t.calendar_date <= m.month_end + 20
     group by 1, 2, 3, 4, 5
 
-)
+{% endif %})
 
 select
     fiscal_month,

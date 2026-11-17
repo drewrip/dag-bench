@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 import shutil
 import sys
 from pathlib import Path
@@ -148,3 +149,81 @@ def run_tuva(project_dir: Path) -> None:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(cache_path, output_path)
+
+
+# --- tiny (Snowflake logic checks) ------------------------------------------
+# The `small` input with the reference tables over 100k rows pruned to rows
+# whose join key occurs in the input (as written, upper-cased/trimmed, without
+# dots or dashes), so joins stay non-empty. Not exact: DuckDB and Snowflake
+# both run on the same pruned warehouse. 44M reference rows -> ~0.1M.
+TINY_KEYS = {
+    "provider_data__provider": ["npi"],
+    "provider_data__provider_taxonomy_unpivot": ["npi"],
+    "provider_data__other_provider_taxonomy": ["npi"],
+    "service_category__ccs_services_procedures": ["hcpcs_code"],
+    "terminology__loinc": ["loinc"],
+    "terminology__snomed_ct": ["snomed_ct"],
+    "terminology__snomed_icd_10_map": ["referenced_component_id", "map_target"],
+    "terminology__svi_us": ["FIPS", "STCNTY"],
+    "tuva_condition_grouper_code_map": ["code"],
+    # No single key column: any text column.
+    "terminology__snomed_ct_transitive_closures": None,
+    "terminology__coderx_packages": None,
+}
+TINY_MIN_ROWS = 100_000
+
+
+def build_tiny(small_path: Path, output_path: Path) -> None:
+    import duckdb
+
+    output_path.unlink(missing_ok=True)
+    con = duckdb.connect(str(output_path))
+    con.execute(f"attach {sql_literal(str(small_path))} as s (read_only)")
+    tables = [r[0] for r in con.execute(
+        "select table_name from duckdb_tables() where database_name = 's' order by 1").fetchall()]
+    parts = []
+    for t in tables:
+        if t.startswith("synthetic_data__"):
+            for (col,) in con.execute("select column_name from duckdb_columns() where database_name = 's' "
+                                      "and table_name = ? and data_type = 'VARCHAR'", [t]).fetchall():
+                parts.append(f"select distinct {quote_ident(col)} as v from s.main.{quote_ident(t)} "
+                             f"where {quote_ident(col)} is not null")
+    con.execute("create temp table vals as with raw as (" + " union ".join(parts) + ") "
+                "select distinct x as v from (select v as x from raw union all select upper(trim(v)) from raw "
+                "union all select replace(upper(trim(v)), '.', '') from raw "
+                "union all select replace(trim(v), '-', '') from raw)")
+    for t in tables:
+        n = con.execute(f"select count(*) from s.main.{quote_ident(t)}").fetchone()[0]
+        where = ""
+        if n > TINY_MIN_ROWS and not t.startswith("synthetic_data__"):
+            if t not in TINY_KEYS:
+                raise SystemExit(f"tuva tiny: no pruning rule for {t} ({n:,} rows); add one to TINY_KEYS")
+            keys = TINY_KEYS[t]
+            if keys is None:
+                keys = [r[0] for r in con.execute("select column_name from duckdb_columns() where database_name = 's' "
+                                                  "and table_name = ? and data_type = 'VARCHAR'", [t]).fetchall()]
+            conds = []
+            for k in keys:
+                q = f"cast({quote_ident(k)} as varchar)"
+                conds += [f"{q} in (select v from vals)", f"replace({q}, '.', '') in (select v from vals)"]
+            where = " where " + " or ".join(conds)
+        t0 = time.monotonic()
+        con.execute(f"create table main.{quote_ident(t)} as select * from s.main.{quote_ident(t)}{where}")
+        if where:
+            kept = con.execute(f"select count(*) from main.{quote_ident(t)}").fetchone()[0]
+            print(f"  tiny: {t}: {n:,} -> {kept:,} rows ({time.monotonic() - t0:.1f}s)", flush=True)
+    con.execute("detach s")
+    con.close()
+
+
+def tiny_path() -> Path:
+    """dbgen/.cache/p11_tiny.duckdb, built from the cached `small` warehouse."""
+    out = CACHE_DIR / "p11_tiny.duckdb"
+    if not out.exists():
+        small = CACHE_DIR / "p11_small.duckdb"
+        if not small.exists():
+            raise SystemExit(f"{small} missing: run projects/p11_tuva/generate_data.py small first")
+        tmp = out.with_suffix(".duckdb.partial")
+        build_tiny(small, tmp)
+        tmp.rename(out)
+    return out

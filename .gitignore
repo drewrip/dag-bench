@@ -9,3 +9,13 @@ errors/
 dbt_packages/
 .DS_Store
 scaling_plot.png
+
+# Snowflake secrets and budget ledger: never commit
+*.p8
+*.pem
+snowflake_pat
+.snowflake_ledger.jsonl
+connections.toml
+.env
+.env.*
+.compiled_baseline/

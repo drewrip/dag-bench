@@ -56,12 +56,12 @@ select
     p.dept_code                                 as cost_center_key,
     p.location_kind,
 
-    greatest(cast(round(p.on_hand_units, 0) as integer), 0)     as on_hand_units,
-    greatest(cast(round(p.available_units, 0) as integer), 0)   as available_units,
-    greatest(cast(round(p.reserved_units, 0) as integer), 0)    as reserved_units,
-    greatest(cast(round(p.in_transit_units, 0) as integer), 0)  as in_transit_units,
+    {{ dagbench_fn('greatest') }}(cast(round(p.on_hand_units, 0) as integer), 0)     as on_hand_units,
+    {{ dagbench_fn('greatest') }}(cast(round(p.available_units, 0) as integer), 0)   as available_units,
+    {{ dagbench_fn('greatest') }}(cast(round(p.reserved_units, 0) as integer), 0)    as reserved_units,
+    {{ dagbench_fn('greatest') }}(cast(round(p.in_transit_units, 0) as integer), 0)  as in_transit_units,
 
-    greatest(cast(round(coalesce(d.demand_units, 0), 0) as integer), 0) as demand_units,
+    {{ dagbench_fn('greatest') }}(cast(round(coalesce(d.demand_units, 0), 0) as integer), 0) as demand_units,
     x.is_matched                                as demand_is_known,
     x.catalog_sku,
 

@@ -4,7 +4,7 @@ with sessions as (
         visitor_id,
         device_type,
         -- derive duration from start/end when the raw duration column is missing
-        coalesce(duration_seconds, cast(extract(epoch from session_end - session_start) as integer)) as session_duration_seconds,
+        coalesce(duration_seconds, cast({{ dagbench_epoch_diff('session_end', 'session_start') }} as integer)) as session_duration_seconds,
         page_views,
         is_converted,
         session_start

@@ -20,7 +20,7 @@ tickets as (
     select
         customer_key,
         count(*)                                as ticket_count,
-        count(*) filter (where is_open)         as open_ticket_count,
+        {{ dagbench_agg_filter('count', '*', 'is_open') }}         as open_ticket_count,
         max(opened_date)                        as last_ticket_date,
         cast(round(avg(csat), 1) as decimal(4, 1)) as average_csat
     from {{ ref('int_customer_ticket_linked') }}
@@ -51,7 +51,7 @@ disputes as (
     select
         v.customer_key,
         count(*)                                as dispute_count,
-        count(*) filter (where d.is_open)       as open_disputes,
+        {{ dagbench_agg_filter('count', '*', 'd.is_open') }}       as open_disputes,
         sum(d.disputed_cents)                   as disputed_cents
     from {{ ref('stg_finance__disputes') }} d
     join invoices v on v.invoice_id = d.invoice_id
@@ -63,9 +63,9 @@ receivables as (
 
     select
         customer_key,
-        sum(open_cents) filter (where open_cents > 0)   as open_receivable_cents,
-        count(*) filter (where open_cents > 0)          as open_invoice_count,
-        max({{ dagbench_datediff('day', "due_date", (ds())) }}) filter (where open_cents > 0)
+        {{ dagbench_agg_filter('sum', 'open_cents', 'open_cents > 0') }}   as open_receivable_cents,
+        {{ dagbench_agg_filter('count', '*', 'open_cents > 0') }}          as open_invoice_count,
+        {{ dagbench_agg_filter('max', (dagbench_datediff('day', "due_date", (ds()))), 'open_cents > 0') }}
                                                         as worst_days_past_due
     from invoices
     group by 1

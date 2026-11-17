@@ -14,11 +14,11 @@ select
     c.first_name,
     c.email,
     lo.last_order_date,
-    {{ dagbench_current_date() }} - lo.last_order_date as days_since_last_order,
+    {{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }} as days_since_last_order,
     case 
-        when ({{ dagbench_current_date() }} - lo.last_order_date) > interval '365' day then 'Lost'
-        when ({{ dagbench_current_date() }} - lo.last_order_date) > interval '180' day then 'High Risk'
-        when ({{ dagbench_current_date() }} - lo.last_order_date) > interval '90' day then 'Medium Risk'
+        when ({{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }}) > {{ dagbench_interval_literal("interval '365' day", 31536000) }} then 'Lost'
+        when ({{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }}) > {{ dagbench_interval_literal("interval '180' day", 15552000) }} then 'High Risk'
+        when ({{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }}) > {{ dagbench_interval_literal("interval '90' day", 7776000) }} then 'Medium Risk'
         else 'Active'
     end as churn_risk_level
 from src_stg_customer__customers c

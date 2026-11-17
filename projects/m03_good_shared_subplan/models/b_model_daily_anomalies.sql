@@ -1,3 +1,4 @@
+{%- set w = "partition by model order by reading_date rows between 7 preceding and 1 preceding" -%}
 with daily as (
     select d.model, cast(r.ts as date) as reading_date,
         count(*)                       as reading_count,
@@ -11,12 +12,12 @@ with daily as (
 ),
 baselines as (
     select model, reading_date, reading_count, mean_pressure, mean_humidity,
-        avg(mean_pressure)         over w as base_pressure,
-        stddev_samp(mean_pressure) over w as sd_pressure,
-        avg(mean_humidity)         over w as base_humidity,
-        stddev_samp(mean_humidity) over w as sd_humidity
+        avg(mean_pressure)         over {{ dagbench_over('w', w) }} as base_pressure,
+        stddev_samp(mean_pressure) over {{ dagbench_over('w', w) }} as sd_pressure,
+        avg(mean_humidity)         over {{ dagbench_over('w', w) }} as base_humidity,
+        stddev_samp(mean_humidity) over {{ dagbench_over('w', w) }} as sd_humidity
     from daily
-    window w as (partition by model order by reading_date rows between 7 preceding and 1 preceding)
+    {{ dagbench_window_clause('w', w) }}
 )
 select model, reading_date, reading_count,
     cast(round(cast(mean_pressure as numeric(18,5)), 3) as numeric(10,3)) as mean_pressure,

@@ -33,6 +33,9 @@ generated. To update upstream, check out a new commit and run:
 - `dbt_project.yml`: feature vars (all upstream features on, plus credit notes), the window
   vars, upstream materializations (staging tables over `tmp` views, intermediate tables with
   two ephemeral, mart tables).
+- `dbt_project.yml`, for the Snowflake logic checks: `../../macros` in
+  `macro-paths`, `dagbench_sf_session()` hooks (empty off Snowflake), and the compare-only
+  vars `dagbench_volatile_columns` / `dagbench_unordered_list_columns`.
 - `macros/dagbench/generate_schema_name`: every relation in `target.schema` (upstream uses
   `<schema>_stripe` / `<schema>_stg_stripe`).
 - `utils/stripe_data.py`: source data, see SPEC.md. Upstream has only ~260 rows of seeds.

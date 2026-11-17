@@ -44,7 +44,7 @@ substitution_scores as (
         p.co_purchase_count,
         t1.product_order_count as product_a_orders,
         t2.product_order_count as product_b_orders,
-        round(100.0 * p.co_purchase_count / least(t1.product_order_count, t2.product_order_count), 2) as affinity_score
+        round(100.0 * p.co_purchase_count / {{ dagbench_fn('least') }}(t1.product_order_count, t2.product_order_count), 2) as affinity_score
     from pair_frequency p
     inner join product_totals t1 on p.product_a = t1.product_id
     inner join product_totals t2 on p.product_b = t2.product_id

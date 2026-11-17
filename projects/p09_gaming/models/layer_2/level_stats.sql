@@ -1,9 +1,9 @@
 select e.level_id, lv.world, lv.difficulty,
-    count(*) filter (where e.is_completion) as completions,
-    count(*) filter (where e.is_failure) as failures,
+    {{ dagbench_agg_filter('count', '*', 'e.is_completion') }} as completions,
+    {{ dagbench_agg_filter('count', '*', 'e.is_failure') }} as failures,
     count(distinct e.player_id) as players,
-    cast(round(count(*) filter (where e.is_completion)*100.0
-          /nullif(count(*) filter (where e.is_completion or e.is_failure),0), 2) as numeric(10,2)) as completion_rate
+    cast(round({{ dagbench_agg_filter('count', '*', 'e.is_completion') }}*100.0
+          /nullif({{ dagbench_agg_filter('count', '*', 'e.is_completion or e.is_failure') }},0), 2) as numeric(10,2)) as completion_rate
 from {{ ref('stg_events') }} e
 join {{ ref('stg_levels') }} lv using (level_id)
 group by e.level_id, lv.world, lv.difficulty

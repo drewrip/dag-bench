@@ -21,7 +21,7 @@ Note: This replaced the failed attempt to use a real-time API (see fct_sales_v2_
 WITH date_spine AS (
     -- Generate dates for the last 5 years
     SELECT CAST(d AS DATE) AS rate_date
-    FROM generate_series(CAST('2020-01-01' AS TIMESTAMP), CAST({{ dagbench_current_date() }} AS TIMESTAMP), INTERVAL '1 day') AS spine(d)
+    {{ dagbench_day_spine_from('2020-01-01') }}
 ),
 
 -- Major currency rates (simplified - production would pull from CURRENCY_EXCHANGE_RATES table)

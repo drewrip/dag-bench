@@ -100,8 +100,8 @@ final as (
         end as inventory_value_impact,
 
         -- Timing (derived)
-        ({{ dagbench_current_date() }} + (-cast(abs({{ dagbench_hash("_id") }}) % 90 as int)) * INTERVAL '1 day') as movement_date,
-        ({{ dagbench_current_date() }} + (-cast(abs({{ dagbench_hash("_id") }}) % 90 as int)) * INTERVAL '1 day') as expected_date,
+        ({{ dagbench_current_date() }} + {{ dagbench_interval_n("-cast(abs(" ~ (dagbench_hash("_id")) ~ ") % 90 as int)", 'day') }}) as movement_date,
+        ({{ dagbench_current_date() }} + {{ dagbench_interval_n("-cast(abs(" ~ (dagbench_hash("_id")) ~ ") % 90 as int)", 'day') }}) as expected_date,
         abs({{ dagbench_hash("_id") }}) % 30 as days_variance,
         case when abs({{ dagbench_hash("_id") }}) % 30 > 0 then 'LATE' else 'ON_TIME' end as delivery_status,
 
@@ -130,7 +130,7 @@ final as (
         -- Approval & Authorization (derived)
         case when abs({{ dagbench_hash("_id") }}) % 2 = 0 then true else false end as is_approved,
         'USER-' || substr(_id, 1, 8) as approved_by,
-        ({{ dagbench_current_date() }} + (-cast(abs({{ dagbench_hash("_id") }}) % 5 as int)) * INTERVAL '1 day') as approval_date,
+        ({{ dagbench_current_date() }} + {{ dagbench_interval_n("-cast(abs(" ~ (dagbench_hash("_id")) ~ ") % 5 as int)", 'day') }}) as approval_date,
 
         -- Metadata
         _loaded_at,

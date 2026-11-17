@@ -35,8 +35,8 @@ select
     sum(s.fulfilment_fee_cents + s.refund_cents) as fee_cents,
     sum(s.seller_net_cents)                     as payout_cents,
 
-    count(*) filter (where s.is_fully_settled)  as fully_settled_orders,
-    count(*) filter (where not s.is_settled)    as unsettled_orders,
+    {{ dagbench_agg_filter('count', '*', 's.is_fully_settled') }}  as fully_settled_orders,
+    {{ dagbench_agg_filter('count', '*', 'not s.is_settled') }}    as unsettled_orders,
     count(distinct s.payout_id)                 as payout_count,
     min(s.settled_from_date)                    as first_settled_date,
     max(s.settled_to_date)                      as last_settled_date

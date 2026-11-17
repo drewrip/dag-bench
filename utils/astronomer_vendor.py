@@ -334,6 +334,67 @@ ASOF_REPLAY_PORTABLE = """    {% if target.type == 'duckdb' -%}
     {% endif %}
 """
 
+# --- Snowflake -----------------------------------------------------------------
+# Applied before the Snowflake rewrites below; each renders upstream's text on
+# DuckDB and Postgres. int_closed_month correlates a subquery inside FILTER,
+# which Snowflake can't evaluate inside an aggregate: on Snowflake the fifth
+# trading day after month end (min seq after it, + 4) is joined in per month.
+# `months` is unique on (fiscal_month, fiscal_year), so the join is 1:1.
+CLOSE_DATES = """close_dates as (
+
+    select
+        m.fiscal_month,
+        m.fiscal_year,
+        m.fiscal_period,
+        m.month_start,
+        m.month_end,
+        min(t.calendar_date) filter (
+            where t.trading_day_seq = (
+                select min(t2.trading_day_seq) + 4
+                from trading_days t2
+                where t2.calendar_date > m.month_end
+            )
+        )                                       as close_date
+    from months m
+    cross join trading_days t
+    where t.calendar_date > m.month_end
+      and t.calendar_date <= m.month_end + 20
+    group by 1, 2, 3, 4, 5
+
+)"""
+CLOSE_DATES_PORTABLE = CLOSE_DATES.replace("close_dates as (", """close_dates as ({% if target.type == 'snowflake' %}
+    -- dag-bench: see utils/astronomer_vendor.py (CLOSE_DATES)
+    select
+        m.fiscal_month,
+        m.fiscal_year,
+        m.fiscal_period,
+        m.month_start,
+        m.month_end,
+        min(case when t.trading_day_seq = f.close_seq then t.calendar_date end) as close_date
+    from months m
+    cross join trading_days t
+    join (
+        select m2.fiscal_month, m2.fiscal_year, min(t2.trading_day_seq) + 4 as close_seq
+        from months m2
+        join trading_days t2 on t2.calendar_date > m2.month_end
+        group by 1, 2
+    ) f on f.fiscal_month = m.fiscal_month and f.fiscal_year = m.fiscal_year
+    where t.calendar_date > m.month_end
+      and t.calendar_date <= m.month_end + 20
+    group by 1, 2, 3, 4, 5
+{% else %}""", 1).replace("\n\n)", "\n\n{% endif %})")
+SNOWFLAKE_PRE_REPLACEMENTS: list[tuple] = [
+    ("models/finance/intermediate/int_closed_month.sql", CLOSE_DATES, CLOSE_DATES_PORTABLE),
+]
+
+
+def call_rewrites(sql: str) -> str:
+    """CALL_REWRITES on a snippet (a Snowflake macro argument)."""
+    for name, build in CALL_REWRITES:
+        sql, _ = rewrite_calls(sql, name, build)
+    return sql
+
+
 # Exact-text fixes: (file, old, new[, count]). Each must match `count` times (default 1).
 TEXT_REPLACEMENTS: list[tuple] = [
     ("models/shared/intermediate/int_inventory_position_daily.sql", ASOF_REPLAY, ASOF_REPLAY_PORTABLE),
@@ -367,6 +428,34 @@ TEXT_REPLACEMENTS: list[tuple] = [
     ("macros/money.sql",
      "        (cast({{ amount_cents }} as decimal(38, 0)) * cast({{ bps }} as decimal(38, 0)) + 5000) / 10000\n        as bigint",
      "        cast((cast({{ amount_cents }} as decimal(38, 0)) * cast({{ bps }} as decimal(38, 0)) + 5000) / 10000 as double precision)\n        as bigint"),
+    # --- Snowflake. Each renders the text above on DuckDB and Postgres.
+    # Snowflake casts double -> bigint rounding half away from zero; DuckDB
+    # rounds half to even. On Snowflake the same quotient goes through
+    # dagbench_bigint_half_even (../../macros/dagbench/snowflake_compat.sql).
+    ("macros/money.sql",
+     "{% macro to_base_cents(amount_cents, rate_ppm) -%}\n    cast(cast(",
+     "{% macro to_base_cents(amount_cents, rate_ppm) -%}\n"
+     "    {%- if target.type == 'snowflake' -%}\n"
+     "    {{ dagbench_bigint_half_even('(cast(' ~ amount_cents ~ ' as decimal(38, 0)) * cast(coalesce(' ~ rate_ppm"
+     " ~ ', 1000000) as decimal(38, 0)) + 500000) / 1000000') }}\n"
+     "    {%- else -%}\n    cast(cast("),
+    ("macros/money.sql",
+     "{% macro apply_bps(amount_cents, bps) -%}\n    cast(\n",
+     "{% macro apply_bps(amount_cents, bps) -%}\n"
+     "    {%- if target.type == 'snowflake' -%}\n"
+     "    {{ dagbench_bigint_half_even('(cast(' ~ amount_cents ~ ' as decimal(38, 0)) * cast(' ~ bps"
+     " ~ ' as decimal(38, 0)) + 5000) / 10000') }}\n"
+     "    {%- else -%}\n    cast(\n"),
+    ("macros/money.sql", "        as bigint\n    )\n{%- endmacro %}",
+     "        as bigint\n    )\n    {%- endif -%}\n{%- endmacro %}", 2),
+    # SIMILAR TO doesn't exist on Snowflake.
+    ("models/supply/intermediate/int_sku_crosswalk.sql", "right(d.merch_sku, 5) similar to '[0-9]{5}'",
+     """{{ dagbench_similar_to('right(d.merch_sku, 5)', "'[0-9]{5}'") }}"""),
+    # Quoted reserved words: the loader creates every column upper-case.
+    ("models/shared/staging/stg_ecommerce__web_events.sql",
+     'cast("partition" as integer)', "cast({{ dagbench_ident('partition') }} as integer)"),
+    ("models/shared/staging/stg_ecommerce__web_events.sql",
+     'cast("offset" as bigint)', "cast({{ dagbench_ident('offset') }} as bigint)"),
 ]
 
 
@@ -385,6 +474,15 @@ def code_subn(pattern: re.Pattern, repl: str, text: str) -> tuple[str, int]:
 
 
 def rewrite_sql(counts: dict) -> None:
+    sys.path.insert(0, str(REPO_ROOT))
+    from utils.snowflake_rewrite_models import rewrite as snowflake_rewrite
+
+    for rel, old, new in SNOWFLAKE_PRE_REPLACEMENTS:
+        path = DST / rel
+        text = path.read_text()
+        assert text.count(old) == 1, (rel, old[:60])
+        path.write_text(text.replace(old, new))
+    problems: list[str] = []
     for path in sorted([*(DST / "models").rglob("*.sql"), *(DST / "tests").rglob("*.sql"),
                         *(DST / "macros").rglob("*.sql")]):
         if "dagbench" in path.parts:
@@ -392,6 +490,12 @@ def rewrite_sql(counts: dict) -> None:
         text = path.read_text()
         new, n = SURROGATE_KEY.subn("dbt_utils.generate_surrogate_key(", text)
         counts["surrogate_key"] += n
+        if "macros" not in path.relative_to(DST).parts:
+            # Snowflake: FILTER, least/greatest, bool_or (utils/snowflake_rewrite_models.py),
+            # before the call rewrites so either can nest in the other.
+            before = new
+            new = snowflake_rewrite(new, str(path.relative_to(DST)), problems, arg_hook=call_rewrites)
+            counts["snowflake_files"] += new != before
         for name, build in CALL_REWRITES:
             new, n = rewrite_calls(new, name, build)
             counts[name] = counts.get(name, 0) + n
@@ -401,6 +505,8 @@ def rewrite_sql(counts: dict) -> None:
         counts["desc_nulls_last"] += n
         if new != text:
             path.write_text(new)
+    # The one known hand-rewritten FILTER is in a branch Snowflake never renders.
+    assert not problems, problems
     for rel, old, new, *count in TEXT_REPLACEMENTS:
         path = DST / rel
         text = path.read_text()
@@ -433,7 +539,7 @@ def main() -> None:
     write_sources()
     drop_audit()
     convert_snapshots(project)
-    counts = {"surrogate_key": 0, "double": 0, "desc_nulls_last": 0, "text": 0}
+    counts = {"surrogate_key": 0, "double": 0, "desc_nulls_last": 0, "text": 0, "snowflake_files": 0}
     rewrite_sql(counts)
     print(f"rewrites: {counts}")
     vendor_generator(src)

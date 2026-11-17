@@ -67,7 +67,7 @@ history as (
         count(*)                                        as change_count,
         min(updated_at)                                 as first_seen_at,
         max(updated_at)                                 as last_changed_at,
-        count(*) filter (where operation = 'delete')    as delete_count
+        {{ dagbench_agg_filter('count', '*', "operation = 'delete'") }}    as delete_count
     from {{ ref('stg_product__pim_versions') }}
     group by 1
 

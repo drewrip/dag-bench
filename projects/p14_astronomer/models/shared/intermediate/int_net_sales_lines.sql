@@ -92,10 +92,10 @@ select
     -- A refund includes the tax that came back. The line here is tax-exclusive,
     -- so the netting is capped at what the line was worth. The tax side of the
     -- refund lands in marts.tax_daily, not here.
-    least(coalesce(r.refund_cents, 0), d.discounted_line_cents) as returned_cents,
+    {{ dagbench_fn('least') }}(coalesce(r.refund_cents, 0), d.discounted_line_cents) as returned_cents,
 
     d.discounted_line_cents
-        - least(coalesce(r.refund_cents, 0), d.discounted_line_cents) as net_sales_cents,
+        - {{ dagbench_fn('least') }}(coalesce(r.refund_cents, 0), d.discounted_line_cents) as net_sales_cents,
 
     d.tax_cents,
     r.first_return_date,

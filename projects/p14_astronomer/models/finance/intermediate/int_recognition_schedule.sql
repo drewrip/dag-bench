@@ -74,7 +74,7 @@ apportioned as (
 
     select
         *,
-        {{ dagbench_datediff('day', "greatest(month_start, service_start)", "least(month_end, effective_service_end)") }} + 1                                   as days_in_month,
+        {{ dagbench_datediff('day', (dagbench_fn('greatest')) ~ "(month_start, service_start)", (dagbench_fn('least')) ~ "(month_end, effective_service_end)") }} + 1                                   as days_in_month,
         row_number() over (
             partition by invoice_line_key order by month_start desc nulls last
         ) = 1                                   as is_final_month

@@ -82,7 +82,7 @@ select
 
     coalesce(l.service_start, p.term_start, h.invoice_date) as service_start,
     coalesce(l.service_end, p.term_end, h.invoice_date)     as service_end,
-    greatest(coalesce(l.service_days, p.term_end - p.term_start + 1, 1), 1) as service_days,
+    {{ dagbench_fn('greatest') }}(coalesce(l.service_days, p.term_end - p.term_start + 1, 1), 1) as service_days,
 
     p.plan_type,
     p.billing_frequency,

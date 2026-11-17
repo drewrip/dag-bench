@@ -17,7 +17,7 @@ with ordered as (
 select device_id, device_type, model, firmware, installed_date, is_active,
     count(*)                                                                    as reading_count,
     count(distinct date_trunc('hour', ts))                                      as active_hours,
-    count(*) filter (where error_flag)                                          as error_count,
+    {{ dagbench_agg_filter('count', '*', 'error_flag') }}                                          as error_count,
     cast(round(cast(avg(temperature_c) as numeric(18,5)), 3) as numeric(10,3))  as avg_temp,
     cast(round(cast(stddev_samp(temperature_c) as numeric(18,5)), 3) as numeric(10,3)) as stddev_temp,
     cast(round(cast(min(temperature_c) as numeric(18,5)), 3) as numeric(10,3))  as min_temp,
@@ -26,7 +26,7 @@ select device_id, device_type, model, firmware, installed_date, is_active,
     cast(round(cast(stddev_samp(humidity_pct) as numeric(18,5)), 3) as numeric(10,3)) as stddev_humidity,
     cast(round(cast(avg(pressure_hpa) as numeric(18,5)), 3) as numeric(10,3))   as avg_pressure,
     cast(round(cast(stddev_samp(pressure_hpa) as numeric(18,5)), 3) as numeric(10,3)) as stddev_pressure,
-    cast(max(extract(epoch from ts - prev_ts)) as bigint)                       as max_gap_seconds,
-    cast(round(cast(avg(extract(epoch from ts - prev_ts)) as numeric(18,5)), 1) as numeric(12,1)) as avg_gap_seconds
+    cast(max({{ dagbench_epoch_diff('ts', 'prev_ts') }}) as bigint)                       as max_gap_seconds,
+    cast(round(cast(avg({{ dagbench_epoch_diff('ts', 'prev_ts') }}) as numeric(18,5)), 1) as numeric(12,1)) as avg_gap_seconds
 from ordered
 group by device_id, device_type, model, firmware, installed_date, is_active

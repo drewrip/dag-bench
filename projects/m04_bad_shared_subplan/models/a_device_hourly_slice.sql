@@ -3,7 +3,7 @@ with hourly as (
         count(*)                           as reading_count,
         avg(r.temperature_c)               as avg_temp,
         min(r.battery_pct)                 as min_battery,
-        count(*) filter (where r.error_flag) as error_count
+        {{ dagbench_agg_filter('count', '*', 'r.error_flag') }} as error_count
     from {{ source('iot', 'readings') }} r
     join {{ source('iot', 'devices') }} d on r.device_id = d.device_id
     group by r.device_id, d.device_type, date_trunc('hour', r.ts)

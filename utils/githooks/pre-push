@@ -1,0 +1,6 @@
+#!/bin/sh
+# dag-bench: block commits/pushes that contain the Snowflake PAT or literal secrets.
+# Installed with: git config core.hooksPath utils/githooks
+root=$(git rev-parse --show-toplevel)
+py="$root/.venv/bin/python"; [ -x "$py" ] || py=python3
+cd "$root" && exec "$py" -m utils.snowflake_secret scan-push

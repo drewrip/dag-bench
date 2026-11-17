@@ -25,9 +25,9 @@ line_rollup as (
         count(*)                                            as line_count,
         sum(line_total_cents)                               as line_net_cents,
         sum(tax_cents)                                      as line_tax_cents,
-        count(*) filter (where line_kind = 'goods')         as goods_lines,
-        count(*) filter (where line_kind = 'plan')          as plan_lines,
-        count(*) filter (where line_kind = 'freight')       as freight_lines
+        {{ dagbench_agg_filter('count', '*', "line_kind = 'goods'") }}         as goods_lines,
+        {{ dagbench_agg_filter('count', '*', "line_kind = 'plan'") }}          as plan_lines,
+        {{ dagbench_agg_filter('count', '*', "line_kind = 'freight'") }}       as freight_lines
     from {{ ref('stg_finance__invoice_lines') }}
     group by 1
 
@@ -46,7 +46,7 @@ disputes as (
     select
         invoice_id,
         count(*)                                as dispute_count,
-        count(*) filter (where is_open)         as open_dispute_count,
+        {{ dagbench_agg_filter('count', '*', 'is_open') }}         as open_dispute_count,
         sum(disputed_cents)                     as disputed_cents,
         sum(settled_cents)                      as dispute_settled_cents
     from {{ ref('stg_finance__disputes') }}

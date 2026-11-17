@@ -1,7 +1,7 @@
 select te.txn_day, te.merchant_category,
     count(*) as txns,
-    count(*) filter (where te.is_flagged) as flagged,
-    count(*) filter (where ae.is_confirmed_fraud) as confirmed_fraud,
+    {{ dagbench_agg_filter('count', '*', 'te.is_flagged') }} as flagged,
+    {{ dagbench_agg_filter('count', '*', 'ae.is_confirmed_fraud') }} as confirmed_fraud,
     cast(round(sum(te.amount), 2) as numeric(18,2)) as volume,
     cast(round(avg(te.amount), 2) as numeric(18,2)) as avg_amount
 from {{ ref('txn_enriched') }} te

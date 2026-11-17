@@ -74,10 +74,19 @@ deliberately messy (`fct_sales_v1`, `fct_sales_FINAL_v2`, `tmp_marcus_debug`,
 - On DuckDB, every rewrite except the fixed "now", the deterministic fakes, the
   materializations and the dev branch compiles to upstream's SQL or an equivalent.
 
+- **Snowflake portability**: `utils/snowflake_rewrite_models.py`
+  (FILTER, least/greatest, epoch differences, `string_agg ... order by`, `regexp_replace`
+  flags) and `SNOWFLAKE_TEXT_REPLACEMENTS` (interval-valued timestamp differences, the
+  `generate_series` spine, `age()`, the `clean_currency` template); each renders upstream's
+  text on DuckDB and Postgres.
+
 ## Hand-written
 
-- `dbt_project.yml`: materializations, `dagbench_as_of_date`, upstream's vars.
-- `macros/dagbench/portability.sql`: the macros above.
+- `dbt_project.yml`: materializations, `dagbench_as_of_date`, upstream's vars; for the
+  Snowflake checks, `../../macros` in `macro-paths`, `dagbench_sf_session()` hooks (empty
+  off Snowflake), the `stg_dim_geography(1)` alias on Snowflake and compare-only
+  `dagbench_*` vars.
+- `macros/dagbench/portability.sql`: the macros above, with Snowflake branches.
 - `load_postgres.py`: loads text columns with `COLLATE "C"`. Upstream compares and sorts
   strings (e.g. varchar dates `BETWEEN '2024-04-01' AND ...`), and the benchmark database's
   default collation orders them differently from DuckDB's bytewise comparison.

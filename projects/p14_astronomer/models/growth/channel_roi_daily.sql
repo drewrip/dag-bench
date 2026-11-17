@@ -54,7 +54,7 @@ measured as (
         s.session_date                          as ds,
         s.attributed_campaign                   as campaign_id,
         count(*)                                as attributed_sessions,
-        count(*) filter (where s.converted)     as attributed_orders,
+        {{ dagbench_agg_filter('count', '*', 's.converted') }}     as attributed_orders,
         sum(s.booked_cents)                     as attributed_booked_cents,
         sum(s.net_sales_cents)                  as attributed_net_sales_cents
     from {{ ref('int_session_attributed') }} s

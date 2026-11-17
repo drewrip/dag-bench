@@ -17,7 +17,7 @@ with invoice_disputes as (
         count(*)                                as dispute_count,
         sum(disputed_cents)                     as disputed_cents,
         sum(settled_cents)                      as settled_cents,
-        count(*) filter (where is_open)         as open_count,
+        {{ dagbench_agg_filter('count', '*', 'is_open') }}         as open_count,
         cast(round(avg(days_to_resolve), 0) as integer) as average_days_to_resolve
     from {{ ref('stg_finance__disputes') }}
     group by 1, 2, 3

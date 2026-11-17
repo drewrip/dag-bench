@@ -52,7 +52,7 @@
 
 -- Helper macro-like approach to strip currency symbols
 -- Data may contain "$108.53" or "945.9900 USD" formats
-{% set clean_currency = "regexp_replace(CAST(%s AS VARCHAR), '[^0-9.-]', '', 'g')::decimal(18,2)" %}
+{% set clean_currency = "regexp_replace(CAST(%s AS VARCHAR), '[^0-9.-]', ''" ~ dagbench_regexp_flag_g() ~ ")::decimal(18,2)" %}
 
 with sap_orders as (
 

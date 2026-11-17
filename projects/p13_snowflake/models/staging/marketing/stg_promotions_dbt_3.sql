@@ -29,7 +29,7 @@ renamed AS (
         TRIM(PROMOTION_TYPE) AS promotion_type,
         TRIM(DISCOUNT_TYPE) AS discount_type,
         -- Strip currency symbols ($, USD, etc.) before casting to DECIMAL (DISCOUNT_VALUE is VARCHAR)
-        COALESCE({{ dagbench_try_cast("REGEXP_REPLACE(CAST(DISCOUNT_VALUE AS VARCHAR), '[^0-9.]', '', 'g')", "decimal(18,3)") }}, 0.0) AS discount_value,
+        COALESCE({{ dagbench_try_cast("REGEXP_REPLACE(CAST(DISCOUNT_VALUE AS VARCHAR), '[^0-9.]', ''" ~ (dagbench_regexp_flag_g()) ~ ")", "decimal(18,3)") }}, 0.0) AS discount_value,
         -- MIN_PURCHASE and MAX_DISCOUNT are already DECIMAL, no need to strip currency symbols
         COALESCE(MIN_PURCHASE, 0.0) AS min_purchase,
         COALESCE(MAX_DISCOUNT, 0.0) AS max_discount,

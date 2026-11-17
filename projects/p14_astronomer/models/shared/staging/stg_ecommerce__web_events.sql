@@ -39,8 +39,8 @@ select
     device,
     country_code,
     producer,
-    cast("partition" as integer)          as source_partition,
-    cast("offset" as bigint)              as source_offset,
+    cast({{ dagbench_ident('partition') }} as integer)          as source_partition,
+    cast({{ dagbench_ident('offset') }} as bigint)              as source_offset,
     event_time_utc,
     cast(event_time_utc as date)        as event_date,
     load_time

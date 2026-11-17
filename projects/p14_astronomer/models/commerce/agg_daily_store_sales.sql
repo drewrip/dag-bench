@@ -37,12 +37,12 @@ till as (
         business_date                           as ds,
         store_id,
         count(*)                                as txn_count,
-        count(*) filter (where is_void)         as void_count,
-        count(*) filter (where is_return)       as till_return_count,
-        sum(gross_cents) filter (where not is_void)     as till_gross_cents,
-        sum(discount_cents) filter (where not is_void)  as till_discount_cents,
-        sum(tax_cents) filter (where not is_void)       as till_tax_cents,
-        sum(net_cents) filter (where not is_void)       as till_net_cents
+        {{ dagbench_agg_filter('count', '*', 'is_void') }}         as void_count,
+        {{ dagbench_agg_filter('count', '*', 'is_return') }}       as till_return_count,
+        {{ dagbench_agg_filter('sum', 'gross_cents', 'not is_void') }}     as till_gross_cents,
+        {{ dagbench_agg_filter('sum', 'discount_cents', 'not is_void') }}  as till_discount_cents,
+        {{ dagbench_agg_filter('sum', 'tax_cents', 'not is_void') }}       as till_tax_cents,
+        {{ dagbench_agg_filter('sum', 'net_cents', 'not is_void') }}       as till_net_cents
     from {{ ref('stg_store__pos_sales_header') }}
     group by 1, 2
 
@@ -54,8 +54,8 @@ manifest as (
         business_date                           as ds,
         store_id,
         count(*)                                as batch_count,
-        count(*) filter (where status = 'late')    as late_batches,
-        count(*) filter (where status = 'missing') as missing_batches,
+        {{ dagbench_agg_filter('count', '*', "status = 'late'") }}    as late_batches,
+        {{ dagbench_agg_filter('count', '*', "status = 'missing'") }} as missing_batches,
         sum(missing_row_count)                  as claimed_minus_received_rows
     from {{ ref('stg_store__pos_batch_manifest') }}
     group by 1, 2

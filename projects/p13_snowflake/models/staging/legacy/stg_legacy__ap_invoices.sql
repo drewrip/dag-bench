@@ -36,8 +36,8 @@ final as (
         
         -- Invoice Attributes (derived/placeholder)
         'AP-' || substr(_id, 1, 12) as invoice_number,
-        ({{ dagbench_current_date() }} + (-cast(abs({{ dagbench_hash("_id") }}) % 365 as int)) * INTERVAL '1 day') as invoice_date,
-        ({{ dagbench_current_date() }} + (-cast(abs({{ dagbench_hash("_id") }}) % 335 as int)) * INTERVAL '1 day') as due_date,
+        ({{ dagbench_current_date() }} + {{ dagbench_interval_n("-cast(abs(" ~ (dagbench_hash("_id")) ~ ") % 365 as int)", 'day') }}) as invoice_date,
+        ({{ dagbench_current_date() }} + {{ dagbench_interval_n("-cast(abs(" ~ (dagbench_hash("_id")) ~ ") % 335 as int)", 'day') }}) as due_date,
         abs({{ dagbench_hash("_id") }}) % 100000 + 1000.00 as invoice_amount,
         'USD' as currency_code,
         case 

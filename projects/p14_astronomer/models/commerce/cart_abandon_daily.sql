@@ -19,25 +19,25 @@ select
     coalesce(s.country_code, 'unknown')         as country_code,
 
     count(*)                                    as session_count,
-    count(*) filter (where s.product_views > 0)     as sessions_with_product_view,
-    count(*) filter (where s.add_to_carts > 0)      as sessions_with_cart,
-    count(*) filter (where s.checkout_starts > 0)   as sessions_with_checkout,
-    count(*) filter (where s.converted)             as sessions_converted,
+    {{ dagbench_agg_filter('count', '*', 's.product_views > 0') }}     as sessions_with_product_view,
+    {{ dagbench_agg_filter('count', '*', 's.add_to_carts > 0') }}      as sessions_with_cart,
+    {{ dagbench_agg_filter('count', '*', 's.checkout_starts > 0') }}   as sessions_with_checkout,
+    {{ dagbench_agg_filter('count', '*', 's.converted') }}             as sessions_converted,
 
-    count(*) filter (where s.abandoned_cart)        as carts_abandoned,
-    count(*) filter (where s.abandoned_checkout)    as checkouts_abandoned,
+    {{ dagbench_agg_filter('count', '*', 's.abandoned_cart') }}        as carts_abandoned,
+    {{ dagbench_agg_filter('count', '*', 's.abandoned_checkout') }}    as checkouts_abandoned,
 
     sum(s.add_to_carts)                         as add_to_cart_events,
     sum(s.checkout_starts)                      as checkout_start_events,
 
     cast(round(
-        cast(count(*) filter (where s.abandoned_cart) as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where s.add_to_carts > 0), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', 's.abandoned_cart') }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', 's.add_to_carts > 0') }}, 0), 0
     ) as integer)                               as cart_abandon_rate_bps,
 
     cast(round(
-        cast(count(*) filter (where s.abandoned_checkout) as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where s.checkout_starts > 0), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', 's.abandoned_checkout') }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', 's.checkout_starts > 0') }}, 0), 0
     ) as integer)                               as checkout_abandon_rate_bps
 
 from {{ ref('int_sessions_funnel') }} s

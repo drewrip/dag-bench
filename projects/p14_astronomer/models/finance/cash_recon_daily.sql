@@ -20,11 +20,11 @@ with cash_postings as (
         posting_date                            as ds,
         entity_code,
         currency_code,
-        sum(signed_amount_cents) filter (where account_code = '1000')   as cash_cents,
-        sum(signed_amount_cents) filter (where account_code = '1210')   as clearing_cents,
-        sum(signed_amount_cents) filter (where account_code = '1200')   as receivable_cents,
-        count(*) filter (where subledger = 'card')                      as card_postings,
-        count(*) filter (where subledger = 'marketplace')               as marketplace_postings,
+        {{ dagbench_agg_filter('sum', 'signed_amount_cents', "account_code = '1000'") }}   as cash_cents,
+        {{ dagbench_agg_filter('sum', 'signed_amount_cents', "account_code = '1210'") }}   as clearing_cents,
+        {{ dagbench_agg_filter('sum', 'signed_amount_cents', "account_code = '1200'") }}   as receivable_cents,
+        {{ dagbench_agg_filter('count', '*', "subledger = 'card'") }}                      as card_postings,
+        {{ dagbench_agg_filter('count', '*', "subledger = 'marketplace'") }}               as marketplace_postings,
         count(*)                                                        as posting_count
     from {{ ref('fct_gl_postings') }}
     group by 1, 2, 3
@@ -59,8 +59,8 @@ processors as (
 
     select
         ds,
-        sum(settled_cents) filter (where processor = 'meridian')    as meridian_cents,
-        sum(settled_cents) filter (where processor = 'halcyon')     as halcyon_cents,
+        {{ dagbench_agg_filter('sum', 'settled_cents', "processor = 'meridian'") }}    as meridian_cents,
+        {{ dagbench_agg_filter('sum', 'settled_cents', "processor = 'halcyon'") }}     as halcyon_cents,
         sum(txn_count)                                              as processor_txn_count,
         count(*)                                                    as processor_count
     from by_processor
@@ -88,7 +88,7 @@ select
     -- The part of the day that both processors claim. Not a duplicate.
     case
         when coalesce(p.meridian_cents, 0) <> 0 and coalesce(p.halcyon_cents, 0) <> 0
-        then least(p.meridian_cents, p.halcyon_cents)
+        then {{ dagbench_fn('least') }}(p.meridian_cents, p.halcyon_cents)
         else 0
     end                                         as shadow_overlap_cents,
 

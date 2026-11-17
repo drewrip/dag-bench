@@ -24,9 +24,9 @@ select
     sum(s.total_freight_cents)                          as freight_cents,
     sum(s.accessorial_cents)                            as accessorial_cents,
 
-    count(*) filter (where s.is_delivered)              as delivered_count,
-    count(*) filter (where s.is_open)                   as open_count,
-    count(*) filter (where s.is_on_time)                as on_time_count,
+    {{ dagbench_agg_filter('count', '*', 's.is_delivered') }}              as delivered_count,
+    {{ dagbench_agg_filter('count', '*', 's.is_open') }}                   as open_count,
+    {{ dagbench_agg_filter('count', '*', 's.is_on_time') }}                as on_time_count,
     cast(round(avg(s.transit_hours), 1) as decimal(8, 1)) as average_transit_hours,
     max(s.transit_hours)                                as worst_transit_hours,
     max(s.expected_transit_hours)                       as expected_transit_hours,

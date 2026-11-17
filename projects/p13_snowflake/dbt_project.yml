@@ -6,7 +6,7 @@ require-dbt-version: [">=1.10.0", "<3.0.0"]
 profile: 'p13_snowflake'
 
 model-paths: ["models"]
-macro-paths: ["macros"]
+macro-paths: ["macros", "../../macros"]  # ../../macros: shared Snowflake portability macros
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
@@ -14,10 +14,21 @@ clean-targets: ["target", "dbt_packages"]
 # which isn't the project name, so they never applied there (everything
 # without an inline config was a view). Upstream's `+schema` per layer is
 # dropped: every relation lives in the target schema.
+# Renders only on the snowflake target (statement timeouts, UTC); empty elsewhere.
+on-run-start:
+  - "{{ dagbench_sf_session() }}"
+
 models:
+  +pre-hook: "{{ dagbench_sf_session() }}"
   p13_snowflake:
     staging:
       +materialized: view
+      analytics:
+        # dag-bench: upstream's stray "stg_dim_geography(1)" copy (read by
+        # nothing). dbt-snowflake doesn't quote relation names, so it is renamed
+        # there; DuckDB and Postgres keep the name (they quote it).
+        "stg_dim_geography(1)":
+          +alias: "{{ 'stg_dim_geography_1' if target.type == 'snowflake' else 'stg_dim_geography(1)' }}"
     intermediate:
       +materialized: view
     marts:
@@ -27,6 +38,21 @@ vars:
   # dag-bench: "now" for upstream's current_date / current_timestamp (see
   # macros/dagbench/portability.sql): the day after the data's last order.
   dagbench_as_of_date: '2026-01-08'
+
+  # Snowflake leaf diff only (utils/compare_snowflake.py; not referenced by any
+  # model). "Now" is pinned, so no column is volatile (created_at is data
+  # here). The ties listed in VENDORED.md make these results undefined: only
+  # their row counts are compared.
+  dagbench_volatile_columns: []
+  dagbench_nondeterministic_models: [stg_vbap, stg_order_lines, stg_trans_lines, dim_trans_lines,
+                                     rpt_customer_loyalty_balance, rpt_campaign_roi_analysis,
+                                     # Found by the diff, same kind: row_number() / ntile() over
+                                     # orderings with ties (equal timestamps, counts, totals).
+                                     rpt_customer_lifecycle_event_sequence, fct_shipment_tracking,
+                                     rpt_rfm_analysis, int_customers_sarah_experiment,
+                                     rpt_product_affinity_analysis]
+  # Row count differs even between two DuckDB runs (VENDORED.md): columns only.
+  dagbench_unstable_models: [rpt_cannibalization_analysis]
 
   # Upstream vars, unchanged.
   # Date range for historical data

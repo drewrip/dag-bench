@@ -29,3 +29,15 @@ Microbenchmarks are minimal DAGs that each test one optimizer capability. They r
 Every numeric column the benchmark produces must have an explicit precision and scale. Arbitrary-precision `NUMERIC` isn't standard SQL and has no Arrow equivalent. Postgres returns an unconstrained `NUMERIC` from `round()`, `sum()`, `avg()`, `min`/`max`, `extract()` and numeric arithmetic, so wrap the outermost expression of such a column in a cast: `cast(round(x, 2) as numeric(10,2))`, or `cast(sum(n) as bigint)` for integer-valued results.
 
 `utils/check_numeric_precision.py` lints the models for `numeric`/`decimal` written without `(p,s)`. With `--postgres`, it also fails on any unconstrained numeric column in the built Postgres schemas. Run it after `DBT_TARGET=postgres dbt build`.
+
+## Snowflake (logic checks only)
+
+The `snowflake` target exists to check that every project builds and returns the same leaf-model rows as DuckDB, over tiny inputs. It is never used for timing. Every command that touches Snowflake runs through the budget ledger, which also injects the credential:
+
+```sh
+python -m utils.snowflake_stage free p01_iot     # rungs 1-3, $0: compiled SQL unchanged, lint, DuckDB reference build
+python -m utils.snowflake_stage sf   p01_iot     # rungs 4-7 in one budgeted run: --empty, load, build, leaf diff
+python -m utils.snowflake_budget status          # credits spent (upper bound) vs DAGBENCH_SF_CREDIT_CAP (default 2.5)
+```
+
+Credentials live outside the repo: an RSA key at `~/.config/snowflake_dagbench_rsa.p8` (`python -m utils.snowflake_secret keygen`), and the connection settings in `~/.config/snowflake`. Never print them. `utils/check_compiled_unchanged.sh check` must pass after any model change: the `dev` and `postgres` compiled SQL has to stay byte-identical.

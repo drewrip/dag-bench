@@ -18,9 +18,9 @@ select
     o.market_code,
 
     count(*)                                    as order_count,
-    count(distinct o.customer_ref) filter (where o.customer_ref is not null) as trade_account_count,
-    count(distinct o.loyalty_id) filter (where o.loyalty_id is not null)     as loyalty_member_count,
-    count(*) filter (where o.customer_ref is null and o.loyalty_id is null)  as guest_order_count,
+    {{ dagbench_agg_filter('count', 'distinct o.customer_ref', 'o.customer_ref is not null') }} as trade_account_count,
+    {{ dagbench_agg_filter('count', 'distinct o.loyalty_id', 'o.loyalty_id is not null') }}     as loyalty_member_count,
+    {{ dagbench_agg_filter('count', '*', 'o.customer_ref is null and o.loyalty_id is null') }}  as guest_order_count,
 
     sum(o.ordered_units)                        as ordered_units,
     sum(o.net_units)                            as net_units,
@@ -35,9 +35,9 @@ select
     sum(o.net_sales_cents)                      as net_sales_cents,
     sum(o.gift_card_applied_cents)              as gift_card_applied_cents,
 
-    count(*) filter (where o.is_paid)           as paid_order_count,
-    count(*) filter (where o.has_return)        as orders_with_return,
-    count(*) filter (where o.is_shadow_quarter) as shadow_quarter_orders,
+    {{ dagbench_agg_filter('count', '*', 'o.is_paid') }}           as paid_order_count,
+    {{ dagbench_agg_filter('count', '*', 'o.has_return') }}        as orders_with_return,
+    {{ dagbench_agg_filter('count', '*', 'o.is_shadow_quarter') }} as shadow_quarter_orders,
 
     cast(round(cast(sum(o.booked_cents) as decimal(38, 4)) / nullif(count(*), 0), 0) as bigint)
                                                 as average_order_booked_cents

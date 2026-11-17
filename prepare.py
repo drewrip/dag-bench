@@ -14,11 +14,26 @@ def run_command(command, cwd):
         print(f"Error executing command: {e}")
         sys.exit(1)
 
+def prepare_snowflake(abs_project_path, skip_data_gen):
+    """Tiny input -> dbt deps -> budgeted load. No `dbt compile` here: compiling
+    against Snowflake opens a session, so it belongs in the budgeted build."""
+    repo = os.path.dirname(os.path.abspath(__file__))
+    project = os.path.basename(abs_project_path.rstrip("/"))
+    if not skip_data_gen:
+        run_command([sys.executable, "-m", "utils.snowflake_tiny", "prepare", project], repo)
+    run_command(["dbt", "deps"], abs_project_path)
+    run_command([sys.executable, "-m", "utils.snowflake_budget", "run", "--estimate-min", "2",
+                 "--label", f"load {project}", "--", sys.executable, "load_snowflake.py"],
+                abs_project_path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Prepare dbt projects and generate data.")
     parser.add_argument("sf", type=str, help="Scale factor for data generation.")
-    parser.add_argument("--db", type=str, choices=["duckdb", "postgres"], default="duckdb",
-                        help="Target database (default: duckdb).")
+    parser.add_argument("--db", type=str, choices=["duckdb", "postgres", "snowflake"], default="duckdb",
+                        help="Target database (default: duckdb). 'snowflake' ignores sf: it uses each "
+                             "project's fixed tiny input (utils/snowflake_tiny.py) and loads it through "
+                             "the budget wrapper.")
     parser.add_argument("--skip-data-gen", action="store_true", help="Skip data generation step.")
     parser.add_argument("--no-constraints", action="store_true",
                         help="Generate data without primary/foreign key constraints (faster).")
@@ -44,6 +59,10 @@ def main():
             continue
 
         print(f"\n--- Preparing project: {project_path} ---")
+
+        if args.db == "snowflake":
+            prepare_snowflake(abs_project_path, args.skip_data_gen)
+            continue
 
         # 1. Data Generation
         if not args.skip_data_gen:

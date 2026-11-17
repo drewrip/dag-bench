@@ -42,5 +42,11 @@ Postgres fixes below.
 - `postgres_compat.sql`: `postgres__try_to_cast_int/_date/_datetime` return null on bad
   input like DuckDB's `try_cast` (upstream's raise, e.g. HCPCS `1036F` -> integer).
 
+Snowflake: no SQL changes (upstream dispatches to `snowflake__*` /
+`default__*`); `dbt_project.yml` adds `../../macros` to `macro-paths`, the
+`dagbench_sf_session()` hooks (empty off Snowflake) and a compare-only
+`dagbench_volatile_columns` var. The tiny input for the checks is `build_tiny` in
+`utils/tuva_data.py`.
+
 Upstream model materializations (193 tables, 82 views, 3 ephemeral) are deliberately kept
 as-is: the point of this project is a real-world DAG.

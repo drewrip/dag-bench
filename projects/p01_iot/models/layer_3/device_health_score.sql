@@ -19,7 +19,7 @@ final as (
         m.total_actions       as maintenance_actions,
         m.last_maintenance_ts,
         -- health 0-100: higher is better
-        cast(round(least(100, greatest(0,
+        cast(round({{ dagbench_fn('least') }}(100, {{ dagbench_fn('greatest') }}(0,
               100
               - avg(h.error_rate_pct)*5
               - case when avg(h.min_battery)<20 then 20 else 0 end

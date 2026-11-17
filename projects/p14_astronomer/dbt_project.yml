@@ -6,7 +6,7 @@ require-dbt-version: [">=1.10.5", "<3.0.0"]
 profile: 'p14_astronomer'
 
 model-paths: ["models"]
-macro-paths: ["macros"]
+macro-paths: ["macros", "../../macros"]  # ../../macros: shared Snowflake portability macros
 test-paths: ["tests"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
@@ -21,10 +21,25 @@ vars:
   surrogate_key_treat_nulls_as_empty_strings: true
   rfm_window_days: 365
   cohort_window_days: 730
+  # Snowflake leaf diff only (utils/compare_snowflake.py; not referenced by any
+  # model). ops_build_manifest.target_schema is the schema name read off the
+  # graph ('main' vs 'DAGBENCH_P14_ASTRONOMER'). Leaves reach ~280k rows at the
+  # tiny scale; diff all of them row by row.
+  dagbench_volatile_columns: [target_schema]
+  dagbench_compare_max_rows: 300000
+  # days_of_cover = available / avg(int demand): Snowflake's avg(int) is a
+  # NUMBER with 6 decimals (1/28 -> 0.035714), DuckDB's a DOUBLE, so tiny
+  # demands move the result by ~1e-5 relative (27888.0 vs 27888.2).
+  dagbench_compare_tolerance: {days_of_cover: 1.0e-4}
 
 # Upstream's materializations and tags. Its per-layer `+schema` is dropped
 # (macros/dagbench/generate_schema_name.sql): everything is in the target schema.
+# Renders only on the snowflake target (statement timeouts, UTC); empty elsewhere.
+on-run-start:
+  - "{{ dagbench_sf_session() }}"
+
 models:
+  +pre-hook: "{{ dagbench_sf_session() }}"
   p14_astronomer:
     shared:
       staging:

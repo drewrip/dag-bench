@@ -21,7 +21,7 @@ with recent as (
         avg(demand_units)                       as daily_demand_units,
         max(demand_units)                       as peak_demand_units,
         sum(demand_units)                       as demand_units_28d,
-        bool_or(demand_is_known)                as demand_is_known
+        {{ dagbench_fn('bool_or') }}(demand_is_known)                as demand_is_known
     from {{ ref('inventory_position') }}
     where ds > {{ ds_minus(28) }}
     group by 1, 2, 3

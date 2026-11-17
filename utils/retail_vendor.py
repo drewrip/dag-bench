@@ -38,6 +38,12 @@ SEEDS = ["seed_manual_currency_corrections"]
 _UNION_STAR = ("AS _source_system,\n        *\n    FROM",
                "AS _source_system,\n        _id, _loaded_at, _source_system AS _source_system_1, _source_table, _row_hash\n    FROM")
 TEXT_REPLACEMENTS = [
+    # Snowflake: regexp_replace's 'g' flag is a position argument
+    # there (and it replaces every match anyway). This one is a Jinja template
+    # string, which utils/snowflake_rewrite_models.py doesn't touch.
+    ("models/intermediate/sales/int_sales__orders_enriched.sql",
+     """{% set clean_currency = "regexp_replace(CAST(%s AS VARCHAR), '[^0-9.-]', '', 'g')::decimal(18,2)" %}""",
+     """{% set clean_currency = "regexp_replace(CAST(%s AS VARCHAR), '[^0-9.-]', ''" ~ dagbench_regexp_flag_g() ~ ")::decimal(18,2)" %}"""),
     # A `_COPY` of STG_CONTACTS that refs the model by its lower-case name; dbt
     # node names are case-sensitive, so upstream's ref never resolves.
     ("models/staging/raw_sfdc/stg_contacts_COPY.sql", "ref('stg_contacts')", "ref('STG_CONTACTS')"),
@@ -103,6 +109,33 @@ EXCLUDE_RN = "select * exclude (_rn)"
 # A few models read raw tables by hard-coded name instead of source().
 HARDCODED_TABLE = re.compile(r'"([A-Z_]+)"\."([A-Z_]+)"')
 SOURCE_CTE = re.compile(r"with source as \(\s*select \* from \{\{ source\('([^']+)', '([^']+)'\) \}\}\s*\)", re.I)
+
+
+# Applied after TEXT_REPLACEMENTS (some match text those produce).
+SNOWFLAKE_TEXT_REPLACEMENTS = [
+    # Snowflake; each renders the same SQL off Snowflake.
+    # Interval-valued timestamp differences (output columns and comparisons).
+    ("models/marts/customer/rpt_churn_risk_segmentation.sql",
+     "{{ dagbench_current_date() }} - lo.last_order_date as days_since_last_order",
+     "{{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }} as days_since_last_order"),
+    *[("models/marts/customer/rpt_churn_risk_segmentation.sql",
+       f"({{{{ dagbench_current_date() }}}} - lo.last_order_date) > interval '{n}' day",
+       f"({{{{ dagbench_ts_diff(dagbench_current_date(), 'lo.last_order_date') }}}}) > "
+       f"{{{{ dagbench_interval_literal(\"interval '{n}' day\", {n * 86400}) }}}}") for n in (365, 180, 90)],
+    ("models/marts/digital/rpt_customer_journey_paths.sql",
+     "max(view_timestamp) - min(view_timestamp) as session_duration",
+     "{{ dagbench_ts_diff('max(view_timestamp)', 'min(view_timestamp)') }} as session_duration"),
+    ("models/marts/digital/fct_reconstructed_sessions.sql",
+     "(event_timestamp - prev_event_ts) > interval '30 minutes'",
+     "({{ dagbench_ts_diff('event_timestamp', 'prev_event_ts') }}) > {{ dagbench_interval_literal(\"interval '30 minutes'\", 1800) }}"),
+    # generate_series day spine; Postgres-style age().
+    ("models/marts/core/dim_exchange_rates.sql",
+     "FROM generate_series(CAST('2020-01-01' AS TIMESTAMP), CAST({{ dagbench_current_date() }} AS TIMESTAMP), INTERVAL '1 day') AS spine(d)",
+     "{{ dagbench_day_spine_from('2020-01-01') }}"),
+    ("models/marts/customer/rpt_age_demographics.sql",
+     "date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth))",
+     "{{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }}", 6),
+]
 
 
 def copy_tree(src: Path, dst: Path) -> None:
@@ -311,7 +344,8 @@ def rewrite_interval_expr(text: str) -> tuple[str, int]:
         end, (arg,) = _scan_call(text, m.end() - 1)
         unit = re.match(r"\s*(DAY|MONTH|YEAR|HOUR)S?\b", text[end:], re.I)
         assert unit, text[m.start():end + 20]
-        out += [text[pos:m.start()], f"({arg}) * INTERVAL '1 {unit[1].lower()}'"]
+        # dagbench_interval_n renders `(arg) * INTERVAL '1 unit'` off Snowflake.
+        out += [text[pos:m.start()], f"{{{{ dagbench_interval_n({jinja_string(arg)}, '{unit[1].lower()}') }}}}"]
         pos, n = end + unit.end(), n + 1
     out.append(text[pos:])
     return "".join(out), n
@@ -409,8 +443,14 @@ def portable(text: str, counts: dict) -> str:
 
 
 def rewrite_models(retail: Retail, resolved: dict) -> None:
+    from collections import defaultdict
+
+    sys.path.insert(0, str(REPO_ROOT))
+    from utils.snowflake_rewrite_models import rewrite as snowflake_rewrite
+
     counts = {"row_num": 0, "_rn": 0, "hardcoded": 0, "wall_clock": 0, "hash": 0, "interval": 0,
-              "datediff": 0, "try_cast": 0, "trailing_comma": 0, "round_double": 0}
+              "datediff": 0, "try_cast": 0, "trailing_comma": 0, "round_double": 0, "snowflake_files": 0}
+    sf_problems: list[str] = []
     for path in sorted((DST / "models").rglob("*.sql")):
         text = path.read_text()
         new = text
@@ -433,11 +473,19 @@ def rewrite_models(retail: Retail, resolved: dict) -> None:
             cols = ",\n        ".join(retail.columns(*resolved[(m[1], m[2])]))
             new = new.replace(EXCLUDE_RN, "select\n        " + cols)
             counts["_rn"] += 1
+        # Snowflake: FILTER, least/greatest, epoch diffs, string_agg
+        # (utils/snowflake_rewrite_models.py). Before portable(), which it applies
+        # to the macro arguments it builds, so either can nest in the other.
+        before = new
+        new = snowflake_rewrite(new, str(path.relative_to(DST)), sf_problems,
+                                arg_hook=lambda sql: portable(sql, defaultdict(int)))
+        counts["snowflake_files"] += new != before
         new = portable(new, counts)
         new, n = DESC_NULLS.subn("DESC NULLS LAST", new)
         counts["desc_nulls_last"] = counts.get("desc_nulls_last", 0) + n
         if new != text:
             path.write_text(new)
+    assert not sf_problems, sf_problems
     # Tenure years are doubles (median, stddev, and date_diff / 365.0 once
     # DATEDIFF_DIVIDED casts it), so every round() over one needs the macro.
     path = DST / "models/marts/hr/rpt_average_tenure.sql"
@@ -462,7 +510,7 @@ def rewrite_models(retail: Retail, resolved: dict) -> None:
         new = portable(text, counts)
         if new != text:
             path.write_text(new)
-    for rel, old, new, *count in TEXT_REPLACEMENTS:
+    for rel, old, new, *count in [*TEXT_REPLACEMENTS, *SNOWFLAKE_TEXT_REPLACEMENTS]:
         path = DST / rel
         text = path.read_text()
         assert text.count(old) == (count[0] if count else 1), (rel, old)

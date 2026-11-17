@@ -43,7 +43,7 @@ as_of as (
 
 markets as (
 
-    select currency_code, count(*) as market_count, string_agg(market_code, ',' order by market_code) as markets
+    select currency_code, count(*) as market_count, {{ dagbench_string_agg('market_code', "','", 'market_code') }} as markets
     from {{ ref('dim_geography') }}
     group by 1
 

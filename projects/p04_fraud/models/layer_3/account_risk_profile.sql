@@ -7,8 +7,8 @@ select t.account_id, t.account_country, t.account_type, t.credit_limit, t.accoun
     v.avg_daily_txns, v.max_daily_txns, v.total_flagged,
     count(distinct t.txn_id) as total_txns,
     cast(sum(t.amount) as numeric(18,2)) as total_spend,
-    count(*) filter (where t.is_flagged) as flagged_txns,
-    count(*) filter (where t.is_risky) as risky_merchant_txns,
+    {{ dagbench_agg_filter('count', '*', 't.is_flagged') }} as flagged_txns,
+    {{ dagbench_agg_filter('count', '*', 't.is_risky') }} as risky_merchant_txns,
     cast(round(v.total_flagged*100.0/nullif(count(distinct t.txn_id),0), 2) as numeric(10,2)) as flag_rate_pct
 from {{ ref('txn_enriched') }} t
 join vel v using (account_id)

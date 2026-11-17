@@ -30,8 +30,8 @@ select
     sum(l.extended_cost_cents)                  as cost_cents,
     sum(l.merch_margin_cents)                   as merch_margin_cents,
 
-    count(*) filter (where not l.cost_is_stated) as lines_without_cost,
-    bool_or(l.is_catalogued)                     as is_catalogued
+    {{ dagbench_agg_filter('count', '*', 'not l.cost_is_stated') }} as lines_without_cost,
+    {{ dagbench_fn('bool_or') }}(l.is_catalogued)                     as is_catalogued
 
 from {{ ref('fct_order_line') }} l
 group by 1, 2, 3, 4, 5, 6, 7

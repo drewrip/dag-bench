@@ -46,8 +46,8 @@ select
     sum(header_total_cents)                     as invoiced_cents,
     sum(settled_cents)                          as settled_cents,
     sum(disputed_cents)                         as disputed_cents,
-    count(*) filter (where open_dispute_count > 0) as disputed_invoice_count,
-    count(*) filter (where is_northwave_book)   as northwave_invoice_count,
+    {{ dagbench_agg_filter('count', '*', 'open_dispute_count > 0') }} as disputed_invoice_count,
+    {{ dagbench_agg_filter('count', '*', 'is_northwave_book') }}   as northwave_invoice_count,
     max(days_past_due)                          as worst_days_past_due
 
 from open_invoices

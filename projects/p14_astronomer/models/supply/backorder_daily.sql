@@ -58,7 +58,7 @@ select
 
     case
         when s.ds is not null and s.available_units < l.ordered_units
-        then cast(l.ordered_units - greatest(s.available_units, 0) as integer)
+        then cast(l.ordered_units - {{ dagbench_fn('greatest') }}(s.available_units, 0) as integer)
     end                                         as short_units
 
 from lines l

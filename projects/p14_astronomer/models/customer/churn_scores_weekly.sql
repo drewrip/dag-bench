@@ -43,8 +43,8 @@ signals as (
     from base b
     left join (
         select customer_key,
-               count(*) filter (where is_open) as open_ticket_count,
-               count(*) filter (where opened_date > {{ ds_minus(90) }}) as recent_tickets
+               {{ dagbench_agg_filter('count', '*', 'is_open') }} as open_ticket_count,
+               {{ dagbench_agg_filter('count', '*', 'opened_date > ' ~ (ds_minus(90))) }} as recent_tickets
         from {{ ref('fct_tickets') }}
         where customer_key is not null
         group by 1
@@ -60,7 +60,7 @@ scored as (
     select
         *,
         -- Four signals, stated weights, out of 100.
-        least(40, cast(days_since_last_order / 4.5 as integer))              as recency_points,
+        {{ dagbench_fn('least') }}(40, cast(days_since_last_order / 4.5 as integer))              as recency_points,
         case when orders_12m = 0 then 25 when orders_12m = 1 then 15 when orders_12m <= 3 then 8 else 0 end
                                                                              as frequency_points,
         case when open_disputes > 0 then 20 when open_ticket_count > 0 then 10 else 0 end
@@ -91,11 +91,11 @@ select
     frequency_points,
     friction_points,
     tenure_points,
-    least(100, recency_points + frequency_points + friction_points + tenure_points) as churn_score,
+    {{ dagbench_fn('least') }}(100, recency_points + frequency_points + friction_points + tenure_points) as churn_score,
 
     case
-        when least(100, recency_points + frequency_points + friction_points + tenure_points) >= 70 then 'high'
-        when least(100, recency_points + frequency_points + friction_points + tenure_points) >= 40 then 'medium'
+        when {{ dagbench_fn('least') }}(100, recency_points + frequency_points + friction_points + tenure_points) >= 70 then 'high'
+        when {{ dagbench_fn('least') }}(100, recency_points + frequency_points + friction_points + tenure_points) >= 40 then 'medium'
         else 'low'
     end                                         as churn_risk,
 

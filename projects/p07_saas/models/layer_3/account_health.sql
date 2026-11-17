@@ -24,7 +24,7 @@ select a.account_id, a.name, a.industry, a.country, a.arr, a.age_days,
     coalesce(fb.features_used,0) as feature_count,
     coalesce(sh.urgent_tickets,0) as urgent_tickets,
     cast(coalesce(sh.avg_csat,3) as numeric(10,2)) as avg_csat,
-    cast(least(100,round(a.health_score*0.3+least(ae.active_days,30)*0.4*(10.0/3)
+    cast({{ dagbench_fn('least') }}(100,round(a.health_score*0.3+{{ dagbench_fn('least') }}(ae.active_days,30)*0.4*(10.0/3)
         +coalesce(fb.features_used,0)*2-coalesce(sh.urgent_tickets,0)*3, 2)) as numeric(10,2)) as composite_health
 from accounts a
 left join engagement ae on a.account_id = ae.account_id

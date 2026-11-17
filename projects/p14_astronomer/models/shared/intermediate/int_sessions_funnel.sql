@@ -57,18 +57,18 @@ rolled as (
         cast(min(event_time_utc) as date)                               as session_date,
         count(*)                                                        as event_count,
         count(distinct page_path)                                       as distinct_pages,
-        count(distinct sku) filter (where sku is not null)              as distinct_skus,
+        {{ dagbench_agg_filter('count', 'distinct sku', 'sku is not null') }}              as distinct_skus,
         max(anonymous_id)                                               as anonymous_id,
         max(customer_ref)                                               as customer_ref,
         max(device)                                                     as device,
         max(country_code)                                               as country_code,
         max(order_id)                                                   as order_id,
 
-        count(*) filter (where event_name = 'page_view')                as page_views,
-        count(*) filter (where event_name = 'product_view')             as product_views,
-        count(*) filter (where event_name = 'add_to_cart')              as add_to_carts,
-        count(*) filter (where event_name = 'checkout_start')           as checkout_starts,
-        count(*) filter (where event_name = 'purchase')                 as purchases
+        {{ dagbench_agg_filter('count', '*', "event_name = 'page_view'") }}                as page_views,
+        {{ dagbench_agg_filter('count', '*', "event_name = 'product_view'") }}             as product_views,
+        {{ dagbench_agg_filter('count', '*', "event_name = 'add_to_cart'") }}              as add_to_carts,
+        {{ dagbench_agg_filter('count', '*', "event_name = 'checkout_start'") }}           as checkout_starts,
+        {{ dagbench_agg_filter('count', '*', "event_name = 'purchase'") }}                 as purchases
 
     from events
     group by 1

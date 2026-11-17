@@ -26,24 +26,24 @@ select
     max(e.order_date)                           as last_eligible_date,
 
     count(*)                                    as orders_eligible,
-    count(*) filter (where e.is_discounted)     as orders_discounted,
+    {{ dagbench_agg_filter('count', '*', 'e.is_discounted') }}     as orders_discounted,
     sum(e.discount_cents)                       as discount_cents,
     sum(e.booked_cents)                         as eligible_booked_cents,
-    sum(e.booked_cents) filter (where e.is_discounted) as discounted_booked_cents,
+    {{ dagbench_agg_filter('sum', 'e.booked_cents', 'e.is_discounted') }} as discounted_booked_cents,
     sum(e.header_applications)                  as header_applications,
     sum(e.line_applications)                    as line_applications,
 
     cast(round(
-        cast(count(*) filter (where e.is_discounted) as decimal(38, 4)) * 10000
+        cast({{ dagbench_agg_filter('count', '*', 'e.is_discounted') }} as decimal(38, 4)) * 10000
         / nullif(count(*), 0), 0
     ) as integer)                               as take_up_rate_bps,
 
     cast(round(
         cast(sum(e.discount_cents) as decimal(38, 4)) * 10000
-        / nullif(sum(e.booked_cents) filter (where e.is_discounted), 0), 0
+        / nullif({{ dagbench_agg_filter('sum', 'e.booked_cents', 'e.is_discounted') }}, 0), 0
     ) as integer)                               as discount_depth_bps,
 
-    bool_and(e.eligibility_is_complete)         as eligibility_is_complete
+    {{ dagbench_fn('bool_and') }}(e.eligibility_is_complete)         as eligibility_is_complete
 
 from {{ ref('int_promo_exposure') }} e
 group by 1, 2, 3, 4, 5, 6, 7

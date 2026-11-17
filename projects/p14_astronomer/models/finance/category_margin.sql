@@ -70,17 +70,17 @@ select
 
     count(*)                                            as line_count,
     count(distinct l.order_id)                          as order_count,
-    count(*) filter (where not l.cost_is_stated)        as lines_without_cost,
+    {{ dagbench_agg_filter('count', '*', 'not l.cost_is_stated') }}        as lines_without_cost,
 
     sum(l.net_sales_cents)                              as net_sales_cents,
     sum(l.extended_cost_cents)                          as cost_cents,
     sum(l.merch_margin_cents)                           as merch_margin_cents,
-    sum(l.net_sales_cents) filter (where l.cost_is_stated) as costed_net_sales_cents,
+    {{ dagbench_agg_filter('sum', 'l.net_sales_cents', 'l.cost_is_stated') }} as costed_net_sales_cents,
     sum(e.booked_cents)                                 as booked_cents,
 
     cast(round(
         cast(sum(l.merch_margin_cents) as decimal(38, 4)) * 10000
-        / nullif(sum(l.net_sales_cents) filter (where l.cost_is_stated), 0), 0
+        / nullif({{ dagbench_agg_filter('sum', 'l.net_sales_cents', 'l.cost_is_stated') }}, 0), 0
     ) as integer)                                       as margin_rate_bps
 
 from lines l

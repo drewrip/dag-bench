@@ -22,7 +22,7 @@ with departments as (
     select
         dept_code,
         count(*)                        as category_count,
-        count(*) filter (where is_current) as current_category_count,
+        {{ dagbench_agg_filter('count', '*', 'is_current') }} as current_category_count,
         min(valid_from)                 as first_seen_on
     from {{ ref('stg_product__categories') }}
     where dept_code <> 'ALL'

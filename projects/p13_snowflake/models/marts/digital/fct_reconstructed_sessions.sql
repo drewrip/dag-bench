@@ -28,7 +28,7 @@ session_flags as (
         session_id,
         event_timestamp,
         case 
-            when prev_event_ts is null or (event_timestamp - prev_event_ts) > interval '30 minutes' then 1 
+            when prev_event_ts is null or ({{ dagbench_ts_diff('event_timestamp', 'prev_event_ts') }}) > {{ dagbench_interval_literal("interval '30 minutes'", 1800) }} then 1 
             else 0 
         end as new_session_flag
     from events

@@ -23,24 +23,24 @@ select
     o.market_code                               as geography_key,
 
     count(*)                                                        as order_count,
-    count(*) filter (where o.loyalty_id is not null)                as member_orders,
-    count(*) filter (where o.customer_ref is not null)              as trade_orders,
-    count(*) filter (where o.loyalty_id is null and o.customer_ref is null) as guest_orders,
+    {{ dagbench_agg_filter('count', '*', 'o.loyalty_id is not null') }}                as member_orders,
+    {{ dagbench_agg_filter('count', '*', 'o.customer_ref is not null') }}              as trade_orders,
+    {{ dagbench_agg_filter('count', '*', 'o.loyalty_id is null and o.customer_ref is null') }} as guest_orders,
     count(distinct o.loyalty_id)                                    as distinct_members,
 
     sum(o.net_sales_cents)                                          as net_sales_cents,
-    sum(o.net_sales_cents) filter (where o.loyalty_id is not null)  as member_net_sales_cents,
-    sum(o.booked_cents) filter (where o.loyalty_id is not null)     as member_booked_cents,
-    sum(o.net_units) filter (where o.loyalty_id is not null)        as member_units,
+    {{ dagbench_agg_filter('sum', 'o.net_sales_cents', 'o.loyalty_id is not null') }}  as member_net_sales_cents,
+    {{ dagbench_agg_filter('sum', 'o.booked_cents', 'o.loyalty_id is not null') }}     as member_booked_cents,
+    {{ dagbench_agg_filter('sum', 'o.net_units', 'o.loyalty_id is not null') }}        as member_units,
 
     cast(round(
-        cast(count(*) filter (where o.loyalty_id is not null) as decimal(38, 4)) * 10000
+        cast({{ dagbench_agg_filter('count', '*', 'o.loyalty_id is not null') }} as decimal(38, 4)) * 10000
         / nullif(count(*), 0), 0
     ) as integer)                                                   as member_order_share_bps,
 
     cast(round(
-        cast(sum(o.net_sales_cents) filter (where o.loyalty_id is not null) as decimal(38, 4))
-        / nullif(count(*) filter (where o.loyalty_id is not null), 0), 0
+        cast({{ dagbench_agg_filter('sum', 'o.net_sales_cents', 'o.loyalty_id is not null') }} as decimal(38, 4))
+        / nullif({{ dagbench_agg_filter('count', '*', 'o.loyalty_id is not null') }}, 0), 0
     ) as bigint)                                                    as member_average_order_cents
 
 from {{ ref('int_orders_enriched') }} o

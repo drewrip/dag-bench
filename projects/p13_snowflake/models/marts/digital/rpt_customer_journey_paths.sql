@@ -4,9 +4,9 @@ with page_views as (
 
 select 
     session_id,
-    string_agg(page_url, ' > ' order by view_timestamp) as journey_path,
+    {{ dagbench_string_agg('page_url', "' > '", 'view_timestamp') }} as journey_path,
     count(*) as path_length,
-    max(view_timestamp) - min(view_timestamp) as session_duration
+    {{ dagbench_ts_diff('max(view_timestamp)', 'min(view_timestamp)') }} as session_duration
 from page_views
 group by 1
 having count(*) > 1

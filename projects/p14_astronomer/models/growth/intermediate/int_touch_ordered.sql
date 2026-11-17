@@ -37,12 +37,12 @@ paths as (
     select
         anonymous_id,
         count(*)                                            as touch_count,
-        count(*) filter (where not is_direct)               as paid_touch_count,
+        {{ dagbench_agg_filter('count', '*', 'not is_direct') }}               as paid_touch_count,
         min(session_date)                                   as first_touch_date,
         max(session_date)                                   as last_touch_date,
-        count(*) filter (where converted)                   as converting_sessions,
+        {{ dagbench_agg_filter('count', '*', 'converted') }}                   as converting_sessions,
         sum(booked_cents)                                   as booked_cents,
-        min(session_date) filter (where converted)          as first_order_date
+        {{ dagbench_agg_filter('min', 'session_date', 'converted') }}          as first_order_date
     from touches
     group by 1
 

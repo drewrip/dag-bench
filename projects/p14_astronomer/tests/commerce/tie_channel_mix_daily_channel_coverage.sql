@@ -16,7 +16,7 @@ with by_day as (
     select
         ds,
         sum(booked_cents)                                                       as booked_cents,
-        sum(booked_cents) filter (where channel in ('store', 'web', 'marketplace')) as three_channel_cents
+        {{ dagbench_agg_filter('sum', 'booked_cents', "channel in ('store', 'web', 'marketplace')") }} as three_channel_cents
     from {{ ref('channel_mix_daily') }}
     group by 1
 

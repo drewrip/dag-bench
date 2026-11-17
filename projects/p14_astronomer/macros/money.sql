@@ -29,11 +29,15 @@
     arithmetic without going back to the rate table.
 #}
 {% macro to_base_cents(amount_cents, rate_ppm) -%}
+    {%- if target.type == 'snowflake' -%}
+    {{ dagbench_bigint_half_even('(cast(' ~ amount_cents ~ ' as decimal(38, 0)) * cast(coalesce(' ~ rate_ppm ~ ', 1000000) as decimal(38, 0)) + 500000) / 1000000') }}
+    {%- else -%}
     cast(cast(
         (cast({{ amount_cents }} as decimal(38, 0)) * cast(coalesce({{ rate_ppm }}, 1000000) as decimal(38, 0))
          + 500000) / 1000000 as double precision)
         as bigint
     )
+    {%- endif -%}
 {%- endmacro %}
 
 
@@ -42,8 +46,12 @@
     once, round half-up.
 #}
 {% macro apply_bps(amount_cents, bps) -%}
+    {%- if target.type == 'snowflake' -%}
+    {{ dagbench_bigint_half_even('(cast(' ~ amount_cents ~ ' as decimal(38, 0)) * cast(' ~ bps ~ ' as decimal(38, 0)) + 5000) / 10000') }}
+    {%- else -%}
     cast(
         cast((cast({{ amount_cents }} as decimal(38, 0)) * cast({{ bps }} as decimal(38, 0)) + 5000) / 10000 as double precision)
         as bigint
     )
+    {%- endif -%}
 {%- endmacro %}

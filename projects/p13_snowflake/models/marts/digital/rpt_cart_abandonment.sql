@@ -22,7 +22,7 @@ recent_carts as (
         case when status = 'ACTIVE' then true else false end as is_active,
         case when status = 'EXPIRED' then true else false end as is_expired,
         case when status = 'MERGED' then true else false end as is_merged,
-        extract(epoch from coalesce(converted_at, updated_at) - created_at) as resolution_seconds
+        {{ dagbench_epoch_diff('coalesce(converted_at, updated_at)', 'created_at') }} as resolution_seconds
     from carts
     where updated_at >= {{ dagbench_current_date() }} - interval '60 days'
 ),
@@ -38,10 +38,10 @@ channel_metrics as (
         sum(case when is_abandoned then 1 else 0 end) as abandoned_carts,
         avg(item_count) as avg_items_per_cart,
         avg(subtotal) as avg_cart_value,
-        sum(item_count) filter (where is_abandoned) as abandoned_items,
-        sum(item_count) filter (where is_converted) as converted_items,
-        avg(resolution_seconds) filter (where is_converted) as avg_time_to_convert_seconds,
-        percentile_disc(0.5) within group (order by resolution_seconds) filter (where is_converted) as median_time_to_convert_seconds,
+        {{ dagbench_agg_filter('sum', 'item_count', 'is_abandoned') }} as abandoned_items,
+        {{ dagbench_agg_filter('sum', 'item_count', 'is_converted') }} as converted_items,
+        {{ dagbench_agg_filter('avg', 'resolution_seconds', 'is_converted') }} as avg_time_to_convert_seconds,
+        {{ dagbench_ordered_set_filter('percentile_disc(0.5) within group (order by ', 'resolution_seconds', 'is_converted') }} as median_time_to_convert_seconds,
         count(distinct session_id) as unique_sessions
     from recent_carts
     group by channel_id

@@ -15,12 +15,12 @@ order_lines as (
 
 select
     case 
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) < 18 then 'Under 18'
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) between 18 and 24 then '18-24'
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) between 25 and 34 then '25-34'
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) between 35 and 44 then '35-44'
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) between 45 and 54 then '45-54'
-        when date_part('year', age({{ dagbench_current_date() }}, c.date_of_birth)) between 55 and 64 then '55-64'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} < 18 then 'Under 18'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} between 18 and 24 then '18-24'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} between 25 and 34 then '25-34'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} between 35 and 44 then '35-44'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} between 45 and 54 then '45-54'
+        when {{ dagbench_age_years(dagbench_current_date(), 'c.date_of_birth') }} between 55 and 64 then '55-64'
         else '65+'
     end as age_group,
     count(distinct c.customer_id) as customer_count,

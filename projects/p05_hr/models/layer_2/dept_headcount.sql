@@ -1,6 +1,6 @@
 select dept_name, division, location,
-    count(*) filter (where is_active) as active_hc, count(*) as total_hc,
-    count(*) filter (where gender='female') as female_count,
+    {{ dagbench_agg_filter('count', '*', 'is_active') }} as active_hc, count(*) as total_hc,
+    {{ dagbench_agg_filter('count', '*', "gender='female'") }} as female_count,
     cast(round(cast(avg(tenure_years) as numeric(18,4)), 2) as numeric(10,2)) as avg_tenure
 from {{ ref('stg_employees') }}
 group by dept_name, division, location

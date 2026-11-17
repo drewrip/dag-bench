@@ -50,7 +50,7 @@ select
 
     sum(r.reported_cents)                       as reported_cents,
     sum(r.recognized_cents)                     as recognized_cents,
-    bool_and(coalesce(r.is_closed, false))      as period_is_closed
+    {{ dagbench_fn('bool_and') }}(coalesce(r.is_closed, false))      as period_is_closed
 
 from books b
 left join rollup r

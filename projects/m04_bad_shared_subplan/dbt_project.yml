@@ -3,9 +3,16 @@ version: '1.0.0'
 config-version: 2
 profile: 'm04_bad_shared_subplan'
 model-paths: ["models"]
+# ../../macros: shared Snowflake portability macros
+macro-paths: ["macros", "../../macros"]
 target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
+# Renders only on the snowflake target (statement timeouts); empty elsewhere.
+on-run-start:
+  - "{{ dagbench_sf_session() }}"
+
 models:
+  +pre-hook: "{{ dagbench_sf_session() }}"
   m04_bad_shared_subplan:
     +materialized: table

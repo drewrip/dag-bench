@@ -20,11 +20,11 @@ select
     t.source_book,
 
     count(*)                                    as tickets_opened,
-    count(*) filter (where t.is_open)           as tickets_still_open,
-    count(*) filter (where not t.is_open)       as tickets_closed,
-    count(*) filter (where t.met_sla)           as tickets_within_sla,
-    count(*) filter (where t.met_sla = false)   as tickets_breached_sla,
-    count(*) filter (where not t.party_resolves) as tickets_without_account,
+    {{ dagbench_agg_filter('count', '*', 't.is_open') }}           as tickets_still_open,
+    {{ dagbench_agg_filter('count', '*', 'not t.is_open') }}       as tickets_closed,
+    {{ dagbench_agg_filter('count', '*', 't.met_sla') }}           as tickets_within_sla,
+    {{ dagbench_agg_filter('count', '*', 't.met_sla = false') }}   as tickets_breached_sla,
+    {{ dagbench_agg_filter('count', '*', 'not t.party_resolves') }} as tickets_without_account,
 
     cast(round(avg(t.resolution_hours), 1) as decimal(8, 1)) as average_resolution_hours,
     max(t.resolution_hours)                     as worst_resolution_hours,
@@ -32,8 +32,8 @@ select
     count(t.csat)                               as csat_responses,
 
     cast(round(
-        cast(count(*) filter (where t.met_sla) as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where not t.is_open), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', 't.met_sla') }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', 'not t.is_open') }}, 0), 0
     ) as integer)                               as sla_rate_bps
 
 from {{ ref('fct_tickets') }} t

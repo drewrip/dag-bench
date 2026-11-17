@@ -1,7 +1,7 @@
 version: 2
 sources:
   - name: iot
-    schema: "{{ 'main' if target.type == 'duckdb' else target.schema }}"
+    schema: "{{ 'main' if target.type == 'duckdb' else ('DAGBENCH_P01_IOT' if target.type == 'snowflake' else target.schema) }}"
     tables:
       - name: readings
       - name: devices

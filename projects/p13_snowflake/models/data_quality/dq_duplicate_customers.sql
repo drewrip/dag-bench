@@ -78,10 +78,10 @@ phone_matches as (
         80 as match_score
     from customers c1
     inner join customers c2
-        on regexp_replace(c1.phone, '[^0-9]', '') = regexp_replace(c2.phone, '[^0-9]', '')
+        on regexp_replace(c1.phone, '[^0-9]', ''{{ dagbench_regexp_first_only() }}) = regexp_replace(c2.phone, '[^0-9]', ''{{ dagbench_regexp_first_only() }})
         and c1.customer_id < c2.customer_id
     where c1.phone is not null
-        and length(regexp_replace(c1.phone, '[^0-9]', '')) >= 10  -- Valid phone length
+        and length(regexp_replace(c1.phone, '[^0-9]', ''{{ dagbench_regexp_first_only() }})) >= 10  -- Valid phone length
 ),
 
 -- Name similarity (lower confidence, needs manual review)

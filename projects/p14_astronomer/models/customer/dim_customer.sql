@@ -36,8 +36,8 @@ merged_ids as (
 
     select
         customer_key,
-        min(party_ref) filter (where ref_shape = 'northwave') as merged_nwv_account_id,
-        count(*) filter (where ref_shape = 'northwave')       as merged_nwv_count
+        {{ dagbench_agg_filter('min', 'party_ref', "ref_shape = 'northwave'") }} as merged_nwv_account_id,
+        {{ dagbench_agg_filter('count', '*', "ref_shape = 'northwave'") }}       as merged_nwv_count
     from candidates
     group by 1
 

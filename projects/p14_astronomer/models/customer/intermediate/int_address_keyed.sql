@@ -62,7 +62,7 @@ keyed as (
         upper(regexp_replace(
             trim(coalesce(address_line1, '') || ' ' || coalesce(city, '') || ' '
                  || coalesce(postal_code, '') || ' ' || coalesce(country_code, '')),
-            '[^A-Za-z0-9 ]', '', 'g'
+            '[^A-Za-z0-9 ]', ''{{ dagbench_regexp_flag_g() }}
         ))                                      as address_text
     from both_books
 
@@ -79,10 +79,10 @@ select
     country_code,
     tax_id,
 
-    regexp_replace(address_text, ' +', ' ', 'g')                as address_normalized,
-    md5(regexp_replace(address_text, ' +', ' ', 'g'))           as address_key,
+    regexp_replace(address_text, ' +', ' '{{ dagbench_regexp_flag_g() }})                as address_normalized,
+    md5(regexp_replace(address_text, ' +', ' '{{ dagbench_regexp_flag_g() }}))           as address_key,
 
-    count(*) over (partition by md5(regexp_replace(address_text, ' +', ' ', 'g'))) as address_account_count,
+    count(*) over (partition by md5(regexp_replace(address_text, ' +', ' '{{ dagbench_regexp_flag_g() }}))) as address_account_count,
     case when tax_id is not null then count(*) over (partition by tax_id) end     as tax_id_account_count,
 
     trim(address_text) = ''                     as address_is_empty

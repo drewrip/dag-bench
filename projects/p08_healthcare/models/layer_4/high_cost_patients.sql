@@ -6,5 +6,5 @@ select pcs.patient_id, sp.age_group, sp.plan_type, sp.gender,
 from {{ ref('patient_claim_summary') }} pcs
 join {{ ref('stg_patients') }} sp using (patient_id)
 left join (select patient_id, cast(sum(chronic_count) as bigint) as chronic_count,
-               bool_or(has_chronic) as has_chronic
+               {{ dagbench_fn('bool_or') }}(has_chronic) as has_chronic
            from {{ ref('chronic_flags') }} group by patient_id) cf using (patient_id)

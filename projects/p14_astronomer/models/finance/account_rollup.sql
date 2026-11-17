@@ -19,7 +19,7 @@ with recognized as (
         r.customer_ref                          as customer_id,
         r.account_key,
         sum(r.recognized_cents)                 as recognized_cents,
-        coalesce(sum(r.recognized_cents) filter (where not r.is_legacy_era), 0) as reported_cents,
+        coalesce({{ dagbench_agg_filter('sum', 'r.recognized_cents', 'not r.is_legacy_era') }}, 0) as reported_cents,
         count(distinct r.invoice_id)            as invoice_count
     from {{ ref('int_recognition_schedule') }} r
     group by 1, 2, 3, 4

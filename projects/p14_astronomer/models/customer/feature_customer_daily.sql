@@ -50,18 +50,18 @@ select
     c.source_book,
     c.tier                                      as tier_as_of,
 
-    count(o.order_date) filter (where o.order_date between s.ds - 6 and s.ds)   as orders_7d,
-    count(o.order_date) filter (where o.order_date between s.ds - 29 and s.ds)  as orders_30d,
-    count(o.order_date) filter (where o.order_date between s.ds - 89 and s.ds)  as orders_90d,
+    {{ dagbench_agg_filter('count', 'o.order_date', 'o.order_date between s.ds - 6 and s.ds') }}   as orders_7d,
+    {{ dagbench_agg_filter('count', 'o.order_date', 'o.order_date between s.ds - 29 and s.ds') }}  as orders_30d,
+    {{ dagbench_agg_filter('count', 'o.order_date', 'o.order_date between s.ds - 89 and s.ds') }}  as orders_90d,
 
-    coalesce(sum(o.net_sales_cents) filter (where o.order_date <= s.ds), 0)     as net_sales_cents,
-    coalesce(sum(o.net_sales_cents) filter (where o.order_date between s.ds - 29 and s.ds), 0)
+    coalesce({{ dagbench_agg_filter('sum', 'o.net_sales_cents', 'o.order_date <= s.ds') }}, 0)     as net_sales_cents,
+    coalesce({{ dagbench_agg_filter('sum', 'o.net_sales_cents', 'o.order_date between s.ds - 29 and s.ds') }}, 0)
                                                                                 as net_sales_cents_30d,
-    coalesce(sum(o.booked_cents) filter (where o.order_date between s.ds - 29 and s.ds), 0)
+    coalesce({{ dagbench_agg_filter('sum', 'o.booked_cents', 'o.order_date between s.ds - 29 and s.ds') }}, 0)
                                                                                 as booked_cents_30d,
 
-    max(o.order_date) filter (where o.order_date <= s.ds)                       as last_order_date,
-    {{ dagbench_datediff('day', "max(o.order_date) filter (where o.order_date <= s.ds)", "s.ds") }} as days_since_last_order
+    {{ dagbench_agg_filter('max', 'o.order_date', 'o.order_date <= s.ds') }}                       as last_order_date,
+    {{ dagbench_datediff('day', (dagbench_agg_filter('max', 'o.order_date', 'o.order_date <= s.ds')), "s.ds") }} as days_since_last_order
 
 from spine s
 cross join customers c

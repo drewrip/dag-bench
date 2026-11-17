@@ -14,3 +14,28 @@ p07_saas:
       dbname: benchmark
       schema: synth_multi_p07_saas
       threads: 16
+    # Reference DuckDB build over the tiny input for the Snowflake comparison
+    # (utils/snowflake_tiny.py). Same file name as dev, so compiled SQL matches.
+    duckdb_tiny:
+      type: duckdb
+      path: "data/tiny/warehouse.duckdb"
+      threads: 16
+    # Logic checks only, over tiny data. Run every command through
+    # `python -m utils.snowflake_budget run -- ...`; that is the
+    # only thing that sets DAGBENCH_SF_PRIVATE_KEY_PATH (key-pair auth, a path)
+    # or DAGBENCH_SF_TOKEN (the PAT). Whichever is unset stays empty.
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('DAGBENCH_SF_ACCOUNT', 'FY02423-GP21411') }}"
+      user: "{{ env_var('DAGBENCH_SF_USER', 'DREWRIPBERGER') }}"
+      private_key_path: "{{ env_var('DAGBENCH_SF_PRIVATE_KEY_PATH', '') }}"
+      password: "{{ env_var('DAGBENCH_SF_TOKEN', '') }}"
+      role: "{{ env_var('DAGBENCH_SF_ROLE', 'CMUADMIN') }}"
+      warehouse: "{{ env_var('DAGBENCH_SF_WAREHOUSE', 'CMU_ROBOTS') }}"
+      database: CMU
+      schema: DAGBENCH_P07_SAAS
+      threads: 4
+      query_tag: dagbench
+      reuse_connections: true
+      client_session_keep_alive: false
+      connect_timeout: 60

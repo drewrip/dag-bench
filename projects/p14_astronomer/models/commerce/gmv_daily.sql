@@ -21,9 +21,9 @@ select
     s.currency_code,
 
     count(*)                                    as order_count,
-    count(*) filter (where s.order_state = 'shipped')   as shipped_order_count,
-    count(*) filter (where s.order_state = 'refunded')  as refunded_order_count,
-    count(*) filter (where s.order_state = 'cancelled') as cancelled_order_count,
+    {{ dagbench_agg_filter('count', '*', "s.order_state = 'shipped'") }}   as shipped_order_count,
+    {{ dagbench_agg_filter('count', '*', "s.order_state = 'refunded'") }}  as refunded_order_count,
+    {{ dagbench_agg_filter('count', '*', "s.order_state = 'cancelled'") }} as cancelled_order_count,
 
     sum(s.gmv_cents)                            as gmv_cents,
     sum(s.commission_cents)                     as commission_cents,
@@ -33,8 +33,8 @@ select
     sum(s.seller_net_cents)                     as seller_net_cents,
 
     sum(s.commission_rate_variance_cents)       as commission_rate_variance_cents,
-    count(*) filter (where not s.is_settled)    as unsettled_order_count,
-    count(*) filter (where s.has_refund)        as orders_with_refund,
+    {{ dagbench_agg_filter('count', '*', 'not s.is_settled') }}    as unsettled_order_count,
+    {{ dagbench_agg_filter('count', '*', 's.has_refund') }}        as orders_with_refund,
 
     cast(round(
         cast(sum(s.commission_cents) as decimal(38, 4)) * 10000

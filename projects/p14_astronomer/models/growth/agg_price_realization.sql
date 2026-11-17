@@ -60,7 +60,7 @@ select
     sum(case when is_catalogued then cast(round(qty * list_price_cents, 0) as bigint) end)
                                                 as list_value_cents,
 
-    count(*) filter (where not is_catalogued)   as uncatalogued_lines,
+    {{ dagbench_agg_filter('count', '*', 'not is_catalogued') }}   as uncatalogued_lines,
 
     cast(round(
         cast(sum(case when is_catalogued then discounted_line_cents end) as decimal(38, 4)) * 10000

@@ -18,25 +18,25 @@ select
 
     count(distinct e.send_id)                   as sends,
     count(distinct e.customer_ref)              as recipients,
-    count(*) filter (where e.event_type = 'sent')       as sent_events,
-    count(*) filter (where e.event_type = 'delivered')  as delivered_events,
-    count(*) filter (where e.event_type = 'open')       as open_events,
-    count(*) filter (where e.event_type = 'click')      as click_events,
-    count(*) filter (where e.event_type = 'bounce')     as bounce_events,
-    count(*) filter (where e.event_type = 'unsub')      as unsub_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'sent'") }}       as sent_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'delivered'") }}  as delivered_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'open'") }}       as open_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'click'") }}      as click_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'bounce'") }}     as bounce_events,
+    {{ dagbench_agg_filter('count', '*', "e.event_type = 'unsub'") }}      as unsub_events,
 
     cast(round(
-        cast(count(*) filter (where e.event_type = 'open') as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where e.event_type = 'delivered'), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', "e.event_type = 'open'") }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', "e.event_type = 'delivered'") }}, 0), 0
     ) as integer)                               as open_rate_bps,
 
     cast(round(
-        cast(count(*) filter (where e.event_type = 'click') as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where e.event_type = 'open'), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', "e.event_type = 'click'") }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', "e.event_type = 'open'") }}, 0), 0
     ) as integer)                               as click_through_rate_bps,
 
     cast(round(
-        cast(count(*) filter (where e.event_type = 'bounce') as decimal(38, 4)) * 10000
+        cast({{ dagbench_agg_filter('count', '*', "e.event_type = 'bounce'") }} as decimal(38, 4)) * 10000
         / nullif(count(distinct e.send_id), 0), 0
     ) as integer)                               as bounce_rate_bps
 

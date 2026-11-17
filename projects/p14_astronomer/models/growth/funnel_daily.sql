@@ -16,27 +16,27 @@ select
     s.device,
 
     count(*)                                            as sessions,
-    count(*) filter (where s.funnel_stage >= 2)         as reached_product,
-    count(*) filter (where s.funnel_stage >= 3)         as reached_cart,
-    count(*) filter (where s.funnel_stage >= 4)         as reached_checkout,
-    count(*) filter (where s.funnel_stage >= 5)         as reached_purchase,
+    {{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 2') }}         as reached_product,
+    {{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 3') }}         as reached_cart,
+    {{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 4') }}         as reached_checkout,
+    {{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 5') }}         as reached_purchase,
 
     sum(s.booked_cents)                                 as booked_cents,
     sum(s.net_sales_cents)                              as net_sales_cents,
 
     cast(round(
-        cast(count(*) filter (where s.funnel_stage >= 5) as decimal(38, 4)) * 10000
+        cast({{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 5') }} as decimal(38, 4)) * 10000
         / nullif(count(*), 0), 0
     ) as integer)                                       as conversion_rate_bps,
 
     cast(round(
-        cast(count(*) filter (where s.funnel_stage >= 3) as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where s.funnel_stage >= 2), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 3') }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 2') }}, 0), 0
     ) as integer)                                       as product_to_cart_bps,
 
     cast(round(
-        cast(count(*) filter (where s.funnel_stage >= 5) as decimal(38, 4)) * 10000
-        / nullif(count(*) filter (where s.funnel_stage >= 4), 0), 0
+        cast({{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 5') }} as decimal(38, 4)) * 10000
+        / nullif({{ dagbench_agg_filter('count', '*', 's.funnel_stage >= 4') }}, 0), 0
     ) as integer)                                       as checkout_to_purchase_bps
 
 from {{ ref('int_session_attributed') }} s

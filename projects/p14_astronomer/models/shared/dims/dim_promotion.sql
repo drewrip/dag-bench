@@ -24,11 +24,11 @@ take_up as (
     select
         promo_id,
         count(*)                                        as orders_eligible,
-        count(*) filter (where is_discounted)           as orders_discounted,
+        {{ dagbench_agg_filter('count', '*', 'is_discounted') }}           as orders_discounted,
         sum(discount_cents)                             as discount_cents,
-        min(order_date) filter (where is_discounted)    as first_used_on,
-        max(order_date) filter (where is_discounted)    as last_used_on,
-        bool_and(eligibility_is_complete)               as eligibility_is_complete
+        {{ dagbench_agg_filter('min', 'order_date', 'is_discounted') }}    as first_used_on,
+        {{ dagbench_agg_filter('max', 'order_date', 'is_discounted') }}    as last_used_on,
+        {{ dagbench_fn('bool_and') }}(eligibility_is_complete)               as eligibility_is_complete
     from {{ ref('int_promo_exposure') }}
     group by 1
 

@@ -20,7 +20,7 @@ select
     c.last_name,
     c.customer_type,
     count(distinct csm.segment_id) as segment_count,
-    string_agg(distinct cs.segment_name, ', ' ORDER BY cs.segment_name) as segment_names,
+    {{ dagbench_string_agg('distinct cs.segment_name', "', '", 'cs.segment_name', kw=' ORDER BY ') }} as segment_names,
     min(csm.added_date) as first_segment_added,
     max(csm.added_date) as last_segment_added
 from customer_segment_members csm

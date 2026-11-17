@@ -75,8 +75,8 @@ applied as (
         promo_id,
         sum(discount_cents)                                     as discount_cents,
         count(*)                                                as application_count,
-        count(*) filter (where is_header_discount)              as header_applications,
-        count(*) filter (where not is_header_discount)          as line_applications
+        {{ dagbench_agg_filter('count', '*', 'is_header_discount') }}              as header_applications,
+        {{ dagbench_agg_filter('count', '*', 'not is_header_discount') }}          as line_applications
     from {{ ref('stg_sales__promo_applications') }}
     group by 1, 2
 
